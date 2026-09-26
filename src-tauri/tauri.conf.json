@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "productName": "Atlas Terminal",
+  "version": "0.1.0",
+  "identifier": "com.atlas.terminal",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Atlas Terminal",
+        "width": 960,
+        "height": 600,
+        "minWidth": 480,
+        "minHeight": 320,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "resizable": true
+      }
+    ]
+  },
+  "plugins": {
+    "window-state": {
+      "denylist": []
+    }
+  }
+}

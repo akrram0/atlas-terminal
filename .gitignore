@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Tauri generated
+src-tauri/gen/
+
+# Debug
+*.pdb
+
+# Lock files (keep pnpm-lock.yaml)
+package-lock.json
+yarn.lock

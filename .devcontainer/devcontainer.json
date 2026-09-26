@@ -1,0 +1,27 @@
+{
+  "name": "Atlas Terminal",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22",
+      "pnpmVersion": "latest"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tauri-apps.tauri-vscode",
+        "bradlc.vscode-tailwindcss",
+        "dbaeumer.vscode-eslint"
+      ],
+      "settings": {
+        "rust-analyzer.cargo.buildScripts.enable": true,
+        "editor.fontFamily": "'JetBrains Mono', 'Cascadia Code', monospace"
+      }
+    }
+  },
+  "postCreateCommand": "pnpm install && sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libgtk-3-dev",
+  "forwardPorts": [5173],
+  "remoteUser": "vscode"
+}
