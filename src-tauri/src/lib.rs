@@ -47,12 +47,13 @@ pub fn run() {
             resize_pty,
         ])
         .setup(|app| {
-            // Apply vibrancy effect on Windows 11
+            // Apply vibrancy effect on Windows 11 safely without crashing
             #[cfg(target_os = "windows")]
             {
-                let window = app.get_webview_window("main").unwrap();
-                let _ = window_vibrancy::apply_acrylic(&window, Some((18, 18, 18, 125)))
-                    .or_else(|_| window_vibrancy::apply_mica(&window, Some(true)));
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window_vibrancy::apply_acrylic(&window, Some((18, 18, 18, 125)))
+                        .or_else(|_| window_vibrancy::apply_mica(&window, Some(true)));
+                }
             }
             Ok(())
         })
