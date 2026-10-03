@@ -47,25 +47,23 @@ impl PtyManager {
         let prompt_script = get_prompt_script();
 
         let mut cmd = CommandBuilder::new("powershell.exe");
-        cmd.args([
-            "-NoLogo",
-            "-NoProfile",
-            "-Command",
-            &format!(
-                "{} ; Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; ",
-                prompt_script
-            ),
-        ]);
+        cmd.args(["-NoLogo", "-NoExit"]);
 
         let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
-        let writer = pair
+        let mut writer = pair
             .master
             .take_writer()
             .map_err(|e| format!("Failed to get PTY writer: {}", e))?;
+
+        // Initialize custom prompt cleanly into the PTY stream without suspicious CLI flags
+        let init_script = format!("{}\r\n", get_prompt_script());
+        let _ = writer.write_all(init_script.as_bytes());
+        let _ = writer.flush();
+
 
         // Spawn reader thread
         let mut reader = pair

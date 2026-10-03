@@ -32,8 +32,8 @@ function prompt {
     }
     $currentPath = $currentPath.Replace('\', '/')
 
-    # Folder icon (Nerd Font) + path
-    $folder = "${esc}[38;2;10;132;255m${esc}[0m ${esc}[38;2;200;200;205m$currentPath${esc}[0m"
+    # Folder icon + path
+    $folder = "${esc}[38;2;10;132;255m📁${esc}[0m ${esc}[38;2;200;200;205m$currentPath${esc}[0m"
 
     # Chevron
     $chevron = "${esc}[38;2;134;134;139m❯${esc}[0m"
