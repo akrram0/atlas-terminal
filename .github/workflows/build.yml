@@ -35,7 +35,7 @@ jobs:
           workspaces: "./src-tauri -> target"
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Build Tauri app
         run: pnpm tauri build --ignore-version-mismatches
