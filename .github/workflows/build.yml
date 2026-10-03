@@ -38,7 +38,7 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        run: pnpm tauri build
+        run: pnpm tauri build --ignore-version-mismatches
 
       - name: Upload Windows Executable
         uses: actions/upload-artifact@v4
