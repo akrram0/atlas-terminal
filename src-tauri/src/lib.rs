@@ -11,8 +11,10 @@ async fn spawn_pty(
     state: tauri::State<'_, Arc<PtyManager>>,
     cols: u16,
     rows: u16,
+    shell: Option<String>,
+    cwd: Option<String>,
 ) -> Result<String, String> {
-    state.spawn(&app_handle, cols, rows)
+    state.spawn(&app_handle, cols, rows, shell, cwd)
 }
 
 #[tauri::command]

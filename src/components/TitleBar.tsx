@@ -1,5 +1,5 @@
 import { useCallback, type ReactNode } from 'react';
-import { Minus, Square, X } from 'lucide-react';
+import { Minus, Settings, Square, X } from 'lucide-react';
 
 async function getTauriWindow() {
   try {
@@ -15,7 +15,15 @@ async function getTauriWindow() {
   }
 }
 
-export function TitleBar({ center }: { center?: ReactNode }) {
+export function TitleBar({
+  center,
+  onSettings,
+  settingsOpen,
+}: {
+  center?: ReactNode;
+  onSettings?: () => void;
+  settingsOpen?: boolean;
+}) {
   const handleMinimize = useCallback(async () => {
     try {
       const win = await getTauriWindow();
@@ -55,6 +63,16 @@ export function TitleBar({ center }: { center?: ReactNode }) {
 
       {/* Right: Window controls */}
       <div className="flex items-center gap-0.5 shrink-0">
+        {onSettings && (
+          <button
+            className={settingsOpen ? 'window-control window-control-on' : 'window-control'}
+            onClick={onSettings}
+            aria-label="Settings"
+            title="Settings"
+          >
+            <Settings size={14} strokeWidth={1.5} />
+          </button>
+        )}
         <button
           className="window-control"
           onClick={handleMinimize}

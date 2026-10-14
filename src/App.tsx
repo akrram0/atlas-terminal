@@ -2,6 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from './components/TitleBar';
 import { TabBar, type TabInfo } from './components/TabBar';
 import { Terminal } from './components/Terminal';
+import { SettingsPanel } from './components/SettingsPanel';
+import {
+  DEFAULT_SETTINGS,
+  applyGlassVars,
+  loadSettings,
+  saveSettings,
+  type AppSettings,
+} from './settings';
 
 function newTabId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -16,6 +24,8 @@ function App() {
     { id: newTabId(), title: 'Tab 1' },
   ]);
   const [activeId, setActiveId] = useState<string>(() => tabs[0].id);
+  const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const tabsRef = useRef(tabs);
@@ -74,6 +84,21 @@ function App() {
     });
   }, []);
 
+  const handleSettingsChange = useCallback((next: AppSettings) => {
+    setSettings(next);
+    saveSettings(next);
+  }, []);
+
+  const handleSettingsReset = useCallback(() => {
+    setSettings({ ...DEFAULT_SETTINGS });
+    saveSettings({ ...DEFAULT_SETTINGS });
+  }, []);
+
+  // Live-apply glass vars on boot and every change.
+  useEffect(() => {
+    applyGlassVars(settings.opacity, settings.blur);
+  }, [settings.opacity, settings.blur]);
+
   // Kitty-like shortcuts (window-level so they work regardless of xterm focus).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -113,6 +138,8 @@ function App() {
   return (
     <div className="terminal-window">
       <TitleBar
+        onSettings={() => setSettingsOpen((v) => !v)}
+        settingsOpen={settingsOpen}
         center={
           <TabBar
             tabs={tabs}
@@ -138,6 +165,10 @@ function App() {
             >
               <Terminal
                 active={isActive}
+                fontFamily={settings.fontFamily}
+                scrollback={settings.scrollback}
+                shell={settings.shell}
+                cwd={settings.cwd}
                 onTitle={(title) => handleTabTitle(tab.id, title)}
                 onRequestClose={() => closeTab(tab.id)}
               />
@@ -145,6 +176,14 @@ function App() {
           );
         })}
       </div>
+      {settingsOpen && (
+        <SettingsPanel
+          settings={settings}
+          onChange={handleSettingsChange}
+          onClose={() => setSettingsOpen(false)}
+          onReset={handleSettingsReset}
+        />
+      )}
     </div>
   );
 }

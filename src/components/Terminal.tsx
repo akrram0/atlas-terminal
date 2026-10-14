@@ -133,11 +133,27 @@ function initMock(term: XTerm): { dispose: () => void } {
 
 export interface TerminalProps {
   active: boolean;
+  /** Applied at construction and live. */
+  fontFamily: string;
+  /** Applied at construction (new tabs). */
+  scrollback: number;
+  /** Backend shell for spawn_pty (new sessions, incl. restart). */
+  shell: string;
+  /** Startup dir for spawn_pty; empty = backend default. */
+  cwd: string;
   onTitle?: (title: string) => void;
   onRequestClose?: () => void;
 }
 
-export function Terminal({ active, onTitle, onRequestClose }: TerminalProps) {
+export function Terminal({
+  active,
+  fontFamily,
+  scrollback,
+  shell,
+  cwd,
+  onTitle,
+  onRequestClose,
+}: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const restartBtnRef = useRef<HTMLButtonElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -163,7 +179,7 @@ export function Terminal({ active, onTitle, onRequestClose }: TerminalProps) {
 
     const term = new XTerm({
       allowTransparency: true,
-      fontFamily: '"JetBrains Mono Nerd Font", "MesloLGS NF", "SF Mono", Consolas, monospace',
+      fontFamily,
       fontSize: loadFontSize(),
       lineHeight: 1.25,
       letterSpacing: 0,
@@ -171,7 +187,7 @@ export function Terminal({ active, onTitle, onRequestClose }: TerminalProps) {
       cursorStyle: 'block',
       theme: THEME,
       allowProposedApi: true,
-      scrollback: 10000,
+      scrollback,
     });
 
     const fitAddon = new FitAddon();
@@ -260,8 +276,13 @@ export function Terminal({ active, onTitle, onRequestClose }: TerminalProps) {
         }
         const { cols, rows } = term;
 
-        // Spawn PTY session
-        const sid = await invoke<string>('spawn_pty', { cols, rows });
+        // Spawn PTY session (shell/cwd frozen at tab creation)
+        const sid = await invoke<string>('spawn_pty', {
+          cols,
+          rows,
+          shell,
+          cwd: cwd.trim() ? cwd.trim() : null,
+        });
         if (cancelled) {
           // Unmounted while spawning: kill immediately, don't attach listeners.
           closeSession(sid);
@@ -438,9 +459,17 @@ export function Terminal({ active, onTitle, onRequestClose }: TerminalProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Apply font size changes (persist default for future tabs).
+  // Live-apply font family to the open terminal.
   useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
     try {
+      term.options.fontFamily = fontFamily;
+    } catch {}
+  }, [fontFamily]);
+
+  // Apply font size changes (persist default for future tabs).
+  useEffect(() => {    try {
       localStorage.setItem(FONT_STORAGE_KEY, String(fontSize));
     } catch {}
     const term = termRef.current;

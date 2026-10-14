@@ -47,4 +47,17 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/*.exe
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Smoke test (app launches and stays alive)
+        # Proves the exe from the previous step actually opens: with
+        # windows_subsystem="windows" a startup panic exits silently,
+        # so an immediately-dead process means "can't open the app".
+        run: |
+          $exe = "src-tauri/target/release/atlas-terminal.exe"
+          if (-not (Test-Path $exe)) { Write-Error "Missing $exe"; exit 1 }
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { Write-Error "App exited at startup with code $($p.ExitCode)"; exit 1 }
+          Write-Output "App running (PID $($p.Id)), stopping smoke instance"
+          Stop-Process -Id $p.Id -Force

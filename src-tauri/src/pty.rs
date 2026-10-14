@@ -31,6 +31,8 @@ impl PtyManager {
         app_handle: &AppHandle,
         cols: u16,
         rows: u16,
+        shell: Option<String>,
+        cwd: Option<String>,
     ) -> Result<String, String> {
         let session_id = Uuid::new_v4().to_string();
         let pty_system = native_pty_system();
@@ -44,13 +46,46 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let mut cmd = CommandBuilder::new("powershell.exe");
-        cmd.args(["-NoLogo", "-NoExit"]);
+        // Shell allowlist: pwsh falls back to powershell.exe when missing.
+        let shell_candidates: Vec<&str> = match shell.as_deref() {
+            Some("pwsh") | Some("pwsh.exe") => vec!["pwsh.exe", "powershell.exe"],
+            _ => vec!["powershell.exe"],
+        };
 
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn shell: {}", e))?;
+        // Validate startup dir; ignore when missing/invalid.
+        let start_dir: Option<std::path::PathBuf> = cwd.as_deref().and_then(|d| {
+            let p = std::path::PathBuf::from(d);
+            if p.is_dir() {
+                Some(p)
+            } else {
+                None
+            }
+        });
+
+        let mut spawn_err = String::new();
+        let child = shell_candidates
+            .into_iter()
+            .find_map(|program| {
+                let mut cmd = CommandBuilder::new(program);
+                cmd.args(["-NoLogo", "-NoExit"]);
+                if let Some(ref dir) = start_dir {
+                    cmd.cwd(dir.clone());
+                }
+                match pair.slave.spawn_command(cmd) {
+                    Ok(child) => Some(child),
+                    Err(e) => {
+                        spawn_err = format!("Failed to spawn shell: {}", e);
+                        None
+                    }
+                }
+            })
+            .ok_or_else(|| {
+                if spawn_err.is_empty() {
+                    "Failed to spawn shell".to_string()
+                } else {
+                    spawn_err
+                }
+            })?;
 
         let mut writer = pair
             .master
