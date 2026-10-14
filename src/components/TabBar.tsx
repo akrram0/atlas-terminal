@@ -15,7 +15,7 @@ interface TabBarProps {
 
 export function TabBar({ tabs, activeId, onSelect, onClose, onNew }: TabBarProps) {
   return (
-    <div className="tabbar" data-tauri-drag-region={false}>
+    <div className="tabbar" data-tauri-drag-region>
       {tabs.map((tab) => {
         const isActive = tab.id === activeId;
         return (

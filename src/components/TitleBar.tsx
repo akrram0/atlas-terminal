@@ -54,9 +54,16 @@ export function TitleBar({
         </span>
       </div>
 
-      {/* Center: tab strip (or draggable spacer when no tabs) */}
+      {/* Center: tab strip (or draggable spacer when no tabs).
+          The whole strip is a drag region: clicks still land on tabs/
+          buttons (press+release without move), moving drags the window. */}
       {center ? (
-        <div className="flex-1 flex items-center justify-center min-w-0 px-2">{center}</div>
+        <div
+          className="flex-1 flex items-center justify-center min-w-0 px-2"
+          data-tauri-drag-region
+        >
+          {center}
+        </div>
       ) : (
         <div className="flex-1" data-tauri-drag-region />
       )}

@@ -3,7 +3,6 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
-import { WebglAddon } from '@xterm/addon-webgl';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 
@@ -196,17 +195,9 @@ export function Terminal({
     const searchAddon = new SearchAddon();
     term.loadAddon(searchAddon);
     searchRef.current = searchAddon;
-    // WebGL renderer for GPU compositing; falls back to canvas on failure
-    // or context loss (headless CI, old drivers).
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        try {
-          webglAddon.dispose();
-        } catch {}
-      });
-      term.loadAddon(webglAddon);
-    } catch {}
+    // Canvas renderer only: WebGL mis-measures cells with fallback font
+    // stacks on fractional DPR (ghost/duplicated glyphs), so it stays
+    // out until it can be enabled deliberately via settings.
 
     term.open(container);
     termRef.current = term;
@@ -234,6 +225,7 @@ export function Terminal({
     // ---- Lifecycle tracking (Phase 1: no leaked PTY, no duplicate listeners) ----
     let cancelled = false;
     let restarting = false;
+    let spawning = false;
     let sessionId: string | null = null;
     const unlistens: Array<() => void> = [];
     let sessionDisposables: Array<{ dispose: () => void }> = [];
@@ -264,6 +256,10 @@ export function Terminal({
     };
 
     const spawnSession = async () => {
+      // Never attach two sessions to one pane: a second concurrent spawn
+      // would double-write every byte (duplicated input echo).
+      if (spawning || sessionId) return;
+      spawning = true;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const { listen } = await import('@tauri-apps/api/event');
@@ -332,6 +328,8 @@ export function Terminal({
         if (!cancelled) {
           sessionDisposables.push(initMock(term));
         }
+      } finally {
+        spawning = false;
       }
     };
 

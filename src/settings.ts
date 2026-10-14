@@ -15,10 +15,15 @@ export interface AppSettings {
   scrollback: number;
 }
 
+const LEGACY_FONT_STACK =
+  '"JetBrains Mono Nerd Font", "MesloLGS NF", "SF Mono", Consolas, monospace';
+
 export const DEFAULT_SETTINGS: AppSettings = {
   shell: 'powershell',
   cwd: '',
-  fontFamily: '"JetBrains Mono Nerd Font", "MesloLGS NF", "SF Mono", Consolas, monospace',
+  // System monospace first: guaranteed present on Windows so xterm cell
+  // metrics measure exactly. Nerd Fonts remain opt-in via this field.
+  fontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
   opacity: 0.6,
   blur: 30,
   scrollback: 10000,
@@ -34,13 +39,19 @@ export function loadSettings(): AppSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
     const p = JSON.parse(raw) as Partial<AppSettings>;
+    let fontFamily =
+      typeof p.fontFamily === 'string' && p.fontFamily.trim()
+        ? p.fontFamily.slice(0, 512)
+        : DEFAULT_SETTINGS.fontFamily;
+    // Migrate installs that still carry the old Nerd-First default, which
+    // mis-measures cells when those fonts aren't installed.
+    if (fontFamily === LEGACY_FONT_STACK) {
+      fontFamily = DEFAULT_SETTINGS.fontFamily;
+    }
     return {
       shell: p.shell === 'pwsh' ? 'pwsh' : 'powershell',
       cwd: typeof p.cwd === 'string' ? p.cwd.slice(0, 512) : '',
-      fontFamily:
-        typeof p.fontFamily === 'string' && p.fontFamily.trim()
-          ? p.fontFamily.slice(0, 512)
-          : DEFAULT_SETTINGS.fontFamily,
+      fontFamily,
       opacity:
         typeof p.opacity === 'number' && Number.isFinite(p.opacity)
           ? clamp(p.opacity, 0.3, 1)
