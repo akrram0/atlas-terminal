@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { Minus, Square, X } from 'lucide-react';
 
 async function getTauriWindow() {
@@ -15,7 +15,7 @@ async function getTauriWindow() {
   }
 }
 
-export function TitleBar() {
+export function TitleBar({ center }: { center?: ReactNode }) {
   const handleMinimize = useCallback(async () => {
     try {
       const win = await getTauriWindow();
@@ -40,17 +40,21 @@ export function TitleBar() {
   return (
     <div className="titlebar" data-tauri-drag-region>
       {/* Left: Shell title */}
-      <div className="flex items-center gap-2" data-tauri-drag-region>
+      <div className="flex items-center gap-2 shrink-0" data-tauri-drag-region>
         <span className="titlebar-title" data-tauri-drag-region>
           Atlas Terminal
         </span>
       </div>
 
-      {/* Center spacer - draggable */}
-      <div className="flex-1" data-tauri-drag-region />
+      {/* Center: tab strip (or draggable spacer when no tabs) */}
+      {center ? (
+        <div className="flex-1 flex items-center justify-center min-w-0 px-2">{center}</div>
+      ) : (
+        <div className="flex-1" data-tauri-drag-region />
+      )}
 
       {/* Right: Window controls */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5 shrink-0">
         <button
           className="window-control"
           onClick={handleMinimize}

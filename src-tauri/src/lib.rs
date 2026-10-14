@@ -34,6 +34,14 @@ async fn resize_pty(
     state.resize(&session_id, cols, rows)
 }
 
+#[tauri::command]
+async fn close_pty(
+    state: tauri::State<'_, Arc<PtyManager>>,
+    session_id: String,
+) -> Result<(), String> {
+    state.close(&session_id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let pty_manager = Arc::new(PtyManager::new());
@@ -45,6 +53,7 @@ pub fn run() {
             spawn_pty,
             write_pty,
             resize_pty,
+            close_pty,
         ])
         .setup(|app| {
             // Apply vibrancy effect on Windows 11 safely without crashing

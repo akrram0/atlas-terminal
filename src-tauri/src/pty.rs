@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
 use crate::prompt::get_prompt_script;
@@ -44,8 +44,6 @@ impl PtyManager {
             })
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
-        let prompt_script = get_prompt_script();
-
         let mut cmd = CommandBuilder::new("powershell.exe");
         cmd.args(["-NoLogo", "-NoExit"]);
 
@@ -64,12 +62,22 @@ impl PtyManager {
         let _ = writer.write_all(init_script.as_bytes());
         let _ = writer.flush();
 
-
         // Spawn reader thread
         let mut reader = pair
             .master
             .try_clone_reader()
             .map_err(|e| format!("Failed to get PTY reader: {}", e))?;
+
+        let session = PtySession {
+            writer,
+            _pair: pair,
+            _child: child,
+        };
+
+        self.sessions
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?
+            .insert(session_id.clone(), session);
 
         let handle = app_handle.clone();
         let sid = session_id.clone();
@@ -86,20 +94,33 @@ impl PtyManager {
                 }
             }
             let _ = handle.emit(&format!("pty-exit-{}", sid), 0);
+            // Auto-cleanup: drop writer/pair/child so no powershell.exe leaks
+            // when the shell exits on its own (e.g. user typed `exit`).
+            if let Some(manager) = handle.try_state::<Arc<PtyManager>>() {
+                if let Ok(mut sessions) = manager.sessions.lock() {
+                    if let Some(mut session) = sessions.remove(&sid) {
+                        let _ = session._child.kill();
+                    }
+                }
+            }
         });
 
-        let session = PtySession {
-            writer,
-            _pair: pair,
-            _child: child,
-        };
-
-        self.sessions
-            .lock()
-            .map_err(|e| format!("Lock error: {}", e))?
-            .insert(session_id.clone(), session);
-
         Ok(session_id)
+    }
+
+    pub fn close(&self, session_id: &str) -> Result<(), String> {
+        let mut sessions = self
+            .sessions
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
+        if let Some(mut session) = sessions.remove(session_id) {
+            // Kill the child so no powershell.exe leaks; ignore errors
+            // when the process already exited (auto-cleanup path).
+            let _ = session._child.kill();
+        }
+        // Idempotent: closing an already-cleaned session is Ok so React
+        // unmount-after-exit doesn't spam errors.
+        Ok(())
     }
 
     pub fn write(&self, session_id: &str, data: &str) -> Result<(), String> {

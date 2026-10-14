@@ -38,6 +38,15 @@ function prompt {
     # Chevron
     $chevron = "${esc}[38;2;134;134;139m❯${esc}[0m"
 
+    # Sync tab title: console title (ConPTY forwards as OSC 0) plus a
+    # direct OSC 0 write for VT-aware readers. Both are no-ops visually.
+    try {
+        $Host.UI.RawUI.WindowTitle = $currentPath
+    } catch {}
+    try {
+        Write-Host -NoNewline ("$esc]0;$currentPath$([char]7)")
+    } catch {}
+
     return "$dot $identity $folder $chevron "
 }
 
