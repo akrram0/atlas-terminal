@@ -25,10 +25,5 @@
         "resizable": true
       }
     ]
-  },
-  "plugins": {
-    "window-state": {
-      "denylist": []
-    }
   }
 }
