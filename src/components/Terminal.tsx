@@ -32,24 +32,6 @@ const THEME = {
   brightWhite: '#FFFFFF',
 };
 
-const DEFAULT_FONT_SIZE = 13.5;
-const MIN_FONT_SIZE = 8;
-const MAX_FONT_SIZE = 32;
-const FONT_STORAGE_KEY = 'atlas.terminal.fontSize';
-
-const clampFont = (n: number) => Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, n));
-
-function loadFontSize(): number {
-  try {
-    const raw = localStorage.getItem(FONT_STORAGE_KEY);
-    if (raw != null) {
-      const n = parseFloat(raw);
-      if (Number.isFinite(n)) return clampFont(n);
-    }
-  } catch {}
-  return DEFAULT_FONT_SIZE;
-}
-
 const isTauri = () => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 };
@@ -135,12 +117,22 @@ export interface TerminalProps {
   active: boolean;
   /** Applied at construction and live. */
   fontFamily: string;
+  /** Global default size (zoom writes back via onZoom). Applied live. */
+  fontSize: number;
+  /** Applied live. */
+  lineHeight: number;
+  /** Applied live. */
+  cursorStyle: 'block' | 'bar' | 'underline';
+  /** Applied live. */
+  cursorBlink: boolean;
   /** Applied at construction (new tabs). */
   scrollback: number;
   /** Backend shell for spawn_pty (new sessions, incl. restart). */
   shell: string;
   /** Startup dir for spawn_pty; empty = backend default. */
   cwd: string;
+  onZoom: (delta: number) => void;
+  onZoomReset: () => void;
   onTitle?: (title: string) => void;
   onRequestClose?: () => void;
 }
@@ -148,9 +140,15 @@ export interface TerminalProps {
 export function Terminal({
   active,
   fontFamily,
+  fontSize,
+  lineHeight,
+  cursorStyle,
+  cursorBlink,
   scrollback,
   shell,
   cwd,
+  onZoom,
+  onZoomReset,
   onTitle,
   onRequestClose,
 }: TerminalProps) {
@@ -165,9 +163,12 @@ export function Terminal({
   activeRef.current = active;
   const onTitleRef = useRef(onTitle);
   onTitleRef.current = onTitle;
+  const onZoomRef = useRef(onZoom);
+  onZoomRef.current = onZoom;
+  const onZoomResetRef = useRef(onZoomReset);
+  onZoomResetRef.current = onZoomReset;
 
   const [exited, setExited] = useState(false);
-  const [fontSize, setFontSize] = useState<number>(() => loadFontSize());
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCase, setSearchCase] = useState(false);
@@ -180,11 +181,12 @@ export function Terminal({
     const term = new XTerm({
       allowTransparency: true,
       fontFamily,
-      fontSize: loadFontSize(),
-      lineHeight: 1.25,
+      fontSize,
+      lineHeight,
       letterSpacing: 0.2,
-      cursorBlink: true,
-      cursorStyle: 'block',
+      cursorBlink,
+      cursorStyle,
+      customGlyphs: true,
       theme: THEME,
       allowProposedApi: true,
       scrollback,
@@ -387,23 +389,23 @@ export function Terminal({
       }
       // Zoom in: Ctrl + '+' / '='
       if (mod && !e.shiftKey && !e.altKey && (e.key === '+' || e.key === '=')) {
-        setFontSize((f) => clampFont(f + 1));
+        onZoomRef.current(1);
         return false;
       }
       // Zoom in (Shift layout, e.g. Ctrl+Shift+'=' producing '+')
       if (mod && e.shiftKey && !e.altKey && (e.key === '+' || e.key === '=')) {
         // Avoid hijacking Ctrl+Shift+C/V handled above (key checked first).
-        setFontSize((f) => clampFont(f + 1));
+        onZoomRef.current(1);
         return false;
       }
       // Zoom out: Ctrl + '-' / '_'
       if (mod && !e.altKey && (e.key === '-' || e.key === '_')) {
-        setFontSize((f) => clampFont(f - 1));
+        onZoomRef.current(-1);
         return false;
       }
       // Zoom reset: Ctrl + '0'
       if (mod && !e.shiftKey && !e.altKey && e.key === '0') {
-        setFontSize(DEFAULT_FONT_SIZE);
+        onZoomResetRef.current();
         return false;
       }
       // Find: Ctrl+Shift+F (plain Ctrl+F stays with the shell)
@@ -429,10 +431,18 @@ export function Terminal({
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-      const delta = e.deltaY < 0 ? 1 : -1;
-      setFontSize((f) => clampFont(f + delta));
+      onZoomRef.current(e.deltaY < 0 ? 1 : -1);
     };
     container.addEventListener('wheel', onWheel, { passive: false });
+
+    // External focus requests (window refocus, titlebar actions).
+    const onFocusRequest = () => {
+      if (!activeRef.current) return;
+      try {
+        term.focus();
+      } catch {}
+    };
+    window.addEventListener('atlas:focus-terminal', onFocusRequest);
 
     // Initialize Tauri or mock mode
     if (isTauri()) {
@@ -447,6 +457,7 @@ export function Terminal({
       resizeObserver.disconnect();
       container.removeEventListener('contextmenu', onContextMenu);
       container.removeEventListener('wheel', onWheel);
+      window.removeEventListener('atlas:focus-terminal', onFocusRequest);
       teardownSession();
       while (persistDisposables.length > 0) {
         const d = persistDisposables.pop();
@@ -463,23 +474,24 @@ export function Terminal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Live-apply font family to the open terminal.
+  // Live-apply typography + cursor to the open terminal.
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
     try {
       term.options.fontFamily = fontFamily;
     } catch {}
-  }, [fontFamily]);
-
-  // Apply font size changes (persist default for future tabs).
-  useEffect(() => {    try {
-      localStorage.setItem(FONT_STORAGE_KEY, String(fontSize));
-    } catch {}
-    const term = termRef.current;
-    if (!term) return;
     try {
       term.options.fontSize = fontSize;
+    } catch {}
+    try {
+      term.options.lineHeight = lineHeight;
+    } catch {}
+    try {
+      term.options.cursorStyle = cursorStyle;
+    } catch {}
+    try {
+      term.options.cursorBlink = cursorBlink;
     } catch {}
     if (!activeRef.current) return;
     const fitAddon = fitRef.current;
@@ -490,7 +502,7 @@ export function Terminal({
       } catch {}
     });
     return () => cancelAnimationFrame(raf);
-  }, [fontSize]);
+  }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink]);
 
   // Refit + focus when this tab becomes visible. Mounted-hidden tabs have
   // 0-size containers, so the real sizing happens here. fit() triggers

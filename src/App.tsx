@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from './components/TitleBar';
 import { TabBar, type TabInfo } from './components/TabBar';
 import { Terminal } from './components/Terminal';
-import { SettingsPanel } from './components/SettingsPanel';
+import { openSettingsWindow } from './openSettings';
 import {
-  DEFAULT_SETTINGS,
   applyGlassVars,
+  fontStack,
+  formatTabTitle,
   loadSettings,
   saveSettings,
+  SETTINGS_STORAGE_KEY,
   type AppSettings,
 } from './settings';
 
@@ -18,6 +20,11 @@ function newTabId() {
   return `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** Ask the active terminal to take keyboard focus (solid cursor). */
+function focusActiveTerminal() {
+  window.dispatchEvent(new Event('atlas:focus-terminal'));
+}
+
 function App() {
   const counterRef = useRef(1);
   const [tabs, setTabs] = useState<TabInfo[]>(() => [
@@ -25,11 +32,31 @@ function App() {
   ]);
   const [activeId, setActiveId] = useState<string>(() => tabs[0].id);
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const activeIdRef = useRef(activeId);
   activeIdRef.current = activeId;
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  const updateSettings = useCallback((next: AppSettings) => {
+    setSettings(next);
+    saveSettings(next);
+  }, []);
+
+  const zoomBy = useCallback(
+    (delta: number) => {
+      const s = settingsRef.current;
+      const size = Math.min(32, Math.max(8, Math.round((s.fontSize + delta) * 2) / 2));
+      if (size !== s.fontSize) updateSettings({ ...s, fontSize: size });
+    },
+    [updateSettings]
+  );
+
+  const zoomReset = useCallback(() => {
+    const s = settingsRef.current;
+    if (s.fontSize !== 13.5) updateSettings({ ...s, fontSize: 13.5 });
+  }, [updateSettings]);
 
   const addTab = useCallback(() => {
     counterRef.current += 1;
@@ -76,22 +103,13 @@ function App() {
     setActiveId(next.id);
   }, []);
 
-  const handleTabTitle = useCallback((id: string, title: string) => {
+  const handleTabTitle = useCallback((id: string, raw: string) => {
+    const short = formatTabTitle(raw, settingsRef.current.shell);
     setTabs((prev) => {
       const tab = prev.find((t) => t.id === id);
-      if (!tab || tab.title === title) return prev;
-      return prev.map((t) => (t.id === id ? { ...t, title } : t));
+      if (!tab || (tab.title === short && tab.fullTitle === raw)) return prev;
+      return prev.map((t) => (t.id === id ? { ...t, title: short, fullTitle: raw } : t));
     });
-  }, []);
-
-  const handleSettingsChange = useCallback((next: AppSettings) => {
-    setSettings(next);
-    saveSettings(next);
-  }, []);
-
-  const handleSettingsReset = useCallback(() => {
-    setSettings({ ...DEFAULT_SETTINGS });
-    saveSettings({ ...DEFAULT_SETTINGS });
   }, []);
 
   // Live-apply glass vars on boot and every change.
@@ -99,10 +117,42 @@ function App() {
     applyGlassVars(settings.opacity, settings.blur);
   }, [settings.opacity, settings.blur]);
 
-  // Kitty-like shortcuts (window-level so they work regardless of xterm focus).
+  // Sync settings saved by the native Settings window (same origin).
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SETTINGS_STORAGE_KEY) {
+        setSettings(loadSettings());
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Refocus the terminal whenever this window regains focus (alt-tab,
+  // Settings close, titlebar buttons) so the cursor stays solid.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        unlisten = await getCurrentWindow().onFocusChanged(({ payload }) => {
+          if (payload) focusActiveTerminal();
+        });
+      } catch {}
+    })();
+    return () => unlisten?.();
+  }, []);
+
+  // Shortcuts (window-level so they work regardless of xterm focus).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
+      // Settings: Ctrl+,
+      if (mod && !e.shiftKey && !e.altKey && e.key === ',') {
+        e.preventDefault();
+        void openSettingsWindow();
+        return;
+      }
       // New tab: Ctrl+Shift+T
       if (mod && e.shiftKey && (e.key === 'T' || e.key === 't')) {
         e.preventDefault();
@@ -138,8 +188,7 @@ function App() {
   return (
     <div className="terminal-window">
       <TitleBar
-        onSettings={() => setSettingsOpen((v) => !v)}
-        settingsOpen={settingsOpen}
+        onSettings={() => void openSettingsWindow()}
         center={
           <TabBar
             tabs={tabs}
@@ -165,10 +214,16 @@ function App() {
             >
               <Terminal
                 active={isActive}
-                fontFamily={settings.fontFamily}
+                fontFamily={fontStack(settings.fontFamily)}
+                fontSize={settings.fontSize}
+                lineHeight={settings.lineHeight}
+                cursorStyle={settings.cursorStyle}
+                cursorBlink={settings.cursorBlink}
                 scrollback={settings.scrollback}
                 shell={settings.shell}
                 cwd={settings.cwd}
+                onZoom={zoomBy}
+                onZoomReset={zoomReset}
                 onTitle={(title) => handleTabTitle(tab.id, title)}
                 onRequestClose={() => closeTab(tab.id)}
               />
@@ -176,14 +231,6 @@ function App() {
           );
         })}
       </div>
-      {settingsOpen && (
-        <SettingsPanel
-          settings={settings}
-          onChange={handleSettingsChange}
-          onClose={() => setSettingsOpen(false)}
-          onReset={handleSettingsReset}
-        />
-      )}
     </div>
   );
 }

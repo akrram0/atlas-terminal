@@ -3,6 +3,8 @@ import { Plus, X } from 'lucide-react';
 export interface TabInfo {
   id: string;
   title: string;
+  /** Untruncated title (e.g. full cwd) shown as tooltip. */
+  fullTitle?: string;
 }
 
 interface TabBarProps {
@@ -30,7 +32,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onNew }: TabBarProps
                 onClose(tab.id);
               }
             }}
-            title={tab.title}
+            title={tab.fullTitle ?? tab.title}
           >
             <span className="tab-title">{tab.title}</span>
             <button

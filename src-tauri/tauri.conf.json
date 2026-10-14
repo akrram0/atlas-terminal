@@ -23,6 +23,21 @@
         "transparent": true,
         "shadow": true,
         "resizable": true
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "width": 640,
+        "height": 480,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "resizable": false,
+        "minimizable": false,
+        "maximizable": false,
+        "visible": false,
+        "center": true,
+        "skipTaskbar": true
       }
     ]
   }
