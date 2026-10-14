@@ -3,31 +3,32 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 
 const THEME = {
-  background: 'transparent',
-  foreground: '#ECEFF4',
-  cursor: '#0A84FF',
-  cursorAccent: '#121212',
-  selectionBackground: 'rgba(10, 132, 255, 0.30)',
+  background: '#0E0E12',
+  foreground: '#E4E4EE',
+  cursor: '#F5E0DC',
+  cursorAccent: '#0E0E12',
+  selectionBackground: 'rgba(137, 180, 250, 0.25)',
   selectionForeground: '#FFFFFF',
-  black: '#1E1E22',
-  brightBlack: '#5A5D66',
-  red: '#FF6B6B',
-  brightRed: '#FF8787',
-  green: '#32D74B',
-  brightGreen: '#4CD964',
-  yellow: '#FFD60A',
-  brightYellow: '#FFE043',
-  blue: '#0A84FF',
-  brightBlue: '#409CFF',
-  magenta: '#BF5AF2',
-  brightMagenta: '#DA8FFF',
-  cyan: '#64D2FF',
-  brightCyan: '#8BE0FF',
-  white: '#E5E5EA',
+  black: '#181820',
+  brightBlack: '#585B70',
+  red: '#F38BA8',
+  brightRed: '#F38BA8',
+  green: '#A6E3A1',
+  brightGreen: '#A6E3A1',
+  yellow: '#F9E2AF',
+  brightYellow: '#F9E2AF',
+  blue: '#89B4FA',
+  brightBlue: '#89B4FA',
+  magenta: '#CBA6F7',
+  brightMagenta: '#F5C2E7',
+  cyan: '#89DCEB',
+  brightCyan: '#94E2D5',
+  white: '#BAC2DE',
   brightWhite: '#FFFFFF',
 };
 
@@ -181,7 +182,7 @@ export function Terminal({
       fontFamily,
       fontSize: loadFontSize(),
       lineHeight: 1.25,
-      letterSpacing: 0,
+      letterSpacing: 0.2,
       cursorBlink: true,
       cursorStyle: 'block',
       theme: THEME,
@@ -192,6 +193,11 @@ export function Terminal({
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
+    // Unicode 11 grapheme/width engine: correct cells for Powerline,
+    // Nerd Font icons, and emoji (no overlaps, no phantom columns).
+    const unicode11 = new Unicode11Addon();
+    term.loadAddon(unicode11);
+    term.unicode.activeVersion = '11';
     const searchAddon = new SearchAddon();
     term.loadAddon(searchAddon);
     searchRef.current = searchAddon;

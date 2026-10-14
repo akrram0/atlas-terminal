@@ -15,15 +15,22 @@ export interface AppSettings {
   scrollback: number;
 }
 
-const LEGACY_FONT_STACK =
-  '"JetBrains Mono Nerd Font", "MesloLGS NF", "SF Mono", Consolas, monospace';
+const LEGACY_FONT_STACKS = new Set([
+  // Phase 5 default (system-first, predates icon-glyph requirement)
+  "'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
+  // Original default
+  '"JetBrains Mono Nerd Font", "MesloLGS NF", "SF Mono", Consolas, monospace',
+]);
 
 export const DEFAULT_SETTINGS: AppSettings = {
   shell: 'powershell',
   cwd: '',
-  // System monospace first: guaranteed present on Windows so xterm cell
-  // metrics measure exactly. Nerd Fonts remain opt-in via this field.
-  fontFamily: "'Cascadia Mono', 'Cascadia Code', Consolas, monospace",
+  // Nerd Fonts first so icon/powerline glyphs resolve when installed;
+  // canvas renderer measures the first *available* family, so missing
+  // fonts fall through to Consolas with exact metrics (no drift).
+  // Install a Nerd Font (e.g. CaskaydiaCove NF) to end tofu boxes.
+  fontFamily:
+    "'JetBrainsMono Nerd Font', 'CaskaydiaCove Nerd Font', 'Cascadia Code NF', 'FiraCode Nerd Font', Consolas, monospace",
   opacity: 0.6,
   blur: 30,
   scrollback: 10000,
@@ -43,9 +50,8 @@ export function loadSettings(): AppSettings {
       typeof p.fontFamily === 'string' && p.fontFamily.trim()
         ? p.fontFamily.slice(0, 512)
         : DEFAULT_SETTINGS.fontFamily;
-    // Migrate installs that still carry the old Nerd-First default, which
-    // mis-measures cells when those fonts aren't installed.
-    if (fontFamily === LEGACY_FONT_STACK) {
+    // Migrate installs still on a previous default stack.
+    if (LEGACY_FONT_STACKS.has(fontFamily)) {
       fontFamily = DEFAULT_SETTINGS.fontFamily;
     }
     return {

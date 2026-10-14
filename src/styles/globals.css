@@ -42,11 +42,11 @@
 
 @layer components {
   .terminal-window {
-    background: rgba(18, 18, 18, var(--atlas-bg-alpha, 0.60));
+    background: rgba(14, 14, 18, var(--atlas-bg-alpha, 0.60));
     backdrop-filter: blur(var(--atlas-blur, 30px));
     -webkit-backdrop-filter: blur(var(--atlas-blur, 30px));
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
       0 20px 50px rgba(0, 0, 0, 0.5),
       0 0 0 1px rgba(255, 255, 255, 0.05);
@@ -64,20 +64,21 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 12px;
-    background: rgba(28, 28, 32, 0.45);
+    padding: 0 8px 0 0;
+    background: rgba(20, 20, 25, var(--atlas-bg-alpha, 0.60));
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     user-select: none;
     -webkit-user-select: none;
   }
 
-  .titlebar-title {
-    font-size: 12px;
-    font-weight: 500;
-    color: #86868B;
-    letter-spacing: -0.01em;
+  .titlebar-divider {
+    width: 1px;
+    height: 14px;
+    margin: 0 8px;
+    background: rgba(255, 255, 255, 0.10);
+    flex-shrink: 0;
   }
 
   .window-control {
@@ -112,7 +113,7 @@
 
   .terminal-container {
     flex: 1;
-    padding: 8px 12px 12px 12px;
+    padding: 0;
     overflow: hidden;
   }
 
@@ -142,38 +143,44 @@
     align-items: center;
     gap: 6px;
     min-width: 0;
-    max-width: 160px;
-    padding: 4px 6px 4px 10px;
-    border-radius: 8px;
+    max-width: 180px;
+    height: 28px;
+    padding: 0 8px 0 12px;
+    border-radius: 6px;
     background: transparent;
     border: 1px solid transparent;
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
-    transition: all 0.15s ease;
+    transition: background 0.15s ease;
     flex-shrink: 0;
+    box-sizing: border-box;
   }
 
   .tab:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .tab-active {
-    background: rgba(255, 255, 255, 0.10);
-    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .tab-active:hover {
+    background: rgba(255, 255, 255, 0.09);
   }
 
   .tab-title {
     font-size: 12px;
     font-weight: 500;
-    color: #86868B;
+    color: rgba(255, 255, 255, 0.45);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .tab-active .tab-title {
-    color: #F5F5F7;
+    color: #F2F2F7;
   }
 
   .tab-close {
@@ -186,7 +193,7 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #86868B;
+    color: rgba(255, 255, 255, 0.45);
     padding: 0;
     opacity: 0;
     transition: all 0.15s ease;
@@ -200,7 +207,7 @@
 
   .tab-close:hover {
     background: rgba(255, 255, 255, 0.12);
-    color: #F5F5F7;
+    color: #F2F2F7;
   }
 
   .tab-new {
@@ -213,7 +220,7 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    color: #86868B;
+    color: rgba(255, 255, 255, 0.45);
     padding: 0;
     transition: all 0.15s ease;
     flex-shrink: 0;
@@ -221,7 +228,7 @@
 
   .tab-new:hover {
     background: rgba(255, 255, 255, 0.08);
-    color: #F5F5F7;
+    color: #F2F2F7;
   }
 
   .terminal-pane {
@@ -236,6 +243,11 @@
   .terminal-xterm {
     width: 100%;
     height: 100%;
+    /* Breathing room for prompt/ASCII art. fitAddon measures the parent
+       (.terminal-pane) and subtracts this element's own padding, so
+       cols/rows are computed inside the padded box — nothing clips. */
+    padding: 16px 22px 20px 22px;
+    box-sizing: border-box;
   }
 
   .exit-overlay {
@@ -257,7 +269,7 @@
     gap: 12px;
     padding: 20px 28px;
     border-radius: 12px;
-    background: rgba(28, 28, 32, 0.8);
+    background: rgba(20, 20, 25, 0.8);
     border: 1px solid rgba(255, 255, 255, 0.10);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   }
@@ -307,7 +319,7 @@
     gap: 2px;
     padding: 4px;
     border-radius: 10px;
-    background: rgba(28, 28, 32, 0.85);
+    background: rgba(20, 20, 25, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.10);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(20px);
@@ -383,7 +395,7 @@
     overflow-y: auto;
     padding: 16px;
     border-radius: 12px;
-    background: rgba(28, 28, 32, 0.92);
+    background: rgba(20, 20, 25, 0.92);
     border: 1px solid rgba(255, 255, 255, 0.10);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(20px);

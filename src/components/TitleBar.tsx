@@ -47,19 +47,11 @@ export function TitleBar({
 
   return (
     <div className="titlebar" data-tauri-drag-region>
-      {/* Left: Shell title */}
-      <div className="flex items-center gap-2 shrink-0" data-tauri-drag-region>
-        <span className="titlebar-title" data-tauri-drag-region>
-          Atlas Terminal
-        </span>
-      </div>
-
-      {/* Center: tab strip (or draggable spacer when no tabs).
-          The whole strip is a drag region: clicks still land on tabs/
-          buttons (press+release without move), moving drags the window. */}
+      {/* Left: tab strip, 10px from the edge. The strip background drags
+          the window; clicks still land on tabs/buttons (no-move = click). */}
       {center ? (
         <div
-          className="flex-1 flex items-center justify-center min-w-0 px-2"
+          className="flex-1 flex items-center justify-start min-w-0 pl-[10px] pr-2"
           data-tauri-drag-region
         >
           {center}
@@ -68,17 +60,20 @@ export function TitleBar({
         <div className="flex-1" data-tauri-drag-region />
       )}
 
-      {/* Right: Window controls */}
-      <div className="flex items-center gap-0.5 shrink-0">
+      {/* Right: settings, divider, window controls */}
+      <div className="flex items-center shrink-0 pr-1">
         {onSettings && (
-          <button
-            className={settingsOpen ? 'window-control window-control-on' : 'window-control'}
-            onClick={onSettings}
-            aria-label="Settings"
-            title="Settings"
-          >
-            <Settings size={14} strokeWidth={1.5} />
-          </button>
+          <>
+            <button
+              className={settingsOpen ? 'window-control window-control-on' : 'window-control'}
+              onClick={onSettings}
+              aria-label="Settings"
+              title="Settings"
+            >
+              <Settings size={14} strokeWidth={1.5} />
+            </button>
+            <div className="titlebar-divider" />
+          </>
         )}
         <button
           className="window-control"
