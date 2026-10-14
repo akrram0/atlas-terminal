@@ -53,11 +53,20 @@ jobs:
         # Proves the exe from the previous step actually opens: with
         # windows_subsystem="windows" a startup panic exits silently,
         # so an immediately-dead process means "can't open the app".
+        # Stdout/stderr are redirected to files so a Rust panic message
+        # (exit 101) lands in the log instead of vanishing.
         run: |
           $exe = "src-tauri/target/release/atlas-terminal.exe"
           if (-not (Test-Path $exe)) { Write-Error "Missing $exe"; exit 1 }
-          $p = Start-Process -FilePath $exe -PassThru
+          $env:RUST_BACKTRACE = "1"
+          $p = Start-Process -FilePath $exe -RedirectStandardOutput "smoke-out.txt" -RedirectStandardError "smoke-err.txt" -PassThru
           Start-Sleep -Seconds 20
-          if ($p.HasExited) { Write-Error "App exited at startup with code $($p.ExitCode)"; exit 1 }
+          if ($p.HasExited) {
+            Write-Output "--- smoke-out.txt ---"
+            Get-Content "smoke-out.txt" -ErrorAction SilentlyContinue
+            Write-Output "--- smoke-err.txt ---"
+            Get-Content "smoke-err.txt" -ErrorAction SilentlyContinue
+            Write-Error "App exited at startup with code $($p.ExitCode)"; exit 1
+          }
           Write-Output "App running (PID $($p.Id)), stopping smoke instance"
           Stop-Process -Id $p.Id -Force
