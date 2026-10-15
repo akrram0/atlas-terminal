@@ -16,11 +16,11 @@ use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Bounds, ClickEvent, Context, Element, ElementId, FocusHandle, Font,
+    AnyElement, App, Bounds, Canvas, ClickEvent, Context, Element, ElementId, FocusHandle, Font,
     GlobalElementId, InspectorElementId, IntoElement, KeyDownEvent, Keystroke, LayoutId,
-    MouseButton, MouseDownEvent, Pixels, Render, Rgba, ScrollWheelEvent, StrikethroughStyle,
-    Style, TextRun, UnderlineStyle, Window, WindowControlArea, div, fill, point, px, relative,
-    rgb,
+    MouseButton, MouseDownEvent, PathBuilder, Pixels, Render, Rgba, ScrollWheelEvent,
+    StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, WindowControlArea, canvas, div,
+    fill, point, px, relative, rgb,
 };
 
 use crate::keymap;
@@ -361,13 +361,20 @@ impl Render for AtlasView {
             );
 
             let close_theme = theme.clone();
+            let close_idle = close_theme.chrome_fg;
+            let close_hot = close_theme.chrome_fg_active;
+            let close_hover_bg = close_theme.tab_hover_bg;
             tab = tab.child(
                 div()
                     .id(ElementId::named_usize("tab-close", ix))
-                    .px(px(2.0))
-                    .text_size(px(11.0))
-                    .text_color(close_theme.chrome_fg)
-                    .child("×")
+                    .w(px(16.0))
+                    .h(px(16.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(4.0))
+                    .hover(move |style| style.bg(close_hover_bg))
+                    .child(drawn_icon(ChromeIcon::XSmall, close_idle, close_hot, 1.1).size_full())
                     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                         view.close_tab(ix, cx);
                         window.focus(&view.focus);
@@ -379,6 +386,8 @@ impl Render for AtlasView {
 
         let plus_theme = theme.clone();
         let plus_hover = plus_theme.tab_hover_bg;
+        let plus_idle = plus_theme.chrome_fg;
+        let plus_hot = plus_theme.chrome_fg_active;
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("new-tab", 0))
@@ -388,10 +397,8 @@ impl Render for AtlasView {
                 .items_center()
                 .justify_center()
                 .rounded(px(6.0))
-                .text_size(px(14.0))
-                .text_color(plus_theme.chrome_fg)
                 .hover(move |style| style.bg(plus_hover))
-                .child("+")
+                .child(drawn_icon(ChromeIcon::Plus, plus_idle, plus_hot, 1.2).size_full())
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.new_tab(cx);
                     window.focus(&view.focus);
@@ -409,10 +416,10 @@ impl Render for AtlasView {
                 .window_control_area(WindowControlArea::Drag),
         );
 
-        for (index, (glyph, area)) in [
-            ("–", WindowControlArea::Min),
-            ("□", WindowControlArea::Max),
-            ("×", WindowControlArea::Close),
+        for (index, (icon, area)) in [
+            (ChromeIcon::Min, WindowControlArea::Min),
+            (ChromeIcon::Max, WindowControlArea::Max),
+            (ChromeIcon::Close, WindowControlArea::Close),
         ]
         .into_iter()
         .enumerate()
@@ -424,12 +431,12 @@ impl Render for AtlasView {
             } else {
                 button_theme.tab_hover_bg
             };
-            let hover_fg = if is_close {
+            let hot = if is_close {
                 rgb(0xFFFFFF)
             } else {
                 button_theme.chrome_fg_active
             };
-            let idle_fg = button_theme.chrome_fg;
+            let idle = button_theme.chrome_fg;
             bar = bar.child(
                 div()
                     .id(ElementId::named_usize("window-control", index))
@@ -438,11 +445,9 @@ impl Render for AtlasView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(12.0))
-                    .text_color(idle_fg)
-                    .hover(move |style| style.bg(hover_bg).text_color(hover_fg))
+                    .hover(move |style| style.bg(hover_bg))
                     .window_control_area(area)
-                    .child(glyph),
+                    .child(drawn_icon(icon, idle, hot, 1.0).size_full()),
             );
         }
 
@@ -517,6 +522,8 @@ impl Render for AtlasView {
             .map(|tab| short_title(&tab.title))
             .unwrap_or_else(|| "PowerShell".to_string());
         let header_hover = theme.tab_hover_bg;
+        let header_idle = theme.chrome_fg;
+        let header_hot = theme.chrome_fg_active;
         let header = div()
             .flex()
             .flex_row()
@@ -538,13 +545,14 @@ impl Render for AtlasView {
             .child(
                 div()
                     .id(ElementId::named_usize("pane-close", 0))
-                    .px(px(6.0))
-                    .py(px(2.0))
-                    .rounded_full()
-                    .text_size(px(12.0))
-                    .text_color(theme.chrome_fg)
+                    .w(px(18.0))
+                    .h(px(18.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(4.0))
                     .hover(move |style| style.bg(header_hover))
-                    .child("×")
+                    .child(drawn_icon(ChromeIcon::XSmall, header_idle, header_hot, 1.1).size_full())
                     .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                         let index = view.active;
                         view.close_tab(index, cx);
@@ -800,24 +808,15 @@ impl Element for TerminalElement {
                 col += run.cells;
             }
 
-            // Cursor.
+            // Cursor: solid block fills the cell (its colours were inverted
+            // above, so the glyph stays readable); hollow block is an outline;
+            // beam and underline are bars. All shapes sit on exact cell bounds.
             if let Some((cursor_row, cursor_col)) = cursor_cell {
                 if cursor_row == row_index {
                     let x0 = x(cursor_col);
                     let x1 = x0 + cell_width;
-                    let rect = match cursor_shape {
-                        CursorShape::Block | CursorShape::HollowBlock => {
-                            Some((x0, y0, x1, y1))
-                        }
-                        CursorShape::Beam => Some((x0, y0, x0 + 2.0, y1)),
-                        CursorShape::Underline => Some((x0, y1 - 3.0, x1, y1)),
-                        CursorShape::Hidden => None,
-                    };
-                    if let Some((rx0, ry0, rx1, ry1)) = rect {
-                        let mut color = theme.cursor;
-                        if cursor_shape == CursorShape::HollowBlock {
-                            color.a *= 0.35;
-                        }
+                    let color = theme.cursor;
+                    let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
                         window.paint_quad(fill(
                             Bounds::from_corners(
                                 point(px(rx0), px(ry0)),
@@ -825,6 +824,19 @@ impl Element for TerminalElement {
                             ),
                             color,
                         ));
+                    };
+                    match cursor_shape {
+                        CursorShape::Block => quad(x0, y0, x1, y1, window),
+                        CursorShape::HollowBlock => {
+                            let t = 1.0;
+                            quad(x0, y0, x1, y0 + t, window);
+                            quad(x0, y1 - t, x1, y1, window);
+                            quad(x0, y0, x0 + t, y1, window);
+                            quad(x1 - t, y0, x1, y1, window);
+                        }
+                        CursorShape::Beam => quad(x0, y0, x0 + 2.0, y1, window),
+                        CursorShape::Underline => quad(x0, y1 - 2.0, x1, y1, window),
+                        CursorShape::Hidden => {}
                     }
                 }
             }
@@ -873,6 +885,72 @@ impl Element for TerminalElement {
 
 fn home_dir() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE").map(PathBuf::from)
+}
+
+// ----------------------------------------------------------------------------
+// Drawn icons — vector strokes instead of font glyphs, crisp at any DPI and
+// independent of whatever fonts happen to be installed.
+// ----------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+enum ChromeIcon {
+    Min,
+    Max,
+    Close,
+    XSmall,
+    Plus,
+}
+
+/// Line segments forming `icon`, centred in a `w` x `h` box.
+fn icon_segments(icon: ChromeIcon, w: f32, h: f32) -> Vec<((f32, f32), (f32, f32))> {
+    let cx = w / 2.0;
+    let cy = h / 2.0;
+    match icon {
+        ChromeIcon::Min => vec![((cx - 5.0, cy), (cx + 5.0, cy))],
+        ChromeIcon::Max => {
+            let (x0, y0, x1, y1) = (cx - 4.5, cy - 4.5, cx + 4.5, cy + 4.5);
+            vec![
+                ((x0, y0), (x1, y0)),
+                ((x1, y0), (x1, y1)),
+                ((x1, y1), (x0, y1)),
+                ((x0, y1), (x0, y0)),
+            ]
+        }
+        ChromeIcon::Close => vec![
+            ((cx - 4.5, cy - 4.5), (cx + 4.5, cy + 4.5)),
+            ((cx + 4.5, cy - 4.5), (cx - 4.5, cy + 4.5)),
+        ],
+        ChromeIcon::XSmall => vec![
+            ((cx - 3.5, cy - 3.5), (cx + 3.5, cy + 3.5)),
+            ((cx + 3.5, cy - 3.5), (cx - 3.5, cy + 3.5)),
+        ],
+        ChromeIcon::Plus => vec![
+            ((cx - 4.5, cy), (cx + 4.5, cy)),
+            ((cx, cy - 4.5), (cx, cy + 4.5)),
+        ],
+    }
+}
+
+/// An icon painted as stroked lines; switches from `idle` to `hot` while the
+/// pointer is over its bounds.
+fn drawn_icon(icon: ChromeIcon, idle: Rgba, hot: Rgba, width: f32) -> Canvas<()> {
+    canvas(
+        move |_bounds, _window, _cx| (),
+        move |bounds, _, window, _cx| {
+            let hovered = bounds.contains(&window.mouse_position());
+            let color = if hovered { hot } else { idle };
+            let w = f32::from(bounds.size.width);
+            let h = f32::from(bounds.size.height);
+            let mut builder = PathBuilder::stroke(px(width));
+            for ((ax, ay), (bx, by)) in icon_segments(icon, w, h) {
+                builder.move_to(point(bounds.left() + px(ax), bounds.top() + px(ay)));
+                builder.line_to(point(bounds.left() + px(bx), bounds.top() + px(by)));
+            }
+            if let Ok(path) = builder.build() {
+                window.paint_path(path, color);
+            }
+        },
+    )
 }
 
 /// `C:\WINDOWS\System32` -> `System32`; long titles get an ellipsis.
