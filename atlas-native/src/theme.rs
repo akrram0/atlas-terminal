@@ -65,7 +65,7 @@ impl Theme {
 
     /// Resolve an alacritty cell color into a concrete RGBA.
     pub fn resolve(&self, color: Color, dim: bool) -> Rgba {
-        let mut out = match color {
+        let out = match color {
             Color::Named(named) => self.named(named),
             Color::Indexed(index) => self.indexed(index),
             Color::Spec(rgb_) => Rgba {
@@ -76,9 +76,10 @@ impl Theme {
             },
         };
         if dim {
-            out.a *= 0.65;
+            self.dimmed(out)
+        } else {
+            out
         }
-        out
     }
 
     fn named(&self, named: NamedColor) -> Rgba {
@@ -115,9 +116,14 @@ impl Theme {
     }
 
     fn dimmed(&self, color: Rgba) -> Rgba {
-        let mut c = color;
-        c.a *= 0.6;
-        c
+        // Dimming scales the channels, not the alpha: translucent text over a
+        // colored cell background would lie about both colors.
+        Rgba {
+            r: color.r * 0.6,
+            g: color.g * 0.6,
+            b: color.b * 0.6,
+            a: color.a,
+        }
     }
 
     /// xterm 256-color palette: 0-15 ANSI, 16-231 6x6x6 cube, 232-255 grayscale.

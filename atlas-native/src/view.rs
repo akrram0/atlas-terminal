@@ -305,14 +305,16 @@ impl Render for AtlasView {
             .gap(px(6.0))
             .bg(theme.chrome_bg)
             .border_b_1()
-            .border_color(theme.hairline)
-            .window_control_area(WindowControlArea::Drag);
+            .border_color(theme.hairline);
 
         for ix in 0..self.tabs.len() {
             let active = ix == self.active;
             let title = short_title(&self.tabs[ix].title);
             let tab_theme = theme.clone();
 
+            // Wrapper carries the pill styling only — it has no click handler,
+            // so the close button (a sibling of the title, not a child of a
+            // clickable) can never double-fire with tab activation.
             let mut tab = div()
                 .id(ElementId::named_usize("tab", ix))
                 .flex()
@@ -321,14 +323,13 @@ impl Render for AtlasView {
                 .gap(px(6.0))
                 .h(px(27.0))
                 .px(px(12.0))
-                .rounded(px(6.0))
+                .rounded_full()
                 .text_size(px(12.5))
                 .text_color(if active {
                     tab_theme.chrome_fg_active
                 } else {
                     tab_theme.chrome_fg
-                })
-                .child(title);
+                });
 
             if active {
                 let bg = tab_theme.tab_active_bg;
@@ -338,6 +339,17 @@ impl Render for AtlasView {
                 let hover = tab_theme.tab_hover_bg;
                 tab = tab.hover(move |style| style.bg(hover));
             }
+
+            tab = tab.child(
+                div()
+                    .id(ElementId::named_usize("tab-title", ix))
+                    .child(title)
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        view.active = ix;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    })),
+            );
 
             let close_theme = theme.clone();
             tab = tab.child(
@@ -352,12 +364,6 @@ impl Render for AtlasView {
                         window.focus(&view.focus);
                     })),
             );
-
-            tab = tab.on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                view.active = ix;
-                window.focus(&view.focus);
-                cx.notify();
-            }));
 
             bar = bar.child(tab);
         }
@@ -383,8 +389,16 @@ impl Render for AtlasView {
                 })),
         );
 
-        // Spacer: keeps the drag region draggable between tabs and controls.
-        bar = bar.child(div().flex_1().h(px(38.0)));
+        // Spacer: the only drag region, so tabs and buttons stay clickable.
+        // (A Drag area on the whole bar would shadow every child control at
+        // the OS hit-test level.)
+        bar = bar.child(
+            div()
+                .id(ElementId::named_usize("titlebar-drag", 0))
+                .flex_1()
+                .h(px(38.0))
+                .window_control_area(WindowControlArea::Drag),
+        );
 
         for (index, (glyph, area)) in [
             ("–", WindowControlArea::Min),
@@ -486,6 +500,49 @@ impl Render for AtlasView {
             area.into_any_element()
         };
 
+        // ---- Pane header ---------------------------------------------
+        // Thin row under the titlebar: active tab title + close affordance.
+        // (Split actions stay out until real splits exist.)
+        let header_title = self
+            .active_tab()
+            .map(|tab| short_title(&tab.title))
+            .unwrap_or_else(|| "PowerShell".to_string());
+        let header_hover = theme.tab_hover_bg;
+        let header = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .w(relative(1.0))
+            .h(px(30.0))
+            .px(px(10.0))
+            .gap(px(8.0))
+            .bg(theme.chrome_bg)
+            .border_b_1()
+            .border_color(theme.hairline)
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(12.0))
+                    .text_color(theme.chrome_fg)
+                    .child(header_title),
+            )
+            .child(
+                div()
+                    .id(ElementId::named_usize("pane-close", 0))
+                    .px(px(6.0))
+                    .py(px(2.0))
+                    .rounded_full()
+                    .text_size(px(12.0))
+                    .text_color(theme.chrome_fg)
+                    .hover(move |style| style.bg(header_hover))
+                    .child("×")
+                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                        let index = view.active;
+                        view.close_tab(index, cx);
+                        window.focus(&view.focus);
+                    })),
+            );
+
         div()
             .flex()
             .flex_col()
@@ -494,6 +551,7 @@ impl Render for AtlasView {
             .bg(theme.bg)
             .text_color(theme.fg)
             .child(bar)
+            .child(header)
             .child(body)
     }
 }
@@ -581,7 +639,7 @@ impl Element for TerminalElement {
             .map(f32::from)
             .unwrap_or(8.4)
             .max(1.0);
-        let cell_height = font_size.0 * LINE_SCALE;
+        let cell_height = f32::from(font_size) * LINE_SCALE;
 
         let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;
         let rows = (f32::from(bounds.size.height) / cell_height).floor().max(1.0) as usize;
@@ -609,7 +667,7 @@ impl Element for TerminalElement {
             .map(f32::from)
             .unwrap_or(8.4)
             .max(1.0);
-        let cell_height = font_size.0 * LINE_SCALE;
+        let cell_height = f32::from(font_size) * LINE_SCALE;
 
         let left = f32::from(bounds.left());
         let top = f32::from(bounds.top());
