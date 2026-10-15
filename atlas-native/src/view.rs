@@ -84,8 +84,12 @@ impl AtlasView {
                 });
                 self.active = self.tabs.len() - 1;
                 Self::watch(id, epoch, session, rx, cx);
+                crate::log_line(&format!("tab {id}: shell spawned"));
             }
-            Err(err) => eprintln!("atlas-native: failed to spawn shell: {err:#}"),
+            Err(err) => {
+                eprintln!("atlas-native: failed to spawn shell: {err:#}");
+                crate::log_line(&format!("tab {id}: spawn failed: {err:#}"));
+            }
         }
         cx.notify();
     }
@@ -126,8 +130,12 @@ impl AtlasView {
                     tab.title = "PowerShell".to_string();
                 }
                 Self::watch(id, epoch, session, rx, cx);
+                crate::log_line(&format!("tab {id}: shell restarted"));
             }
-            Err(err) => eprintln!("atlas-native: failed to restart shell: {err:#}"),
+            Err(err) => {
+                eprintln!("atlas-native: failed to restart shell: {err:#}");
+                crate::log_line(&format!("tab {id}: restart failed: {err:#}"));
+            }
         }
         cx.notify();
     }
@@ -165,6 +173,7 @@ impl AtlasView {
                     break;
                 }
             }
+            crate::log_line("watch: session channel closed");
         })
         .detach();
     }
