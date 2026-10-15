@@ -7,7 +7,7 @@ mod session;
 mod theme;
 mod view;
 
-use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, px, size};
+use gpui::{App, AppContext as _, Application, Bounds, WindowBounds, WindowOptions, px, size};
 
 fn main() {
     Application::new().run(|cx: &mut App| {
