@@ -1,0 +1,54 @@
+name: atlas-native (GPUI POC)
+
+on:
+  push:
+    branches: [gpui-poc]
+    paths:
+      - "atlas-native/**"
+      - ".github/workflows/native.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: atlas-native
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: atlas-native
+
+      - name: cargo build (debug)
+        shell: pwsh
+        run: |
+          cargo build 2>&1 | Tee-Object -FilePath build-output.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            "## cargo build failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content build-output.log -Tail 150 | Out-String >> $env:GITHUB_STEP_SUMMARY
+            exit $code
+          }
+          "## atlas-native compiled" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-native-build-log
+          path: atlas-native/build-output.log
+          if-no-files-found: ignore
+
+      - name: Upload exe
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-native-poc
+          path: atlas-native/target/debug/atlas-native.exe
+          if-no-files-found: error

@@ -1,0 +1,13 @@
+[package]
+name = "atlas-native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Atlas Terminal — native GPU shell (GPUI + alacritty_terminal)"
+
+[dependencies]
+gpui = "0.2.2"
+alacritty_terminal = "0.26"
+portable-pty = "0.8.1"
+smol = "2"
+anyhow = "1"
