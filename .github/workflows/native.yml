@@ -1,5 +1,8 @@
 name: atlas-native (GPUI POC)
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -74,6 +77,46 @@ jobs:
           }
           "## atlas-native compiled (release)" >> $env:GITHUB_STEP_SUMMARY
 
+      - name: Smoke test (launch release exe, wait for window)
+        shell: pwsh
+        # Informational: the runner has no real GPU. Never blocks the artifact.
+        # Tells us whether the exe got past GPUI platform init ("window opened")
+        # or died (PANIC in the log). Results are mirrored as public annotations.
+        continue-on-error: true
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
+          $log = Join-Path $env:TEMP "atlas-native-debug.log"
+          Remove-Item $log -ErrorAction SilentlyContinue
+          $proc = Start-Process -FilePath $exe -PassThru
+          $ok = $false
+          for ($i = 0; $i -lt 25; $i++) {
+            Start-Sleep -Seconds 1
+            if (Test-Path $log) {
+              $content = Get-Content $log -Raw
+              if ($content -match "window opened") { $ok = $true; break }
+              if ($content -match "PANIC") { break }
+            }
+            if ($proc.HasExited -and -not (Test-Path $log)) { break }
+          }
+          if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+          Write-Output "----- atlas-native-debug.log -----"
+          if (Test-Path $log) { Get-Content $log } else { Write-Output "(no log written)" }
+          if ($ok) {
+            "## smoke test: window opened" >> $env:GITHUB_STEP_SUMMARY
+            Write-Output "::notice title=smoke test::release exe reached 'window opened'"
+          } else {
+            "## smoke test: did NOT observe 'window opened'" >> $env:GITHUB_STEP_SUMMARY
+            $n = 0
+            if (Test-Path $log) {
+              foreach ($line in Get-Content $log) {
+                if ($n -ge 12) { break }
+                if ($line.Trim()) { $n++; Write-Output ("::warning title=smoke test::" + ($line -replace '%','%25')) }
+              }
+            } else {
+              Write-Output "::warning title=smoke test::no log written (exe may have died before main)"
+            }
+          }
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -89,3 +132,18 @@ jobs:
           name: atlas-native-poc
           path: atlas-native/target/release/atlas-native.exe
           if-no-files-found: error
+
+      - name: Publish rolling release (direct exe download, no login)
+        # Stable public URL:
+        # https://github.com/akrram0/atlas-terminal/releases/download/native-latest/atlas-native.exe
+        if: success() && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view native-latest *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create native-latest --title "atlas-native (rolling POC build)" --notes "Rolling Windows build of the native POC (GPUI + alacritty_terminal). The exe is replaced on every push to main."
+          }
+          gh release upload native-latest "target\release\atlas-native.exe" --clobber
