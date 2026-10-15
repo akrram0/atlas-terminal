@@ -63,6 +63,40 @@ impl Theme {
         }
     }
 
+    /// Warm dark palette: same brand DNA, inverted. Cursor moves to the
+    /// brighter persimmon so it stays visible on charcoal.
+    pub fn dark() -> Self {
+        Self {
+            bg: rgb(0x1B1815),
+            fg: rgb(0xE8E0D3),
+            cursor: rgb(0xD97757),
+            chrome_bg: rgb(0x241F1B),
+            chrome_fg: rgb(0x8F8574),
+            chrome_fg_active: rgb(0xEDE6DA),
+            hairline: rgba(0xEDE6DA1A),
+            tab_active_bg: rgba(0xFFFFFF14),
+            tab_hover_bg: rgba(0xFFFFFF0D),
+            ansi: [
+                rgb(0x3A3531), // 0 black
+                rgb(0xD96A57), // 1 red
+                rgb(0x8FBF6A), // 2 green
+                rgb(0xD8A94F), // 3 yellow
+                rgb(0x6FA0DC), // 4 blue
+                rgb(0xC08AD1), // 5 magenta
+                rgb(0x58B2B2), // 6 cyan
+                rgb(0xC9BFB0), // 7 white
+                rgb(0x8A8172), // 8 bright black
+                rgb(0xF08372), // 9 bright red
+                rgb(0xA6D37F), // 10 bright green
+                rgb(0xF3C96B), // 11 bright yellow
+                rgb(0x85B6EE), // 12 bright blue
+                rgb(0xD29FE0), // 13 bright magenta
+                rgb(0x74CCCC), // 14 bright cyan
+                rgb(0xF6F1E8), // 15 bright white
+            ],
+        }
+    }
+
     /// Resolve an alacritty cell color into a concrete RGBA.
     pub fn resolve(&self, color: Color, dim: bool) -> Rgba {
         let out = match color {

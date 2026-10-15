@@ -111,6 +111,8 @@ jobs:
             Write-Output "::notice title=smoke test::release exe reached 'window opened'"
             $dwm = if (Test-Path $log) { Get-Content $log | Where-Object { $_ -match "dwm" } | Select-Object -First 1 }
             if ($dwm) { Write-Output ("::notice title=dwm corners::" + ($dwm -replace '%','%25')) }
+            $font = if (Test-Path $log) { Get-Content $log | Where-Object { $_ -match "font" } | Select-Object -First 1 }
+            if ($font) { Write-Output ("::notice title=nerd font::" + ($font -replace '%','%25')) }
           } else {
             "## smoke test: did NOT observe 'window opened'" >> $env:GITHUB_STEP_SUMMARY
             $n = 0

@@ -125,6 +125,18 @@ fn main() {
     }));
     log_line("opening window");
     Application::new().run(|cx: &mut App| {
+        // Nerd Font symbol glyphs (fastfetch icons, starship, powerlevel10k…)
+        // ship inside the exe and are registered with the text system; icon
+        // cells are shaped with this family (see `view::icon_font`). No user
+        // install required.
+        let symbols: std::borrow::Cow<'static, [u8]> = std::borrow::Cow::Borrowed(include_bytes!(
+            "../assets/SymbolsNerdFontMono-Regular.ttf"
+        ));
+        match cx.text_system().add_fonts(vec![symbols]) {
+            Ok(()) => log_line("nerd symbols font registered"),
+            Err(err) => log_line(&format!("nerd symbols font failed: {err:#}")),
+        }
+
         let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
         cx.open_window(
             WindowOptions {

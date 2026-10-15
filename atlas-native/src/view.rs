@@ -17,8 +17,8 @@ use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
     AnyElement, App, Bounds, Canvas, ClickEvent, Context, Element, ElementId, FocusHandle, Font,
-    GlobalElementId, InspectorElementId, IntoElement, KeyDownEvent, Keystroke, LayoutId,
-    MouseButton, MouseDownEvent, PathBuilder, Pixels, Render, Rgba, ScrollWheelEvent,
+    FontFallbacks, GlobalElementId, InspectorElementId, IntoElement, KeyDownEvent, Keystroke,
+    LayoutId, MouseButton, MouseDownEvent, PathBuilder, Pixels, Render, Rgba, ScrollWheelEvent,
     StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, WindowControlArea, canvas, div,
     fill, point, px, relative, rgb,
 };
@@ -39,6 +39,16 @@ pub struct AtlasView {
     focus: FocusHandle,
     theme: Theme,
     font: Font,
+    /// Light/dark switch (settings panel + Ctrl+Shift+D).
+    dark: bool,
+    /// Settings popover visibility.
+    settings_open: bool,
+    /// Terminal font size in px (settings panel).
+    font_size: f32,
+    /// Cursor override; `None` follows the shell's DECSCUSR.
+    cursor_style: Option<CursorShape>,
+    /// Blink phase of the cursor.
+    cursor_on: bool,
 }
 
 struct Tab {
@@ -60,9 +70,36 @@ impl AtlasView {
             next_epoch: 1,
             focus,
             theme: Theme::cream(),
-            font: gpui::font(FONT_FAMILY),
+            font: terminal_font(),
+            dark: false,
+            settings_open: false,
+            font_size: FONT_SIZE,
+            cursor_style: None,
+            cursor_on: true,
         };
         view.new_tab(cx);
+
+        // Hardware-terminal style blinking cursor: 530 ms phase flip. Typing
+        // resets it to solid (see `handle_key`), so it never blinks under the
+        // fingers.
+        let blink = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(530))
+                    .await;
+                if this
+                    .update(cx, |view, cx| {
+                        view.cursor_on = !view.cursor_on;
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        blink.detach();
+
         view
     }
 
@@ -240,9 +277,29 @@ impl AtlasView {
         self.active = ((self.active as i32 + delta).rem_euclid(len)) as usize;
     }
 
+    fn toggle_theme(&mut self, cx: &mut Context<Self>) {
+        self.dark = !self.dark;
+        self.theme = if self.dark { Theme::dark() } else { Theme::cream() };
+        cx.notify();
+    }
+
+    fn toggle_settings(&mut self, cx: &mut Context<Self>) {
+        self.settings_open = !self.settings_open;
+        cx.notify();
+    }
+
     fn handle_key(&mut self, ks: &Keystroke, cx: &mut Context<Self>) {
         let modifiers = &ks.modifiers;
         let key = ks.key.as_str();
+
+        // Solid cursor while typing; the blink task flips it back on its own.
+        self.cursor_on = true;
+
+        if key == "escape" && self.settings_open {
+            self.settings_open = false;
+            cx.notify();
+            return;
+        }
 
         // App-level chords (swallowed so they never leak into the shell).
         if modifiers.control && modifiers.shift {
@@ -253,6 +310,7 @@ impl AtlasView {
                     self.close_tab(index, cx);
                 }
                 "v" => self.paste(cx),
+                "d" => self.toggle_theme(cx),
                 "tab" => {
                     self.cycle(-1);
                     cx.notify();
@@ -416,6 +474,28 @@ impl Render for AtlasView {
                 .window_control_area(WindowControlArea::Drag),
         );
 
+        // Settings gear, grouped with the window controls.
+        let gear_theme = theme.clone();
+        let gear_hover = gear_theme.tab_hover_bg;
+        let gear_idle = gear_theme.chrome_fg;
+        let gear_hot = gear_theme.chrome_fg_active;
+        bar = bar.child(
+            div()
+                .id(ElementId::named_usize("settings-toggle", 0))
+                .w(px(36.0))
+                .h(px(30.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.0))
+                .hover(move |style| style.bg(gear_hover))
+                .child(drawn_icon(ChromeIcon::Gear, gear_idle, gear_hot, 1.2).size_full())
+                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                    view.toggle_settings(cx);
+                    window.focus(&view.focus);
+                })),
+        );
+
         for (index, (icon, area)) in [
             (ChromeIcon::Min, WindowControlArea::Min),
             (ChromeIcon::Max, WindowControlArea::Max),
@@ -509,6 +589,9 @@ impl Render for AtlasView {
                     session: self.tabs[index].session.clone(),
                     theme: theme.clone(),
                     font: self.font.clone(),
+                    font_size: self.font_size,
+                    cursor_on: self.cursor_on,
+                    cursor_override: self.cursor_style,
                 });
             }
 
@@ -561,7 +644,8 @@ impl Render for AtlasView {
                     })),
             );
 
-        div()
+        let mut root = div()
+            .relative()
             .flex()
             .flex_col()
             .w(relative(1.0))
@@ -570,7 +654,20 @@ impl Render for AtlasView {
             .text_color(theme.fg)
             .child(bar)
             .child(header)
-            .child(body)
+            .child(body);
+
+        // Settings popover floats above everything; paint it last.
+        if self.settings_open {
+            root = root.child(settings_panel(
+                &theme,
+                self.dark,
+                self.font_size,
+                self.cursor_style,
+                cx,
+            ));
+        }
+
+        root
     }
 }
 
@@ -582,6 +679,31 @@ struct TerminalElement {
     session: Rc<RefCell<Session>>,
     theme: Theme,
     font: Font,
+    font_size: f32,
+    cursor_on: bool,
+    cursor_override: Option<CursorShape>,
+}
+
+/// How a cell's glyph is shaped: with the terminal font, isolated from its
+/// neighbours (emoji, CJK…), or with the bundled Nerd symbols font.
+#[derive(Clone, Copy, PartialEq)]
+enum CharClass {
+    Text,
+    Other,
+    Icon,
+}
+
+fn char_class(c: char) -> CharClass {
+    let u = c as u32;
+    match u {
+        // Private use areas: Nerd Font icons, Powerline separators, …
+        0xE000..=0xF8FF | 0xF0000..=0x10FFFD => CharClass::Icon,
+        // Latin-ish ranges the terminal font covers: keep runs long.
+        0x20..=0x2BFF => CharClass::Text,
+        // Emoji, CJK, exotic scripts: shape in isolation so their glyph
+        // advances can never shift the rest of the row off the cell grid.
+        _ => CharClass::Other,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -592,6 +714,7 @@ struct CellStyle {
     italic: bool,
     underline: bool,
     strike: bool,
+    class: CharClass,
 }
 
 struct Run {
@@ -651,7 +774,7 @@ impl Element for TerminalElement {
     ) -> Self::PrepaintState {
         let text_system = window.text_system().clone();
         let font_id = text_system.resolve_font(&self.font);
-        let font_size = px(FONT_SIZE);
+        let font_size = px(self.font_size);
         let cell_width = text_system
             .em_advance(font_id, font_size)
             .map(f32::from)
@@ -678,7 +801,7 @@ impl Element for TerminalElement {
         window.paint_quad(fill(bounds, theme.bg));
 
         let text_system = window.text_system().clone();
-        let font_size = px(FONT_SIZE);
+        let font_size = px(self.font_size);
         let font_id = text_system.resolve_font(&self.font);
         let cell_width = text_system
             .em_advance(font_id, font_size)
@@ -695,7 +818,7 @@ impl Element for TerminalElement {
             let session = self.session.borrow();
             let content = session.term.renderable_content();
             let offset = content.display_offset as i32;
-            let cursor_shape = content.cursor.shape;
+            let cursor_shape = self.cursor_override.unwrap_or(content.cursor.shape);
             let cursor_row = content.cursor.point.line.0 + offset;
             let cursor_col = content.cursor.point.column.0;
             let cursor_cell = if cursor_row >= 0 {
@@ -742,7 +865,7 @@ impl Element for TerminalElement {
                 if flags.contains(Flags::INVERSE) {
                     std::mem::swap(&mut fg, &mut bg);
                 }
-                if cursor_inverts && cursor_cell == Some((row_index, col)) {
+                if cursor_inverts && self.cursor_on && cursor_cell == Some((row_index, col)) {
                     std::mem::swap(&mut fg, &mut bg);
                 }
 
@@ -769,6 +892,7 @@ impl Element for TerminalElement {
                     italic: flags.contains(Flags::ITALIC),
                     underline: flags.intersects(Flags::ALL_UNDERLINES),
                     strike: flags.contains(Flags::STRIKEOUT),
+                    class: char_class(ch),
                 };
 
                 if let Some(last) = row.runs.last_mut() {
@@ -812,7 +936,7 @@ impl Element for TerminalElement {
             // Cursor: solid block fills the cell (its colours were inverted
             // above, so the glyph stays readable); hollow block is an outline;
             // beam and underline are bars. All shapes sit on exact cell bounds.
-            if let Some((cursor_row, cursor_col)) = cursor_cell {
+            if let Some((cursor_row, cursor_col)) = cursor_cell.filter(|_| self.cursor_on) {
                 if cursor_row == row_index {
                     let x0 = x(cursor_col);
                     let x1 = x0 + cell_width;
@@ -842,39 +966,82 @@ impl Element for TerminalElement {
                 }
             }
 
-            // Text.
-            if !row.text.is_empty() {
-                let text_runs: Vec<TextRun> = row
-                    .runs
-                    .iter()
-                    .map(|run| {
-                        let mut font = self.font.clone();
-                        if run.style.bold {
-                            font = font.bold();
-                        }
-                        if run.style.italic {
-                            font = font.italic();
-                        }
-                        TextRun {
-                            len: run.bytes,
-                            font,
-                            color: run.style.fg.into(),
-                            background_color: None,
-                            underline: run.style.underline.then(|| UnderlineStyle {
-                                thickness: px(1.0),
-                                color: Some(run.style.fg.into()),
-                                wavy: false,
-                            }),
-                            strikethrough: run.style.strike.then(|| StrikethroughStyle {
-                                thickness: px(1.0),
-                                color: Some(run.style.fg.into()),
-                            }),
-                        }
-                    })
-                    .collect();
-
-                let line = text_system.shape_line(row.text.clone().into(), font_size, &text_runs, None);
-                let _ = line.paint(point(px(left), px(y0)), px(cell_height), window, cx);
+            // Text: one shaped line per segment, each pinned to its starting
+            // grid column, so glyph advances (emoji, CJK, Nerd icons) can
+            // never drag text — or the cursor — off the cell grid. Icon runs
+            // are split per glyph so every icon lands on its own cell.
+            struct Segment<'a> {
+                text: &'a str,
+                x0: f32,
+                font: Font,
+                style: &'a CellStyle,
+            }
+            let mut segments: Vec<Segment> = Vec::new();
+            let mut byte = 0usize;
+            let mut col = 0usize;
+            for run in &row.runs {
+                let run_text = &row.text[byte..byte + run.bytes];
+                byte += run.bytes;
+                let mut font = match run.style.class {
+                    CharClass::Icon => icon_font(),
+                    _ => self.font.clone(),
+                };
+                if run.style.bold {
+                    font = font.bold();
+                }
+                if run.style.italic {
+                    font = font.italic();
+                }
+                if run.style.class == CharClass::Icon {
+                    let mut cell = col;
+                    let mut offset = 0usize;
+                    for c in run_text.chars() {
+                        let end = offset + c.len_utf8();
+                        segments.push(Segment {
+                            text: &run_text[offset..end],
+                            x0: x(cell),
+                            font: font.clone(),
+                            style: &run.style,
+                        });
+                        offset = end;
+                        cell += 1;
+                    }
+                } else {
+                    segments.push(Segment {
+                        text: run_text,
+                        x0: x(col),
+                        font,
+                        style: &run.style,
+                    });
+                }
+                col += run.cells;
+            }
+            for segment in &segments {
+                if segment.text.trim().is_empty() {
+                    continue;
+                }
+                let text_run = TextRun {
+                    len: segment.text.len(),
+                    font: segment.font.clone(),
+                    color: segment.style.fg.into(),
+                    background_color: None,
+                    underline: segment.style.underline.then(|| UnderlineStyle {
+                        thickness: px(1.0),
+                        color: Some(segment.style.fg.into()),
+                        wavy: false,
+                    }),
+                    strikethrough: segment.style.strike.then(|| StrikethroughStyle {
+                        thickness: px(1.0),
+                        color: Some(segment.style.fg.into()),
+                    }),
+                };
+                let line = text_system.shape_line(
+                    segment.text.to_string().into(),
+                    font_size,
+                    &[text_run],
+                    None,
+                );
+                let _ = line.paint(point(px(segment.x0), px(y0)), px(cell_height), window, cx);
             }
         }
     }
@@ -900,6 +1067,7 @@ enum ChromeIcon {
     Close,
     XSmall,
     Plus,
+    Gear,
 }
 
 /// Line segments forming `icon`, centred in a `w` x `h` box.
@@ -929,6 +1097,31 @@ fn icon_segments(icon: ChromeIcon, w: f32, h: f32) -> Vec<((f32, f32), (f32, f32
             ((cx - 4.5, cy), (cx + 4.5, cy)),
             ((cx, cy - 4.5), (cx, cy + 4.5)),
         ],
+        ChromeIcon::Gear => {
+            // Ring + 8 teeth.
+            let mut segments = Vec::new();
+            for i in 0..8 {
+                let angle = i as f32 * std::f32::consts::TAU / 8.0;
+                let (sin, cos) = angle.sin_cos();
+                segments.push((
+                    (cx + cos * 4.2, cy + sin * 4.2),
+                    (cx + cos * 5.8, cy + sin * 5.8),
+                ));
+            }
+            let radius = 3.0;
+            let steps = 16;
+            for i in 0..steps {
+                let a0 = i as f32 * std::f32::consts::TAU / steps as f32;
+                let a1 = (i + 1) as f32 * std::f32::consts::TAU / steps as f32;
+                let (s0, c0) = a0.sin_cos();
+                let (s1, c1) = a1.sin_cos();
+                segments.push((
+                    (cx + c0 * radius, cy + s0 * radius),
+                    (cx + c1 * radius, cy + s1 * radius),
+                ));
+            }
+            segments
+        }
     }
 }
 
@@ -952,6 +1145,271 @@ fn drawn_icon(icon: ChromeIcon, idle: Rgba, hot: Rgba, width: f32) -> Canvas<()>
             }
         },
     )
+}
+
+/// Terminal font: Consolas for the cell grid; emoji fonts as shaping
+/// fallbacks. Nerd icon cells are drawn with the dedicated bundled font
+/// instead (see `icon_font`), because fallback families are looked up in the
+/// system font collection, where an in-memory font does not appear.
+fn terminal_font() -> Font {
+    let mut font = gpui::font(FONT_FAMILY);
+    font.fallbacks = Some(FontFallbacks::from_fonts(vec![
+        "Segoe UI Emoji".to_string(),
+        "Segoe UI Symbol".to_string(),
+    ]));
+    font
+}
+
+/// Bundled Nerd Font symbols (embedded in the exe, registered at startup).
+/// Resolved from gpui's custom in-memory font collection.
+fn icon_font() -> Font {
+    gpui::font("Symbols Nerd Font Mono")
+}
+
+/// One settings option pill; `active` paints the selected state.
+fn pill_button(
+    label: String,
+    id: usize,
+    active: bool,
+    theme: &Theme,
+    on_click: impl Fn(&mut AtlasView, &mut Context<AtlasView>) + 'static,
+    cx: &mut Context<AtlasView>,
+) -> AnyElement {
+    let active_bg = Rgba {
+        a: 0.16,
+        ..theme.chrome_fg_active
+    };
+    let hover_bg = theme.tab_hover_bg;
+    let fg = if active {
+        theme.chrome_fg_active
+    } else {
+        theme.chrome_fg
+    };
+    let mut button = div()
+        .id(ElementId::named_usize("settings-pill", id))
+        .h(px(26.0))
+        .px(px(10.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(6.0))
+        .text_size(px(12.0))
+        .text_color(fg)
+        .hover(move |style| style.bg(hover_bg))
+        .child(label)
+        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+            on_click(view, cx);
+            window.focus(&view.focus);
+        }));
+    if active {
+        button = button.bg(active_bg);
+    }
+    button.into_any_element()
+}
+
+/// Settings popover: appearance, font size, cursor style.
+fn settings_panel(
+    theme: &Theme,
+    dark: bool,
+    font_size: f32,
+    cursor_style: Option<CursorShape>,
+    cx: &mut Context<AtlasView>,
+) -> AnyElement {
+    let section = |label: &'static str| -> AnyElement {
+        div()
+            .pt(px(4.0))
+            .text_size(px(10.5))
+            .text_color(theme.chrome_fg)
+            .child(label)
+            .into_any_element()
+    };
+    let row_label = |label: &'static str| -> AnyElement {
+        div()
+            .w(px(78.0))
+            .text_size(px(12.0))
+            .text_color(theme.chrome_fg)
+            .child(label)
+            .into_any_element()
+    };
+
+    let close_hover = theme.tab_hover_bg;
+    let close_button = div()
+        .id(ElementId::named_usize("settings-close", 0))
+        .w(px(20.0))
+        .h(px(20.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.0))
+        .hover(move |style| style.bg(close_hover))
+        .child(
+            drawn_icon(
+                ChromeIcon::XSmall,
+                theme.chrome_fg,
+                theme.chrome_fg_active,
+                1.1,
+            )
+            .size_full(),
+        )
+        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+            view.settings_open = false;
+            window.focus(&view.focus);
+            cx.notify();
+        }));
+
+    let header_row = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .child(
+            div()
+                .flex_1()
+                .text_size(px(13.0))
+                .text_color(theme.chrome_fg_active)
+                .child("Settings"),
+        )
+        .child(close_button);
+
+    let theme_row = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .child(row_label("Theme"))
+        .child(pill_button(
+            "Light".to_string(),
+            10,
+            !dark,
+            theme,
+            |view, cx| {
+                if view.dark {
+                    view.toggle_theme(cx);
+                }
+            },
+            cx,
+        ))
+        .child(pill_button(
+            "Dark".to_string(),
+            11,
+            dark,
+            theme,
+            |view, cx| {
+                if !view.dark {
+                    view.toggle_theme(cx);
+                }
+            },
+            cx,
+        ));
+
+    let font_row = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .child(row_label("Font size"))
+        .child(pill_button(
+            "−".to_string(),
+            20,
+            false,
+            theme,
+            |view, cx| {
+                view.font_size = (view.font_size - 1.0).max(10.0);
+                cx.notify();
+            },
+            cx,
+        ))
+        .child(
+            div()
+                .min_w(px(46.0))
+                .flex()
+                .justify_center()
+                .text_size(px(12.0))
+                .text_color(theme.chrome_fg_active)
+                .child(format!("{} px", font_size as i32)),
+        )
+        .child(pill_button(
+            "+".to_string(),
+            21,
+            false,
+            theme,
+            |view, cx| {
+                view.font_size = (view.font_size + 1.0).min(24.0);
+                cx.notify();
+            },
+            cx,
+        ));
+
+    let cursor_row = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(6.0))
+        .child(row_label("Cursor"))
+        .child(pill_button(
+            "Auto".to_string(),
+            30,
+            cursor_style.is_none(),
+            theme,
+            |view, cx| {
+                view.cursor_style = None;
+                cx.notify();
+            },
+            cx,
+        ))
+        .child(pill_button(
+            "Block".to_string(),
+            31,
+            cursor_style == Some(CursorShape::Block),
+            theme,
+            |view, cx| {
+                view.cursor_style = Some(CursorShape::Block);
+                cx.notify();
+            },
+            cx,
+        ))
+        .child(pill_button(
+            "Bar".to_string(),
+            32,
+            cursor_style == Some(CursorShape::Beam),
+            theme,
+            |view, cx| {
+                view.cursor_style = Some(CursorShape::Beam);
+                cx.notify();
+            },
+            cx,
+        ))
+        .child(pill_button(
+            "Under".to_string(),
+            33,
+            cursor_style == Some(CursorShape::Underline),
+            theme,
+            |view, cx| {
+                view.cursor_style = Some(CursorShape::Underline);
+                cx.notify();
+            },
+            cx,
+        ));
+
+    div()
+        .absolute()
+        .top(px(52.0))
+        .right(px(12.0))
+        .w(px(330.0))
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .p(px(14.0))
+        .rounded(px(10.0))
+        .bg(theme.chrome_bg)
+        .border_1()
+        .border_color(theme.hairline)
+        .child(header_row)
+        .child(section("APPEARANCE"))
+        .child(theme_row)
+        .child(section("TERMINAL"))
+        .child(font_row)
+        .child(cursor_row)
+        .into_any_element()
 }
 
 /// `C:\WINDOWS\System32` -> `System32`; long titles get an ellipsis.
