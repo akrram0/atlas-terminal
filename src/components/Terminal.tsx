@@ -9,13 +9,13 @@ import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 
 const THEME = {
-  background: '#0E0E12',
+  background: '#1E1E2E',
   foreground: '#E4E4EE',
   cursor: '#F5E0DC',
-  cursorAccent: '#0E0E12',
+  cursorAccent: '#1E1E2E',
   selectionBackground: 'rgba(137, 180, 250, 0.25)',
   selectionForeground: '#FFFFFF',
-  black: '#181820',
+  black: '#181825',
   brightBlack: '#585B70',
   red: '#F38BA8',
   brightRed: '#F38BA8',

@@ -47,54 +47,48 @@ export function TitleBar({
 
   return (
     <div className="titlebar" data-tauri-drag-region>
-      {/* Left: tab strip, 10px from the edge. The strip background drags
-          the window; clicks still land on tabs/buttons (no-move = click). */}
+      {/* Left: tab strip, flush with the left edge. The strip background
+          drags the window; clicks still land on tabs/buttons (no-move = click). */}
       {center ? (
-        <div
-          className="flex-1 flex items-center justify-start min-w-0 pl-[10px] pr-2"
-          data-tauri-drag-region
-        >
+        <div className="titlebar-left" data-tauri-drag-region>
           {center}
         </div>
       ) : (
-        <div className="flex-1" data-tauri-drag-region />
+        <div className="titlebar-spacer" data-tauri-drag-region />
       )}
 
-      {/* Right: settings, divider, window controls */}
-      <div className="flex items-center shrink-0 pr-1">
+      {/* Right: settings + window controls */}
+      <div className="titlebar-controls">
         {onSettings && (
-          <>
-            <button
-              className={settingsOpen ? 'window-control window-control-on' : 'window-control'}
-              onClick={onSettings}
-              aria-label="Settings"
-              title="Settings"
-            >
-              <Settings size={14} strokeWidth={1.5} />
-            </button>
-            <div className="titlebar-divider" />
-          </>
+          <button
+            className={settingsOpen ? 'window-control window-control-on' : 'window-control'}
+            onClick={onSettings}
+            aria-label="Settings"
+            title="Settings (Ctrl+,)"
+          >
+            <Settings size={13} strokeWidth={1.5} />
+          </button>
         )}
         <button
           className="window-control"
           onClick={handleMinimize}
           aria-label="Minimize"
         >
-          <Minus size={14} strokeWidth={1.5} />
+          <Minus size={12} strokeWidth={1.5} />
         </button>
         <button
           className="window-control"
           onClick={handleMaximize}
           aria-label="Maximize"
         >
-          <Square size={11} strokeWidth={1.5} />
+          <Square size={10} strokeWidth={1.5} />
         </button>
         <button
           className="window-control window-control-close"
           onClick={handleClose}
           aria-label="Close"
         >
-          <X size={14} strokeWidth={1.5} />
+          <X size={13} strokeWidth={1.5} />
         </button>
       </div>
     </div>

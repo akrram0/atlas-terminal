@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import {
+  applyGlassVars,
   DEFAULT_SETTINGS,
   FONT_CHOICES,
   loadSettings,
@@ -61,6 +62,7 @@ export function SettingsWindow() {
 
   useEffect(() => {
     saveSettings(settings);
+    applyGlassVars(settings.opacity, settings.blur);
   }, [settings]);
 
   const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -133,7 +135,7 @@ export function SettingsWindow() {
             <label className="settings-row">
               <span className="settings-label">Theme</span>
               <select className="settings-input" value="dark" disabled title="More themes soon">
-                <option value="dark">Cupertino Dark</option>
+                <option value="dark">Atlas Dark</option>
               </select>
             </label>
             <div className="settings-row">

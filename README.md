@@ -1,7 +1,7 @@
 # Atlas Terminal
 
-A Kitty-inspired terminal emulator for Windows with a modern Apple-style glass UI.
-Built with **Tauri 2 + React + xterm.js**.
+A Kitty-inspired terminal emulator for Windows with a flat, minimal,
+terminal-first UI. Built with **Tauri 2 + React + xterm.js**.
 
 ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=black)
@@ -11,8 +11,8 @@ Built with **Tauri 2 + React + xterm.js**.
 
 Atlas Terminal is a native Windows terminal emulator (not a web wrapper around an
 existing console). It spawns real PowerShell processes in pseudoterminals (PTYs),
-renders them with xterm.js on a GPU (WebGL2) renderer, and wraps everything in a
-borderless acrylic glass window with tabs, search, zoom, and settings.
+renders them with xterm.js on a GPU (WebGL2) renderer, and wraps everything in
+borderless, minimal window chrome with tabs, search, zoom, and settings.
 
 ## Features
 
@@ -27,7 +27,9 @@ borderless acrylic glass window with tabs, search, zoom, and settings.
 - **GPU rendering** — WebGL2 texture-atlas renderer (like kitty/Ghostty), with
   automatic fallback to the software renderer on context loss
 - **Settings panel** — shell, startup directory, font family, opacity, blur, scrollback, GPU
-- **Glass UI** — borderless transparent window, acrylic/mica, custom titlebar
+- **Minimal chrome** — flat full-height tabs that merge into the terminal body,
+  hairline dividers, monochrome controls (Kitty/Ghostty school); opacity + blur
+  available as opt-in settings
 
 ## Architecture
 
@@ -94,14 +96,14 @@ with `is_dir()` and silently ignored when invalid.
 atlas-terminal/
 ├── src/
 │   ├── App.tsx                  # tabs, global shortcuts, settings state
-│   ├── settings.ts              # settings model + localStorage + glass vars
+│   ├── settings.ts              # settings model + localStorage + live CSS vars
 │   ├── main.tsx                 # React entry
-│   ├── styles/globals.css        # glass theme, tabs, overlays, panels
+│   ├── styles/globals.css        # flat theme (tokens, tabs, overlays, panels)
 │   └── components/
 │       ├── Terminal.tsx         # xterm lifecycle, PTY session, find/clipboard/zoom
 │       ├── TabBar.tsx           # tab strip
 │       ├── TitleBar.tsx         # frameless bar, drag region, window controls
-│       └── SettingsPanel.tsx    # settings UI
+│       └── SettingsWindow.tsx   # native settings window UI
 ├── src-tauri/
 │   ├── tauri.conf.json          # window (borderless/transparent), bundle
 │   ├── capabilities/default.json# Tauri permissions
@@ -136,9 +138,9 @@ font-size default in `atlas.terminal.fontSize`):
 
 - **Shell / startup directory / scrollback** — apply to new tabs
 - **Font family** — applies live to all open terminals
-  (default: `'Cascadia Mono', 'Cascadia Code', Consolas, monospace` —
-  inbox Windows fonts with exact cell metrics; Nerd Fonts opt-in here)
-- **Opacity / blur** — live via CSS variables on the glass window
+  (default: `CaskaydiaCove Nerd Font` with a Consolas fallback — install a Nerd
+  Font for icon/powerline glyphs)
+- **Opacity / blur** — optional glass; live CSS variables (default: fully opaque)
 
 ## Building
 

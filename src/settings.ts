@@ -87,13 +87,17 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cursorStyle: 'block',
   cursorBlink: true,
   gpu: true,
-  opacity: 0.6,
-  blur: 30,
+  opacity: 1,
+  blur: 0,
   scrollback: 10000,
 };
 
 const STORAGE_KEY = 'atlas.settings';
 export const SETTINGS_STORAGE_KEY = STORAGE_KEY;
+
+/** Bump when defaults change in a way stored settings must adopt.
+ *  v2: flat chrome (opaque, no blur) became the default look. */
+const SCHEMA_VERSION = 2;
 
 const clamp = (n: number, min: number, max: number) =>
   Math.min(max, Math.max(min, n));
@@ -107,7 +111,9 @@ export function loadSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    const p = JSON.parse(raw) as Partial<AppSettings>;
+    const p = JSON.parse(raw) as Partial<AppSettings> & { schema?: number };
+    // Pre-v2 settings carried the old glass defaults; adopt the flat look.
+    const legacyGlass = typeof p.schema !== 'number' || p.schema < SCHEMA_VERSION;
     let fontFamily =
       typeof p.fontFamily === 'string' && p.fontFamily.trim()
         ? p.fontFamily.slice(0, 512)
@@ -129,8 +135,10 @@ export function loadSettings(): AppSettings {
       cursorStyle,
       cursorBlink: typeof p.cursorBlink === 'boolean' ? p.cursorBlink : true,
       gpu: typeof p.gpu === 'boolean' ? p.gpu : true,
-      opacity: num(p.opacity, DEFAULT_SETTINGS.opacity, 0.3, 1),
-      blur: Math.round(num(p.blur, DEFAULT_SETTINGS.blur, 0, 40)),
+      opacity: legacyGlass
+        ? DEFAULT_SETTINGS.opacity
+        : num(p.opacity, DEFAULT_SETTINGS.opacity, 0.3, 1),
+      blur: legacyGlass ? DEFAULT_SETTINGS.blur : Math.round(num(p.blur, DEFAULT_SETTINGS.blur, 0, 40)),
       scrollback: Math.round(num(p.scrollback, DEFAULT_SETTINGS.scrollback, 1000, 100000)),
     };
   } catch {
@@ -140,7 +148,7 @@ export function loadSettings(): AppSettings {
 
 export function saveSettings(s: AppSettings) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...s, schema: SCHEMA_VERSION }));
   } catch {}
 }
 

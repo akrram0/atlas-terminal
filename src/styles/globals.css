@@ -1,617 +1,692 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* ============================================================
+   Atlas Terminal — chrome styles
+   Flat, terminal-first, Kitty/Ghostty school: opaque surfaces,
+   hairline dividers, full-height tabs that merge into the
+   terminal body. Transparency + blur remain as opt-in settings
+   (default: fully opaque, no blur).
+   ============================================================ */
 
-@layer base {
-  html,
-  body,
-  #root {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: transparent;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text',
-      'Segoe UI', sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+:root {
+  /* Catppuccin Mocha — single source for chrome.
+     Terminal.tsx THEME mirrors these values for the grid. */
+  --atlas-bg-rgb: 30, 30, 46;      /* base   — terminal body / active tab */
+  --atlas-chrome-rgb: 24, 24, 37;  /* mantle — titlebar / tab bar / panels */
+  --atlas-bg-alpha: 1;             /* settings: opacity (applied live) */
+  --atlas-blur: 0px;               /* settings: blur    (applied live) */
 
-  * {
-    box-sizing: border-box;
-  }
+  --atlas-text: #cdd6f4;
+  --atlas-text-dim: #a6adc8;
+  --atlas-text-mute: #6c7086;
+  --atlas-accent: #89b4fa;
+  --atlas-danger: #f38ba8;
 
-  ::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 3px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
-  }
+  --atlas-hairline: rgba(205, 214, 244, 0.09);
+  --atlas-hairline-soft: rgba(205, 214, 244, 0.06);
+  --atlas-hover: rgba(205, 214, 244, 0.06);
+  --atlas-active: rgba(205, 214, 244, 0.10);
+  --atlas-well: rgba(205, 214, 244, 0.06);
 }
 
-@layer components {
-  .terminal-window {
-    background: rgba(14, 14, 18, var(--atlas-bg-alpha, 0.60));
-    backdrop-filter: blur(var(--atlas-blur, 30px));
-    -webkit-backdrop-filter: blur(var(--atlas-blur, 30px));
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow:
-      0 20px 50px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(255, 255, 255, 0.05);
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .titlebar {
-    height: 38px;
-    min-height: 38px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 8px 0 0;
-    background: rgba(20, 20, 25, var(--atlas-bg-alpha, 0.60));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  .titlebar-divider {
-    width: 1px;
-    height: 14px;
-    margin: 0 8px;
-    background: rgba(255, 255, 255, 0.10);
-    flex-shrink: 0;
-  }
-
-  .window-control {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: #86868B;
-    transition: all 0.15s ease;
-    padding: 0;
-  }
-
-  .window-control:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #F5F5F7;
-  }
-
-  .window-control-close:hover {
-    background: rgba(255, 95, 86, 0.2);
-    color: #FF5F56;
-  }
-
-  .window-control-on {
-    background: rgba(10, 132, 255, 0.20);
-    color: #F5F5F7;
-  }
-
-  .terminal-container {
-    flex: 1;
-    padding: 0;
-    overflow: hidden;
-  }
-
-  .terminal-stack {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .tabbar {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    padding: 2px;
-  }
-
-  .tabbar::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tab {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    max-width: 180px;
-    height: 28px;
-    padding: 0 8px 0 12px;
-    border-radius: 6px;
-    background: transparent;
-    border: 1px solid transparent;
-    cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
-    transition: background 0.15s ease;
-    flex-shrink: 0;
-    box-sizing: border-box;
-  }
-
-  .tab:hover {
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .tab-active {
-    background: rgba(255, 255, 255, 0.09);
-    border-color: rgba(255, 255, 255, 0.06);
-  }
-
-  .tab-active:hover {
-    background: rgba(255, 255, 255, 0.09);
-  }
-
-  .tab-title {
-    font-size: 12px;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.45);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .tab-active .tab-title {
-    color: #F2F2F7;
-  }
-
-  .tab-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: rgba(255, 255, 255, 0.45);
-    padding: 0;
-    opacity: 0;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-  }
-
-  .tab:hover .tab-close,
-  .tab-active .tab-close {
-    opacity: 1;
-  }
-
-  .tab-close:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #F2F2F7;
-  }
-
-  .tab-new {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: rgba(255, 255, 255, 0.45);
-    padding: 0;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-  }
-
-  .tab-new:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #F2F2F7;
-  }
-
-  .terminal-pane {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    min-height: 0;
-    min-width: 0;
-  }
-
-  .terminal-xterm {
-    width: 100%;
-    height: 100%;
-    /* Breathing room on all sides incl. the bottom edge. fitAddon measures
-       the parent (.terminal-pane) and subtracts this element's own padding,
-       so cols/rows are computed inside the padded box — the last row never
-       touches the window border. */
-    padding: 14px 20px 18px 20px;
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  /* Kitty look: no visible scrollbar; wheel/touch scroll still work. */
-  .xterm-viewport::-webkit-scrollbar {
-    width: 0px;
-    background: transparent;
-  }
-
-  .xterm-viewport {
-    scrollbar-width: none;
-  }
-
-  .exit-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(10, 10, 12, 0.55);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    z-index: 10;
-  }
-
-  .exit-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    padding: 20px 28px;
-    border-radius: 12px;
-    background: rgba(20, 20, 25, 0.8);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-  }
-
-  .exit-title {
-    font-size: 13px;
-    font-weight: 500;
-    color: #86868B;
-  }
-
-  .exit-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .exit-btn {
-    padding: 6px 14px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 500;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #F5F5F7;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .exit-btn:hover {
-    background: rgba(255, 255, 255, 0.14);
-  }
-
-  .exit-btn-primary {
-    background: rgba(10, 132, 255, 0.25);
-    border-color: rgba(10, 132, 255, 0.4);
-  }
-
-  .exit-btn-primary:hover {
-    background: rgba(10, 132, 255, 0.4);
-  }
-
-  .search-bar {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 4px;
-    border-radius: 10px;
-    background: rgba(20, 20, 25, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    z-index: 20;
-  }
-
-  .search-input {
-    width: 160px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-family: inherit;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid transparent;
-    color: #F5F5F7;
-    outline: none;
-  }
-
-  .search-input:focus {
-    border-color: rgba(10, 132, 255, 0.5);
-  }
-
-  .search-nomatch {
-    color: #FF6B6B;
-    border-color: rgba(255, 107, 107, 0.5);
-  }
-
-  .search-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 26px;
-    height: 26px;
-    padding: 0 4px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: #86868B;
-    transition: all 0.15s ease;
-  }
-
-  .search-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #F5F5F7;
-  }
-
-  .search-btn-on {
-    background: rgba(10, 132, 255, 0.25);
-    color: #F5F5F7;
-  }
-
-  .settings-row {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .settings-label {
-    font-size: 12px;
-    font-weight: 500;
-    color: #86868B;
-  }
-
-  .settings-value {
-    color: #F5F5F7;
-  }
-
-  .settings-input {
-    padding: 6px 8px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-family: inherit;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid transparent;
-    color: #F5F5F7;
-    outline: none;
-  }
-
-  .settings-input:focus {
-    border-color: rgba(10, 132, 255, 0.5);
-  }
-
-  .settings-input option {
-    background: #1c1c20;
-  }
-
-  .settings-hint {
-    font-size: 11px;
-    color: #86868B;
-  }
-
-  /* ---- Native Settings window (640x480, macOS-style) ---- */
-  .sw-root {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: rgba(14, 14, 18, var(--atlas-bg-alpha, 0.60));
-    backdrop-filter: blur(var(--atlas-blur, 30px));
-    -webkit-backdrop-filter: blur(var(--atlas-blur, 30px));
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    overflow: hidden;
-  }
-
-  .sw-titlebar {
-    height: 38px;
-    min-height: 38px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 8px 0 16px;
-    background: rgba(20, 20, 25, var(--atlas-bg-alpha, 0.60));
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  .sw-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: #F2F2F7;
-  }
-
-  .sw-segments {
-    display: flex;
-    gap: 4px;
-    padding: 12px 16px 0 16px;
-  }
-
-  .sw-segment {
-    flex: 1;
-    height: 28px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 500;
-    background: transparent;
-    border: 1px solid transparent;
-    color: rgba(255, 255, 255, 0.45);
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .sw-segment:hover {
-    background: rgba(255, 255, 255, 0.04);
-  }
-
-  .sw-segment-on {
-    background: rgba(255, 255, 255, 0.09);
-    border-color: rgba(255, 255, 255, 0.06);
-    color: #F2F2F7;
-  }
-
-  .sw-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    padding: 16px;
-    overflow-y: auto;
-  }
-
-  .sw-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-  }
-
-  .sw-reset {
-    height: 32px;
-    padding: 0 14px;
-    white-space: nowrap;
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .sw-stepper {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .sw-step-btn {
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
-    font-size: 14px;
-    line-height: 1;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    color: #F2F2F7;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .sw-step-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .sw-step-value {
-    min-width: 72px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 500;
-    color: #F2F2F7;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .sw-check-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-  }
-
-  .sw-check {
-    width: 15px;
-    height: 15px;
-    accent-color: #89B4FA;
-    cursor: pointer;
-  }
-
-  /* Cupertino range sliders */
-  .sw-range {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 16px;
-    background: transparent;
-    cursor: pointer;
-    --fill: 50%;
-  }
-
-  .sw-range::-webkit-slider-runnable-track {
-    height: 5px;
-    border-radius: 999px;
-    background: linear-gradient(
-      to right,
-      rgba(137, 180, 250, 0.85) var(--fill),
-      rgba(255, 255, 255, 0.14) var(--fill)
-    );
-  }
-
-  .sw-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    margin-top: -5.5px;
-    border-radius: 50%;
-    background: #FFFFFF;
-    border: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-  }
-
-  .sw-range::-moz-range-track {
-    height: 5px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.14);
-  }
-
-  .sw-range::-moz-range-progress {
-    height: 5px;
-    border-radius: 999px;
-    background: rgba(137, 180, 250, 0.85);
-  }
-
-  .sw-range::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #FFFFFF;
-    border: none;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system,
+    sans-serif;
+  font-size: 13px;
+  color: var(--atlas-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(205, 214, 244, 0.14);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(205, 214, 244, 0.22);
+}
+
+/* ---- Window shell ---- */
+
+.terminal-window {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background: rgba(var(--atlas-bg-rgb), var(--atlas-bg-alpha));
+  backdrop-filter: blur(var(--atlas-blur));
+  -webkit-backdrop-filter: blur(var(--atlas-blur));
+  border-radius: 10px;
+  border: 1px solid var(--atlas-hairline-soft);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+/* ---- Titlebar: one row — tabs flush left, controls flush right ---- */
+
+.titlebar {
+  height: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: stretch;
+  background: rgba(var(--atlas-chrome-rgb), var(--atlas-bg-alpha));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.titlebar-left {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.titlebar-spacer {
+  flex: 1 1 auto;
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+/* Window controls: full-height cells, monochrome, native hover */
+.window-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--atlas-text-dim);
+  cursor: default;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.window-control:hover {
+  background: var(--atlas-hover);
+  color: var(--atlas-text);
+}
+
+.window-control:active {
+  background: var(--atlas-active);
+}
+
+.window-control-on {
+  background: var(--atlas-active);
+  color: var(--atlas-text);
+}
+
+.window-control-close:hover {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.window-control-close:active {
+  background: #b02718;
+  color: #ffffff;
+}
+
+/* ---- Tabs: full-height cells; the active one merges into the
+   terminal body (Kitty signature) ---- */
+
+.tabbar {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.tabbar::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 200px;
+  height: 100%;
+  padding: 0 6px 0 12px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background 0.1s ease;
+  flex-shrink: 0;
+}
+
+.tab:hover {
+  background: rgba(205, 214, 244, 0.04);
+}
+
+.tab-active,
+.tab-active:hover {
+  background: rgba(var(--atlas-bg-rgb), var(--atlas-bg-alpha));
+}
+
+.tab-title {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--atlas-text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab:hover .tab-title {
+  color: var(--atlas-text-dim);
+}
+
+.tab-active .tab-title,
+.tab-active:hover .tab-title {
+  color: var(--atlas-text);
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: var(--atlas-text-mute);
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
+  flex-shrink: 0;
+}
+
+.tab:hover .tab-close,
+.tab-active .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: var(--atlas-active);
+  color: var(--atlas-text);
+}
+
+.tab-close:focus-visible {
+  opacity: 1;
+}
+
+.tab-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--atlas-text-mute);
+  padding: 0;
+  transition: background 0.1s ease, color 0.1s ease;
+  flex-shrink: 0;
+}
+
+.tab-new:hover {
+  background: var(--atlas-hover);
+  color: var(--atlas-text);
+}
+
+/* ---- Terminal area ---- */
+
+.terminal-container {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+}
+
+.terminal-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-pane {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.terminal-xterm {
+  width: 100%;
+  height: 100%;
+  /* Breathing room on all sides incl. the bottom edge. fitAddon measures
+     the parent (.terminal-pane) and subtracts this element's own padding,
+     so cols/rows are computed inside the padded box — the last row never
+     touches the window border. */
+  padding: 14px 20px 18px 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* No visible scrollbar; wheel/touch scroll still work. */
+.xterm-viewport::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+.xterm-viewport {
+  scrollbar-width: none;
+}
+
+/* ---- Dead-tab overlay ---- */
+
+.exit-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 17, 27, 0.65);
+  z-index: 10;
+}
+
+.exit-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 24px;
+  border-radius: 8px;
+  background: rgb(24, 24, 37);
+  border: 1px solid var(--atlas-hairline);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.exit-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--atlas-text-dim);
+}
+
+.exit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.exit-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(205, 214, 244, 0.08);
+  border: none;
+  color: var(--atlas-text);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.exit-btn:hover {
+  background: rgba(205, 214, 244, 0.14);
+}
+
+.exit-btn-primary {
+  background: rgba(137, 180, 250, 0.92);
+  color: #11111b;
+}
+
+.exit-btn-primary:hover {
+  background: #89b4fa;
+}
+
+/* ---- Find bar ---- */
+
+.search-bar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 6px;
+  background: rgb(24, 24, 37);
+  border: 1px solid var(--atlas-hairline);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+
+.search-input {
+  width: 170px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--atlas-well);
+  border: 1px solid transparent;
+  color: var(--atlas-text);
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: rgba(137, 180, 250, 0.5);
+}
+
+.search-nomatch {
+  color: var(--atlas-danger);
+  border-color: rgba(243, 139, 168, 0.5);
+}
+
+.search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--atlas-text-mute);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.search-btn:hover {
+  background: var(--atlas-hover);
+  color: var(--atlas-text);
+}
+
+.search-btn-on {
+  background: rgba(137, 180, 250, 0.18);
+  color: var(--atlas-accent);
+}
+
+/* ---- Settings (shared rows used by the Settings window) ---- */
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--atlas-text-dim);
+}
+
+.settings-value {
+  color: var(--atlas-text);
+}
+
+.settings-input {
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--atlas-well);
+  border: 1px solid var(--atlas-hairline-soft);
+  color: var(--atlas-text);
+  outline: none;
+}
+
+.settings-input:focus {
+  border-color: rgba(137, 180, 250, 0.5);
+}
+
+.settings-input option {
+  background: #181825;
+}
+
+.settings-hint {
+  font-size: 11px;
+  color: var(--atlas-text-mute);
+}
+
+/* ---- Native Settings window ---- */
+
+.sw-root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: rgba(var(--atlas-bg-rgb), var(--atlas-bg-alpha));
+  backdrop-filter: blur(var(--atlas-blur));
+  -webkit-backdrop-filter: blur(var(--atlas-blur));
+  border-radius: 10px;
+  border: 1px solid var(--atlas-hairline-soft);
+  overflow: hidden;
+}
+
+.sw-titlebar {
+  height: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 0 0 0 16px;
+  background: rgba(var(--atlas-chrome-rgb), var(--atlas-bg-alpha));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sw-title {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--atlas-text);
+}
+
+.sw-segments {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px 0 16px;
+}
+
+.sw-segment {
+  flex: 1;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  color: var(--atlas-text-mute);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.sw-segment:hover {
+  background: var(--atlas-hover);
+  color: var(--atlas-text-dim);
+}
+
+.sw-segment-on {
+  background: var(--atlas-active);
+  color: var(--atlas-text);
+}
+
+.sw-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.sw-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--atlas-hairline-soft);
+}
+
+.sw-reset {
+  height: 32px;
+  padding: 0 14px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sw-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sw-step-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  background: var(--atlas-well);
+  border: none;
+  color: var(--atlas-text);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.sw-step-btn:hover {
+  background: var(--atlas-active);
+}
+
+.sw-step-value {
+  min-width: 72px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--atlas-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.sw-check {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--atlas-accent);
+  cursor: pointer;
+}
+
+/* Range sliders */
+
+.sw-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 16px;
+  background: transparent;
+  cursor: pointer;
+  --fill: 50%;
+}
+
+.sw-range::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    rgba(137, 180, 250, 0.85) var(--fill),
+    rgba(205, 214, 244, 0.14) var(--fill)
+  );
+}
+
+.sw-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5.5px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.sw-range::-moz-range-track {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(205, 214, 244, 0.14);
+}
+
+.sw-range::-moz-range-progress {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(137, 180, 250, 0.85);
+}
+
+.sw-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- Accessibility ---- */
+
+:where(
+    .window-control,
+    .tab-close,
+    .tab-new,
+    .search-btn,
+    .exit-btn,
+    .sw-segment,
+    .sw-step-btn,
+    .search-input,
+    .settings-input
+  ):focus-visible {
+  outline: 2px solid rgba(137, 180, 250, 0.55);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
   }
 }
