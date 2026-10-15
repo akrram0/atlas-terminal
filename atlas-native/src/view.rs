@@ -309,9 +309,9 @@ impl Render for AtlasView {
             .flex_row()
             .items_center()
             .w(relative(1.0))
-            .h(px(38.0))
-            .pl(px(10.0))
-            .gap(px(6.0))
+            .h(px(46.0))
+            .pl(px(12.0))
+            .gap(px(8.0))
             .bg(theme.chrome_bg)
             .border_b_1()
             .border_color(theme.hairline);
@@ -329,11 +329,11 @@ impl Render for AtlasView {
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(6.0))
-                .h(px(27.0))
-                .px(px(12.0))
+                .gap(px(7.0))
+                .h(px(30.0))
+                .px(px(14.0))
                 .rounded_full()
-                .text_size(px(12.5))
+                .text_size(px(13.0))
                 .text_color(if active {
                     tab_theme.chrome_fg_active
                 } else {
@@ -391,8 +391,8 @@ impl Render for AtlasView {
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("new-tab", 0))
-                .h(px(27.0))
-                .w(px(30.0))
+                .h(px(30.0))
+                .w(px(32.0))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -412,7 +412,7 @@ impl Render for AtlasView {
             div()
                 .id(ElementId::named_usize("titlebar-drag", 0))
                 .flex_1()
-                .h(px(38.0))
+                .h(px(46.0))
                 .window_control_area(WindowControlArea::Drag),
         );
 
@@ -441,7 +441,7 @@ impl Render for AtlasView {
                 div()
                     .id(ElementId::named_usize("window-control", index))
                     .w(px(46.0))
-                    .h(px(38.0))
+                    .h(px(46.0))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -463,7 +463,8 @@ impl Render for AtlasView {
                 .flex_col()
                 .flex_1()
                 .w(relative(1.0))
-                .p(px(8.0))
+                .px(px(16.0))
+                .py(px(12.0))
                 .track_focus(&self.focus)
                 .on_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
                     let keystroke = event.keystroke.clone();
@@ -529,16 +530,16 @@ impl Render for AtlasView {
             .flex_row()
             .items_center()
             .w(relative(1.0))
-            .h(px(30.0))
-            .px(px(10.0))
+            .h(px(34.0))
+            .px(px(14.0))
             .gap(px(8.0))
-            .bg(theme.chrome_bg)
+            .bg(theme.bg)
             .border_b_1()
             .border_color(theme.hairline)
             .child(
                 div()
                     .flex_1()
-                    .text_size(px(12.0))
+                    .text_size(px(12.5))
                     .text_color(theme.chrome_fg)
                     .child(header_title),
             )

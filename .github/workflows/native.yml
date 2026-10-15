@@ -98,12 +98,19 @@ jobs:
             }
             if ($proc.HasExited -and -not (Test-Path $log)) { break }
           }
+          # Give the DWM corner-rounding helper a beat to report.
+          for ($i = 0; $i -lt 15; $i++) {
+            if ((Test-Path $log) -and ((Get-Content $log -Raw) -match "dwm")) { break }
+            Start-Sleep -Milliseconds 200
+          }
           if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
           Write-Output "----- atlas-native-debug.log -----"
           if (Test-Path $log) { Get-Content $log } else { Write-Output "(no log written)" }
           if ($ok) {
             "## smoke test: window opened" >> $env:GITHUB_STEP_SUMMARY
             Write-Output "::notice title=smoke test::release exe reached 'window opened'"
+            $dwm = if (Test-Path $log) { Get-Content $log | Where-Object { $_ -match "dwm" } | Select-Object -First 1 }
+            if ($dwm) { Write-Output ("::notice title=dwm corners::" + ($dwm -replace '%','%25')) }
           } else {
             "## smoke test: did NOT observe 'window opened'" >> $env:GITHUB_STEP_SUMMARY
             $n = 0
