@@ -25,24 +25,32 @@ pub(crate) fn log_line(msg: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Windows 11 rounded corners.
+// Windows 11 rounded corners + full-bleed client area.
 //
-// DWM only rounds windows that carry a caption frame. gpui creates a
-// frameless WS_THICKFRAME window *without* WS_CAPTION and zeroes the
-// non-client area via WM_NCCALCSIZE — so DWMWA_WINDOW_CORNER_PREFERENCE on
-// its own is silently ignored (that was the bug). A helper thread waits for
-// the window to appear, then adds WS_CAPTION invisibly (the client area
-// stays full-size; gpui answers WM_NCHITTEST with HTCLIENT itself, so tabs
-// and buttons keep working), enables DWM non-client rendering (drop shadow)
-// and asks for rounded corners. Same recipe Windows Terminal uses.
-// No-ops harmlessly on older Windows. Result is logged.
+// DWM derives corner rounding from the window's frame, and two gpui defaults
+// defeat it: USER32 auto-adds WS_CAPTION to resizable windows, and gpui's
+// WM_NCCALCSIZE keeps an ~8 px non-client resize ring, so app content never
+// touches the window edge. Chromium solves this for custom-titlebar windows
+// (VS Code etc.) by removing WS_CAPTION, giving the client the whole window,
+// then asking DWM to round - this module applies the same recipe: a helper
+// thread waits for the window to appear, subclasses its wndproc (WM_NCCALCSIZE
+// -> full-window client, frame insets kept only while maximized; WM_NCHITTEST
+// -> our own resize borders), strips WS_CAPTION, forces a frame change and
+// sets DWMWA_WINDOW_CORNER_PREFERENCE. Dragging, resizing and double-click-to-
+// maximize keep working. No-ops harmlessly on older Windows; the result is
+// logged for the CI smoke test.
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
 mod rounded_corners {
+    use std::sync::atomic::{AtomicIsize, Ordering};
+
     type Hwnd = *mut core::ffi::c_void;
     type Lparam = isize;
+    type Lresult = isize;
+    type Wparam = usize;
 
     const GWL_STYLE: i32 = -16;
+    const GWLP_WNDPROC: i32 = -4;
     const WS_CAPTION: i32 = 0x00C0_0000;
     // SetWindowPos flags.
     const SWP_NOSIZE: u32 = 0x0001;
@@ -50,6 +58,40 @@ mod rounded_corners {
     const SWP_NOZORDER: u32 = 0x0004;
     const SWP_NOACTIVATE: u32 = 0x0010;
     const SWP_FRAMECHANGED: u32 = 0x0020;
+    // Window messages, hit-test codes and metrics.
+    const WM_NCCALCSIZE: u32 = 0x0083;
+    const WM_NCHITTEST: u32 = 0x0084;
+    const HTLEFT: Lresult = 10;
+    const HTRIGHT: Lresult = 11;
+    const HTTOP: Lresult = 12;
+    const HTTOPLEFT: Lresult = 13;
+    const HTTOPRIGHT: Lresult = 14;
+    const HTBOTTOM: Lresult = 15;
+    const HTBOTTOMLEFT: Lresult = 16;
+    const HTBOTTOMRIGHT: Lresult = 17;
+    const SM_CXSIZEFRAME: i32 = 32;
+    const SM_CXPADDEDBORDER: i32 = 92;
+    const RESIZE_BORDER: i32 = 8;
+    const RESIZE_CORNER: i32 = 16;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct Rect {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
+    #[repr(C)]
+    struct NcCalcSizeParams {
+        rgrc: [Rect; 3],
+        _lppos: *mut core::ffi::c_void,
+    }
+
+    /// gpui's original window procedure, called for every message we do not
+    /// replace ourselves.
+    static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 
     #[link(name = "user32")]
     unsafe extern "system" {
@@ -59,6 +101,16 @@ mod rounded_corners {
         fn GetWindow(hwnd: Hwnd, cmd: u32) -> Hwnd;
         fn GetWindowLongW(hwnd: Hwnd, index: i32) -> i32;
         fn SetWindowLongW(hwnd: Hwnd, index: i32, value: i32) -> i32;
+        fn GetWindowLongPtrW(hwnd: Hwnd, index: i32) -> isize;
+        fn SetWindowLongPtrW(hwnd: Hwnd, index: i32, value: isize) -> isize;
+        fn CallWindowProcW(
+            prev: isize,
+            hwnd: Hwnd,
+            msg: u32,
+            wparam: Wparam,
+            lparam: Lparam,
+        ) -> Lresult;
+        fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> Lresult;
         fn SetWindowPos(
             hwnd: Hwnd,
             insert_after: Hwnd,
@@ -68,6 +120,11 @@ mod rounded_corners {
             cy: i32,
             flags: u32,
         ) -> i32;
+        fn GetWindowRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
+        fn GetClientRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
+        fn IsZoomed(hwnd: Hwnd) -> i32;
+        fn GetDpiForWindow(hwnd: Hwnd) -> u32;
+        fn GetSystemMetricsForDpi(index: i32, dpi: u32) -> i32;
     }
 
     #[link(name = "dwmapi")]
@@ -78,6 +135,106 @@ mod rounded_corners {
             value: *const core::ffi::c_void,
             size: u32,
         ) -> i32;
+    }
+
+    /// Resize-border hit test for the frameless window. `None` lets gpui's own
+    /// hit testing take the message, so tabs, buttons and drag zones are
+    /// unaffected.
+    fn resize_hit_test(hwnd: Hwnd, x: i32, y: i32) -> Option<Lresult> {
+        let mut rect = Rect::default();
+        // Safety: `hwnd` is alive for the duration of the call.
+        if unsafe { GetWindowRect(hwnd, &mut rect) } == 0 {
+            return None;
+        }
+        let left = x - rect.left;
+        let right = rect.right - x;
+        let top = y - rect.top;
+        let bottom = rect.bottom - y;
+        if left < 0 || top < 0 || right < 0 || bottom < 0 {
+            return None;
+        }
+        Some(if top < RESIZE_BORDER {
+            if left < RESIZE_CORNER {
+                HTTOPLEFT
+            } else if right < RESIZE_CORNER {
+                HTTOPRIGHT
+            } else {
+                HTTOP
+            }
+        } else if bottom < RESIZE_BORDER {
+            if left < RESIZE_CORNER {
+                HTBOTTOMLEFT
+            } else if right < RESIZE_CORNER {
+                HTBOTTOMRIGHT
+            } else {
+                HTBOTTOM
+            }
+        } else if left < RESIZE_BORDER {
+            HTLEFT
+        } else if right < RESIZE_BORDER {
+            HTRIGHT
+        } else {
+            return None;
+        })
+    }
+
+    /// Replacement window procedure: the client area covers the entire window
+    /// (so DWM can round the real content), resize borders are handled here,
+    /// everything else goes back to gpui's original procedure.
+    ///
+    /// # Safety
+    /// Installed with `SetWindowLongPtrW`; called by USER32 on the window
+    /// thread.
+    unsafe extern "system" fn window_proc(
+        hwnd: Hwnd,
+        msg: u32,
+        wparam: Wparam,
+        lparam: Lparam,
+    ) -> Lresult {
+        match msg {
+            WM_NCCALCSIZE if wparam != 0 => {
+                // On input `rgrc[0]` is the proposed *window* rect; leaving it
+                // untouched makes the client cover the whole window.
+                if unsafe { IsZoomed(hwnd) } != 0 {
+                    // Maximized windows are outdented past the screen edges;
+                    // inset by the frame so content stays on-screen.
+                    // Safety: `lparam` points to NCCALCSIZE_PARAMS here.
+                    unsafe {
+                        let dpi = GetDpiForWindow(hwnd);
+                        let frame = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi)
+                            + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+                        let params = lparam as *mut NcCalcSizeParams;
+                        let rect = &mut (*params).rgrc[0];
+                        rect.left += frame;
+                        rect.top += frame;
+                        rect.right -= frame;
+                        rect.bottom -= frame;
+                    }
+                }
+                0
+            }
+            WM_NCHITTEST if unsafe { IsZoomed(hwnd) } == 0 => {
+                let x = (lparam as usize & 0xFFFF) as u16 as i16 as i32;
+                let y = ((lparam as usize >> 16) & 0xFFFF) as u16 as i16 as i32;
+                if let Some(hit) = resize_hit_test(hwnd, x, y) {
+                    return hit;
+                }
+                let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
+                if prev == 0 {
+                    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                } else {
+                    unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+                }
+            }
+            _ => {
+                let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
+                if prev == 0 {
+                    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                } else {
+                    unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+                }
+            }
+        }
     }
 
     /// First visible, unowned top-level window belonging to this process.
@@ -119,11 +276,22 @@ mod rounded_corners {
                 if let Some(hwnd) = find_main_window() {
                     // Safety: `hwnd` is a live top-level window of this process.
                     unsafe {
-                        // Restore the caption style bit so DWM treats the window
-                        // as framed (rounding + shadow); the NC area stays
-                        // zero-sized because gpui's WM_NCCALCSIZE handler wins.
+                        // 1. Subclass first so the frame change below runs
+                        //    through our WM_NCCALCSIZE.
+                        let original = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
+                        ORIGINAL_WNDPROC.store(original, Ordering::SeqCst);
+                        SetWindowLongPtrW(hwnd, GWLP_WNDPROC, window_proc as *const () as isize);
+
+                        // 2. USER32 auto-adds WS_CAPTION to resizable windows;
+                        //    DWM only rounds windows that draw their own chrome
+                        //    without one (same as Chromium / VS Code).
                         let style = GetWindowLongW(hwnd, GWL_STYLE);
-                        SetWindowLongW(hwnd, GWL_STYLE, style | WS_CAPTION);
+                        let stripped = style & !WS_CAPTION;
+                        SetWindowLongW(hwnd, GWL_STYLE, stripped);
+
+                        // 3. Force the frame change: reruns WM_NCCALCSIZE
+                        //    through the subclass and makes DWM re-evaluate the
+                        //    window frame (rounding + shadow) for the new style.
                         SetWindowPos(
                             hwnd,
                             std::ptr::null_mut(),
@@ -138,6 +306,34 @@ mod rounded_corners {
                                 | SWP_NOACTIVATE,
                         );
 
+                        // 3b. The client area just grew by the old non-client
+                        //     ring; nudge the window size by one pixel so gpui
+                        //     is guaranteed to see a WM_SIZE for it.
+                        let mut window_rect = Rect::default();
+                        if GetWindowRect(hwnd, &mut window_rect) != 0 {
+                            let width = window_rect.right - window_rect.left;
+                            let height = window_rect.bottom - window_rect.top;
+                            SetWindowPos(
+                                hwnd,
+                                std::ptr::null_mut(),
+                                0,
+                                0,
+                                width + 1,
+                                height,
+                                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                            );
+                            SetWindowPos(
+                                hwnd,
+                                std::ptr::null_mut(),
+                                0,
+                                0,
+                                width,
+                                height,
+                                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                            );
+                        }
+
+                        // 4. Ask DWM for rounded corners.
                         let nc_policy: i32 = 1; // DWMNCRP_ENABLED
                         let _ = DwmSetWindowAttribute(
                             hwnd,
@@ -152,8 +348,18 @@ mod rounded_corners {
                             &preference as *const i32 as *const core::ffi::c_void,
                             core::mem::size_of::<i32>() as u32,
                         );
+
+                        // 5. Diagnostics: with the ring gone the client should
+                        //    match the window size.
+                        let mut client_rect = Rect::default();
+                        GetClientRect(hwnd, &mut client_rect);
                         crate::log_line(&format!(
-                            "dwm corners: WS_CAPTION restored (style was {style:#010x}), preference hr={hr:#010x}"
+                            "dwm corners: style {style:#010x}->{stripped:#010x}, \
+                             client {}x{} / window {}x{}, round hr={hr:#010x}",
+                            client_rect.right - client_rect.left,
+                            client_rect.bottom - client_rect.top,
+                            window_rect.right - window_rect.left,
+                            window_rect.bottom - window_rect.top,
                         ));
                     }
                     return;
