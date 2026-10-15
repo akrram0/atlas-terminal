@@ -39,10 +39,11 @@ Design rule: there is no stylesheet anywhere. A theme is a Rust struct
 
 ## Build (CI only)
 
-Per the project rule, no local Rust toolchain: every push to `gpui-poc`
+Per the project rule, no local Rust toolchain: every push to `main`
 touching `atlas-native/**` builds on `windows-latest` via
-`.github/workflows/native.yml` and uploads `atlas-native.exe` (debug) as the
-`atlas-native-poc` artifact, plus `build-output.log` for troubleshooting.
+`.github/workflows/native.yml` and uploads the final `atlas-native.exe`
+(release) as the `atlas-native-poc` artifact, plus `build-output.log` for
+troubleshooting.
 
 If the compiler is ever installed locally, `cargo run` inside `atlas-native/`
 also works; a release build additionally needs `GPUI_FXC_PATH` (Windows SDK

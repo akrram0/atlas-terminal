@@ -2,7 +2,7 @@ name: atlas-native (GPUI POC)
 
 on:
   push:
-    branches: [gpui-poc]
+    branches: [main]
     paths:
       - "atlas-native/**"
       - ".github/workflows/native.yml"
@@ -25,10 +25,21 @@ jobs:
         with:
           workspaces: atlas-native
 
-      - name: cargo build (debug)
+      - name: Locate fxc.exe (DirectX shader compiler for gpui release)
         shell: pwsh
         run: |
-          cargo build 2>&1 | Tee-Object -FilePath build-output.log
+          $fxc = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\fxc.exe" -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+          if ($fxc) {
+            "GPUI_FXC_PATH=$($fxc.FullName)" | Out-File -Append $env:GITHUB_ENV
+            Write-Output "GPUI_FXC_PATH=$($fxc.FullName)"
+          } else {
+            Write-Output "fxc.exe not found under Windows Kits; relying on PATH/gpui default"
+          }
+
+      - name: cargo build (release — final exe)
+        shell: pwsh
+        run: |
+          cargo build --release 2>&1 | Tee-Object -FilePath build-output.log
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             "## cargo build failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
@@ -61,7 +72,7 @@ jobs:
             Get-Content build-output.log -Tail 150 | Out-String >> $env:GITHUB_STEP_SUMMARY
             exit $code
           }
-          "## atlas-native compiled" >> $env:GITHUB_STEP_SUMMARY
+          "## atlas-native compiled (release)" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload build log
         if: always()
@@ -76,5 +87,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: atlas-native-poc
-          path: atlas-native/target/debug/atlas-native.exe
+          path: atlas-native/target/release/atlas-native.exe
           if-no-files-found: error
