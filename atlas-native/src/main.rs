@@ -27,15 +27,29 @@ pub(crate) fn log_line(msg: &str) {
 // ---------------------------------------------------------------------------
 // Windows 11 rounded corners.
 //
-// gpui creates the frameless window before we can reach DWM, so a helper
-// thread waits for it to appear and then asks DWM for rounded corners via
-// DWMWA_WINDOW_CORNER_PREFERENCE (the same approach Electron/Tauri use).
-// On older Windows the call is a harmless no-op. Result is logged.
+// DWM only rounds windows that carry a caption frame. gpui creates a
+// frameless WS_THICKFRAME window *without* WS_CAPTION and zeroes the
+// non-client area via WM_NCCALCSIZE — so DWMWA_WINDOW_CORNER_PREFERENCE on
+// its own is silently ignored (that was the bug). A helper thread waits for
+// the window to appear, then adds WS_CAPTION invisibly (the client area
+// stays full-size; gpui answers WM_NCHITTEST with HTCLIENT itself, so tabs
+// and buttons keep working), enables DWM non-client rendering (drop shadow)
+// and asks for rounded corners. Same recipe Windows Terminal uses.
+// No-ops harmlessly on older Windows. Result is logged.
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
 mod rounded_corners {
     type Hwnd = *mut core::ffi::c_void;
     type Lparam = isize;
+
+    const GWL_STYLE: i32 = -16;
+    const WS_CAPTION: i32 = 0x00C0_0000;
+    // SetWindowPos flags.
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_FRAMECHANGED: u32 = 0x0020;
 
     #[link(name = "user32")]
     unsafe extern "system" {
@@ -43,6 +57,17 @@ mod rounded_corners {
         fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
         fn IsWindowVisible(hwnd: Hwnd) -> i32;
         fn GetWindow(hwnd: Hwnd, cmd: u32) -> Hwnd;
+        fn GetWindowLongW(hwnd: Hwnd, index: i32) -> i32;
+        fn SetWindowLongW(hwnd: Hwnd, index: i32, value: i32) -> i32;
+        fn SetWindowPos(
+            hwnd: Hwnd,
+            insert_after: Hwnd,
+            x: i32,
+            y: i32,
+            cx: i32,
+            cy: i32,
+            flags: u32,
+        ) -> i32;
     }
 
     #[link(name = "dwmapi")]
@@ -92,22 +117,50 @@ mod rounded_corners {
         std::thread::spawn(|| {
             for _ in 0..400 {
                 if let Some(hwnd) = find_main_window() {
-                    let preference: i32 = 2; // DWMWCP_ROUND
                     // Safety: `hwnd` is a live top-level window of this process.
-                    let hr = unsafe {
-                        DwmSetWindowAttribute(
+                    unsafe {
+                        // Restore the caption style bit so DWM treats the window
+                        // as framed (rounding + shadow); the NC area stays
+                        // zero-sized because gpui's WM_NCCALCSIZE handler wins.
+                        let style = GetWindowLongW(hwnd, GWL_STYLE);
+                        SetWindowLongW(hwnd, GWL_STYLE, style | WS_CAPTION);
+                        SetWindowPos(
+                            hwnd,
+                            std::ptr::null_mut(),
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_FRAMECHANGED
+                                | SWP_NOMOVE
+                                | SWP_NOSIZE
+                                | SWP_NOZORDER
+                                | SWP_NOACTIVATE,
+                        );
+
+                        let nc_policy: i32 = 1; // DWMNCRP_ENABLED
+                        let _ = DwmSetWindowAttribute(
+                            hwnd,
+                            2, // DWMWA_NCRENDERING_POLICY
+                            &nc_policy as *const i32 as *const core::ffi::c_void,
+                            core::mem::size_of::<i32>() as u32,
+                        );
+                        let preference: i32 = 2; // DWMWCP_ROUND
+                        let hr = DwmSetWindowAttribute(
                             hwnd,
                             33, // DWMWA_WINDOW_CORNER_PREFERENCE
                             &preference as *const i32 as *const core::ffi::c_void,
                             core::mem::size_of::<i32>() as u32,
-                        )
-                    };
-                    crate::log_line(&format!("dwm corner preference set (hr={hr:#010x})"));
+                        );
+                        crate::log_line(&format!(
+                            "dwm corners: WS_CAPTION restored (style was {style:#010x}), preference hr={hr:#010x}"
+                        ));
+                    }
                     return;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(25));
             }
-            crate::log_line("dwm corner preference: own window never appeared");
+            crate::log_line("dwm corners: own window never appeared");
         });
     }
 }
