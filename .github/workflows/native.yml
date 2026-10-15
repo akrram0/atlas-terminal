@@ -32,6 +32,32 @@ jobs:
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             "## cargo build failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
+            # Mirror rustc errors as workflow annotations so they are readable
+            # without authentication (logs + artifacts need a login).
+            $n = 0
+            $pending = ""
+            foreach ($line in Get-Content build-output.log) {
+              if ($line -match '^(?<sev>error|warning)(?<rest>.*)$') {
+                $pending = "$($matches['sev'])$($matches['rest'])"
+              } elseif ($pending -ne "" -and $line -match '^\s*-->\s*(?<loc>\S+)\s*$') {
+                if ($n -lt 60) {
+                  $n++
+                  $msg = ("$pending @ $($matches['loc'])") -replace '%','%25'
+                  Write-Output "::error::$msg"
+                }
+                $pending = ""
+              } elseif ($line -match '^\s*$') {
+                if ($pending -ne "" -and $n -lt 60) {
+                  $n++
+                  $msg = ($pending -replace '%','%25')
+                  Write-Output "::error::$msg"
+                }
+                $pending = ""
+              }
+            }
+            if ($pending -ne "" -and $n -lt 60) {
+              Write-Output ("::error::" + ($pending -replace '%','%25'))
+            }
             Get-Content build-output.log -Tail 150 | Out-String >> $env:GITHUB_STEP_SUMMARY
             exit $code
           }
