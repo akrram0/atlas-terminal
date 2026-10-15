@@ -16,6 +16,8 @@ export interface AppSettings {
   cursorStyle: CursorStyle;
   /** Cursor blink. Applied live. */
   cursorBlink: boolean;
+  /** GPU (WebGL2) renderer. Auto-falls back to the DOM renderer. Applied live. */
+  gpu: boolean;
   /** Window background alpha 0.3–1. Applied live via CSS var. */
   opacity: number;
   /** Backdrop blur px 0–40. Applied live via CSS var. */
@@ -84,6 +86,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lineHeight: 1.25,
   cursorStyle: 'block',
   cursorBlink: true,
+  gpu: true,
   opacity: 0.6,
   blur: 30,
   scrollback: 10000,
@@ -125,6 +128,7 @@ export function loadSettings(): AppSettings {
       lineHeight: num(p.lineHeight, DEFAULT_SETTINGS.lineHeight, 1.0, 2.0),
       cursorStyle,
       cursorBlink: typeof p.cursorBlink === 'boolean' ? p.cursorBlink : true,
+      gpu: typeof p.gpu === 'boolean' ? p.gpu : true,
       opacity: num(p.opacity, DEFAULT_SETTINGS.opacity, 0.3, 1),
       blur: Math.round(num(p.blur, DEFAULT_SETTINGS.blur, 0, 40)),
       scrollback: Math.round(num(p.scrollback, DEFAULT_SETTINGS.scrollback, 1000, 100000)),

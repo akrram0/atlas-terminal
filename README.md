@@ -11,7 +11,7 @@ Built with **Tauri 2 + React + xterm.js**.
 
 Atlas Terminal is a native Windows terminal emulator (not a web wrapper around an
 existing console). It spawns real PowerShell processes in pseudoterminals (PTYs),
-renders them with xterm.js on a GPU-composited canvas, and wraps everything in a
+renders them with xterm.js on a GPU (WebGL2) renderer, and wraps everything in a
 borderless acrylic glass window with tabs, search, zoom, and settings.
 
 ## Features
@@ -24,14 +24,16 @@ borderless acrylic glass window with tabs, search, zoom, and settings.
 - **Find bar** — `Ctrl+Shift+F`, incremental search, match-case, prev/next
 - **Font zoom** — `Ctrl + / - / 0` and `Ctrl+wheel`, persisted as the default
 - **Clipboard** — `Ctrl+Shift+C / V`, `Shift+Insert`, right-click copies selection else pastes
-- **Settings panel** — shell, startup directory, font family, opacity, blur, scrollback
+- **GPU rendering** — WebGL2 texture-atlas renderer (like kitty/Ghostty), with
+  automatic fallback to the software renderer on context loss
+- **Settings panel** — shell, startup directory, font family, opacity, blur, scrollback, GPU
 - **Glass UI** — borderless transparent window, acrylic/mica, custom titlebar
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Frontend (React 19 + xterm.js, canvas renderer) │
+│  Frontend (React 19 + xterm.js, WebGL2 GPU renderer) │
 │  App.tsx ── tabs state, shortcuts, settings      │
 │  Terminal.tsx ── one xterm instance per tab       │
 │  TabBar / TitleBar / SettingsPanel                │
@@ -169,7 +171,7 @@ CI produces the signed-by-nobody (SmartScreen will prompt on first run):
 
 - [x] Single-tab MVP · lifecycle hardening · tabs · titles/restart/clipboard/zoom
 - [x] Find bar · settings · launch smoke test
+- [x] GPU (WebGL2) renderer with automatic DOM-renderer fallback
 - [ ] Split panes (Kitty flagship)
-- [ ] WebGL renderer toggle (removed: mis-measured fallback fonts on fractional DPR)
 - [ ] Backend config file (today: localStorage only)
 - [ ] Auto-updater, single-instance, tab drag-reorder

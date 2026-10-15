@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
 
@@ -125,6 +126,8 @@ export interface TerminalProps {
   cursorStyle: 'block' | 'bar' | 'underline';
   /** Applied live. */
   cursorBlink: boolean;
+  /** GPU (WebGL2) renderer, like kitty/Ghostty. Applied live. */
+  gpu: boolean;
   /** Applied at construction (new tabs). */
   scrollback: number;
   /** Backend shell for spawn_pty (new sessions, incl. restart). */
@@ -144,6 +147,7 @@ export function Terminal({
   lineHeight,
   cursorStyle,
   cursorBlink,
+  gpu,
   scrollback,
   shell,
   cwd,
@@ -158,6 +162,8 @@ export function Terminal({
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
+  const gpuAddonRef = useRef<WebglAddon | null>(null);
+  const applyGpuRef = useRef<((on: boolean) => void) | null>(null);
   const restartRef = useRef<(() => void) | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -203,13 +209,43 @@ export function Terminal({
     const searchAddon = new SearchAddon();
     term.loadAddon(searchAddon);
     searchRef.current = searchAddon;
-    // Canvas renderer only: WebGL mis-measures cells with fallback font
-    // stacks on fractional DPR (ghost/duplicated glyphs), so it stays
-    // out until it can be enabled deliberately via settings.
 
     term.open(container);
     termRef.current = term;
     fitRef.current = fitAddon;
+
+    // GPU renderer (WebGL2, same model as kitty/Ghostty): glyphs are
+    // rasterized once into a texture atlas and drawn by the GPU. If the
+    // context is lost (driver reset, OOM, sleep) or WebGL2 is missing,
+    // xterm.js falls back to the DOM renderer automatically.
+    const applyGpu = (on: boolean) => {
+      if (on) {
+        if (gpuAddonRef.current) return;
+        try {
+          const addon = new WebglAddon();
+          addon.onContextLoss(() => {
+            console.warn('[atlas] WebGL context lost — falling back to DOM renderer');
+            try {
+              addon.dispose();
+            } catch {}
+            if (gpuAddonRef.current === addon) gpuAddonRef.current = null;
+          });
+          term.loadAddon(addon);
+          gpuAddonRef.current = addon;
+        } catch (err) {
+          console.warn('[atlas] WebGL renderer unavailable — using DOM renderer', err);
+          gpuAddonRef.current = null;
+        }
+      } else if (gpuAddonRef.current) {
+        const addon = gpuAddonRef.current;
+        gpuAddonRef.current = null;
+        try {
+          addon.dispose();
+        } catch {}
+      }
+    };
+    applyGpuRef.current = applyGpu;
+    if (gpu) applyGpu(true);
     // Only fit when visible: hidden tabs report 0 size and would spawn
     // a tiny PTY. Inactive tabs spawn at xterm defaults (80x24) and
     // get a proper fit when activated (see active effect below).
@@ -468,6 +504,8 @@ export function Terminal({
       termRef.current = null;
       fitRef.current = null;
       searchRef.current = null;
+      applyGpuRef.current = null;
+      gpuAddonRef.current = null;
       term.dispose();
     };
     // Mount-once: session/restart managed via refs. active/font handled below.
@@ -503,6 +541,19 @@ export function Terminal({
     });
     return () => cancelAnimationFrame(raf);
   }, [fontFamily, fontSize, lineHeight, cursorStyle, cursorBlink]);
+
+  // GPU renderer live toggle (Settings → Appearance).
+  useEffect(() => {
+    applyGpuRef.current?.(gpu);
+  }, [gpu]);
+
+  // Font metrics changed: invalidate the GPU glyph texture atlas so no
+  // stale glyphs survive (the classic WebGL "ghost glyph" artifact).
+  useEffect(() => {
+    try {
+      gpuAddonRef.current?.clearTextureAtlas();
+    } catch {}
+  }, [fontFamily, fontSize]);
 
   // Refit + focus when this tab becomes visible. Mounted-hidden tabs have
   // 0-size containers, so the real sizing happens here. fit() triggers

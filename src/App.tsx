@@ -219,6 +219,7 @@ function App() {
                 lineHeight={settings.lineHeight}
                 cursorStyle={settings.cursorStyle}
                 cursorBlink={settings.cursorBlink}
+                gpu={settings.gpu}
                 scrollback={settings.scrollback}
                 shell={settings.shell}
                 cwd={settings.cwd}

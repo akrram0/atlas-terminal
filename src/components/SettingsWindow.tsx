@@ -187,6 +187,21 @@ export function SettingsWindow() {
               />
               <span className="settings-label">Blinking cursor</span>
             </label>
+            <label className="sw-check-row">
+              <input
+                type="checkbox"
+                className="sw-check"
+                checked={settings.gpu}
+                onChange={(e) => set('gpu', e.target.checked)}
+              />
+              <span className="settings-label">GPU acceleration (WebGL)</span>
+            </label>
+            <div className="settings-row">
+              <span className="settings-hint">
+                Hardware glyph rendering — smoother at high scroll speed. Falls back
+                to the software renderer automatically.
+              </span>
+            </div>
           </>
         )}
 
