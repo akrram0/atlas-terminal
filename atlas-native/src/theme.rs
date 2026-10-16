@@ -1,7 +1,7 @@
-//! Atlas cream theme — warm, paper-like palette (one source of truth).
+//! Atlas theme — one source of truth for every colour in the app.
 //!
-//! All colors live here: chrome, ANSI palette, cursor. Nothing else in the
-//! app hardcodes a color.
+//! The default is the dark terminal palette (near-black terminal, charcoal
+//! chrome); a warm cream variant mirrors it for the light switch.
 
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
 use gpui::{rgb, rgba, Rgba};
@@ -14,18 +14,28 @@ pub struct Theme {
     pub fg: Rgba,
     /// Cursor color.
     pub cursor: Rgba,
-    /// Titlebar / chrome background (slightly darker than the terminal).
-    pub chrome_bg: Rgba,
+    /// Chrome surfaces: titlebar, sidebar, pane header, status bar.
+    pub panel_bg: Rgba,
+    /// Floating surfaces: search pill, new-tab button, settings popover.
+    pub elevated_bg: Rgba,
+    /// Hairline border for floating surfaces.
+    pub elevated_border: Rgba,
     /// Chrome text (inactive).
     pub chrome_fg: Rgba,
     /// Chrome text (active / hovered).
     pub chrome_fg_active: Rgba,
+    /// Faint text: section labels, placeholders, keyboard chips.
+    pub faint_fg: Rgba,
     /// 1px separators.
     pub hairline: Rgba,
-    /// Active tab pill background.
-    pub tab_active_bg: Rgba,
-    /// Tab hover background.
-    pub tab_hover_bg: Rgba,
+    /// Hovered list-item background.
+    pub card_hover: Rgba,
+    /// Active / selected list-item background.
+    pub card_active: Rgba,
+    /// Brand accent (active indicators).
+    pub accent: Rgba,
+    /// Success green (connected / running dots).
+    pub good: Rgba,
     /// ANSI palette 0..16.
     pub ansi: [Rgba; 16],
 }
@@ -36,12 +46,17 @@ impl Theme {
             bg: rgb(0xFAF3E8),
             fg: rgb(0x3E3833),
             cursor: rgb(0x9A4A3A),
-            chrome_bg: rgb(0xF4ECDD),
+            panel_bg: rgb(0xF4ECDD),
+            elevated_bg: rgb(0xFBF7EF),
+            elevated_border: rgba(0x3E38331F),
             chrome_fg: rgb(0x9A8F80),
             chrome_fg_active: rgb(0x3E3833),
+            faint_fg: rgb(0xB3A896),
             hairline: rgba(0x3E383314),
-            tab_active_bg: rgba(0xFFFFFF99),
-            tab_hover_bg: rgba(0x3E383310),
+            card_hover: rgba(0x3E38330D),
+            card_active: rgba(0xFFFFFFB3),
+            accent: rgb(0x2F6FED),
+            good: rgb(0x1A7F37),
             ansi: [
                 rgb(0x4A4440), // 0 black
                 rgb(0xC14B3F), // 1 red
@@ -63,36 +78,40 @@ impl Theme {
         }
     }
 
-    /// Warm dark palette: same brand DNA, inverted. Cursor moves to the
-    /// brighter persimmon so it stays visible on charcoal.
+    /// Default palette: black terminal on charcoal chrome, GitHub-dark ANSI.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x1B1815),
-            fg: rgb(0xE8E0D3),
-            cursor: rgb(0xD97757),
-            chrome_bg: rgb(0x241F1B),
-            chrome_fg: rgb(0x8F8574),
-            chrome_fg_active: rgb(0xEDE6DA),
-            hairline: rgba(0xEDE6DA1A),
-            tab_active_bg: rgba(0xFFFFFF14),
-            tab_hover_bg: rgba(0xFFFFFF0D),
+            bg: rgb(0x000000),
+            fg: rgb(0xC9D1D9),
+            cursor: rgb(0xE6E6E6),
+            panel_bg: rgb(0x16161B),
+            elevated_bg: rgb(0x232329),
+            elevated_border: rgb(0x2E2E36),
+            chrome_fg: rgb(0x8B8B94),
+            chrome_fg_active: rgb(0xE8E8EC),
+            faint_fg: rgb(0x6E6E78),
+            hairline: rgba(0xFFFFFF12),
+            card_hover: rgb(0x1F1F26),
+            card_active: rgb(0x26262D),
+            accent: rgb(0x58A6FF),
+            good: rgb(0x3FB950),
             ansi: [
-                rgb(0x3A3531), // 0 black
-                rgb(0xD96A57), // 1 red
-                rgb(0x8FBF6A), // 2 green
-                rgb(0xD8A94F), // 3 yellow
-                rgb(0x6FA0DC), // 4 blue
-                rgb(0xC08AD1), // 5 magenta
-                rgb(0x58B2B2), // 6 cyan
-                rgb(0xC9BFB0), // 7 white
-                rgb(0x8A8172), // 8 bright black
-                rgb(0xF08372), // 9 bright red
-                rgb(0xA6D37F), // 10 bright green
-                rgb(0xF3C96B), // 11 bright yellow
-                rgb(0x85B6EE), // 12 bright blue
-                rgb(0xD29FE0), // 13 bright magenta
-                rgb(0x74CCCC), // 14 bright cyan
-                rgb(0xF6F1E8), // 15 bright white
+                rgb(0x484F58), // 0 black
+                rgb(0xFF7B72), // 1 red
+                rgb(0x3FB950), // 2 green
+                rgb(0xD29922), // 3 yellow
+                rgb(0x58A6FF), // 4 blue
+                rgb(0xBC8CFF), // 5 magenta
+                rgb(0x39C5CF), // 6 cyan
+                rgb(0xB1BAC4), // 7 white
+                rgb(0x6E7681), // 8 bright black
+                rgb(0xFFA198), // 9 bright red
+                rgb(0x56D364), // 10 bright green
+                rgb(0xE3B341), // 11 bright yellow
+                rgb(0x79C0FF), // 12 bright blue
+                rgb(0xD2A8FF), // 13 bright magenta
+                rgb(0x56D4DD), // 14 bright cyan
+                rgb(0xF0F6FC), // 15 bright white
             ],
         }
     }

@@ -1,9 +1,11 @@
 //! AtlasView — the whole UI, drawn by Rust.
 //!
-//! Structure: frameless window -> titlebar (drag region + tab pills + window
-//! controls) -> terminal area. The terminal itself is a custom gpui `Element`
-//! that walks the alacritty grid and paints cell backgrounds, text runs and
-//! the cursor directly on the GPU canvas.
+//! Structure: frameless window -> titlebar (brand + search pill + window
+//! controls, with the drag band split into the two gaps around the search)
+//! -> body: session sidebar (Tabs · LOCAL items · New tab + gear) beside the
+//! main column (breadcrumb header · terminal · status bar). The terminal
+//! itself is a custom gpui `Element` that walks the alacritty grid and paints
+//! cell backgrounds, text runs and the cursor directly on the GPU canvas.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -69,9 +71,9 @@ impl AtlasView {
             next_id: 1,
             next_epoch: 1,
             focus,
-            theme: Theme::cream(),
+            theme: Theme::dark(),
             font: terminal_font(),
-            dark: false,
+            dark: true,
             settings_open: false,
             font_size: FONT_SIZE,
             cursor_style: None,
@@ -362,157 +364,88 @@ impl Render for AtlasView {
         let theme = self.theme.clone();
 
         // ---- Titlebar ------------------------------------------------
+        // Brand · drag gap · centred search pill · drag gap · window
+        // controls. The two gaps report themselves as caption slots 0/1 so
+        // presses there run the native move loop.
+        let tb = theme.clone();
         let mut bar = div()
             .flex()
             .flex_row()
             .items_center()
             .w(relative(1.0))
-            .h(px(46.0))
+            .h(px(36.0))
             .pl(px(12.0))
-            .gap(px(8.0))
-            .bg(theme.chrome_bg)
+            .bg(tb.panel_bg)
             .border_b_1()
-            .border_color(theme.hairline);
+            .border_color(tb.hairline);
 
-        for ix in 0..self.tabs.len() {
-            let active = ix == self.active;
-            let title = short_title(&self.tabs[ix].title);
-            let tab_theme = theme.clone();
+        bar = bar.child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .w(px(18.0))
+                        .h(px(18.0))
+                        .rounded(px(5.0))
+                        .bg(rgb(0x2F6FED))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_color(rgb(0xFFFFFF))
+                        .child(icon_glyph(ICON_TERMINAL, 9.5)),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(tb.chrome_fg_active)
+                        .child("Atlas Terminal"),
+                ),
+        );
 
-            // Wrapper carries the pill styling only — it has no click handler,
-            // so the close button (a sibling of the title, not a child of a
-            // clickable) can never double-fire with tab activation.
-            let mut tab = div()
-                .id(ElementId::named_usize("tab", ix))
+        bar = bar.child(caption_spacer(0));
+
+        let search_theme = theme.clone();
+        bar = bar.child(
+            div()
+                .id(ElementId::named_usize("search-pill", 0))
+                .w(px(320.0))
+                .h(px(24.0))
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(7.0))
-                .h(px(30.0))
-                .px(px(14.0))
-                .rounded_full()
-                .text_size(px(13.0))
-                .text_color(if active {
-                    tab_theme.chrome_fg_active
-                } else {
-                    tab_theme.chrome_fg
-                });
-
-            if active {
-                let bg = tab_theme.tab_active_bg;
-                let border = tab_theme.hairline;
-                tab = tab.bg(bg).border_1().border_color(border);
-            } else {
-                let hover = tab_theme.tab_hover_bg;
-                tab = tab.hover(move |style| style.bg(hover));
-            }
-
-            tab = tab.child(
-                div()
-                    .id(ElementId::named_usize("tab-title", ix))
-                    .child(title)
-                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                        view.active = ix;
-                        window.focus(&view.focus);
-                        cx.notify();
-                    })),
-            );
-
-            let close_theme = theme.clone();
-            let close_idle = close_theme.chrome_fg;
-            let close_hot = close_theme.chrome_fg_active;
-            let close_hover_bg = close_theme.tab_hover_bg;
-            tab = tab.child(
-                div()
-                    .id(ElementId::named_usize("tab-close", ix))
-                    .w(px(16.0))
-                    .h(px(16.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(4.0))
-                    .text_color(close_idle)
-                    .hover(move |style| style.bg(close_hover_bg).text_color(close_hot))
-                    .child(icon_glyph(ICON_X, 12.0))
-                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                        view.close_tab(ix, cx);
-                        window.focus(&view.focus);
-                    })),
-            );
-
-            bar = bar.child(tab);
-        }
-
-        let plus_theme = theme.clone();
-        let plus_hover = plus_theme.tab_hover_bg;
-        let plus_idle = plus_theme.chrome_fg;
-        let plus_hot = plus_theme.chrome_fg_active;
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("new-tab", 0))
-                .h(px(30.0))
-                .w(px(32.0))
-                .flex()
-                .items_center()
-                .justify_center()
+                .px(px(9.0))
                 .rounded(px(6.0))
-                .text_color(plus_idle)
-                .hover(move |style| style.bg(plus_hover).text_color(plus_hot))
-                .child(icon_glyph(ICON_PLUS, 14.0))
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.new_tab(cx);
-                    window.focus(&view.focus);
-                })),
-        );
-
-        // Spacer: the only drag region, so tabs and buttons stay clickable.
-        // Its bounds are reported to the window subclass below, which turns
-        // presses here into a native move loop via HTCAPTION.
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("titlebar-drag", 0))
-                .flex_1()
-                .h(px(46.0))
-                .relative()
+                .bg(search_theme.elevated_bg)
+                .border_1()
+                .border_color(search_theme.elevated_border)
+                .text_color(search_theme.faint_fg)
+                .child(icon_glyph(ICON_SEARCH, 11.0))
                 .child(
-                    canvas(
-                        move |_bounds, _window, _cx| (),
-                        move |bounds, _, _window, _cx| {
-                            crate::rounded_corners::set_caption_rect(
-                                f32::from(bounds.origin.x),
-                                f32::from(bounds.origin.y),
-                                f32::from(bounds.size.width),
-                                f32::from(bounds.size.height),
-                            );
-                        },
-                    )
-                    .absolute()
-                    .inset_0(),
+                    div()
+                        .flex_1()
+                        .text_size(px(11.5))
+                        .truncate()
+                        .child("Search commands, tabs and history"),
+                )
+                .child(
+                    div()
+                        .h(px(16.0))
+                        .px(px(6.0))
+                        .flex()
+                        .items_center()
+                        .rounded(px(4.0))
+                        .bg(search_theme.elevated_border)
+                        .text_size(px(10.0))
+                        .text_color(search_theme.faint_fg)
+                        .child("Ctrl Shift P"),
                 ),
         );
 
-        // Settings gear, grouped with the window controls.
-        let gear_theme = theme.clone();
-        let gear_hover = gear_theme.tab_hover_bg;
-        let gear_idle = gear_theme.chrome_fg;
-        let gear_hot = gear_theme.chrome_fg_active;
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("settings-toggle", 0))
-                .w(px(36.0))
-                .h(px(30.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .text_color(gear_idle)
-                .hover(move |style| style.bg(gear_hover).text_color(gear_hot))
-                .child(icon_glyph(ICON_GEAR, 15.0))
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.toggle_settings(cx);
-                    window.focus(&view.focus);
-                })),
-        );
+        bar = bar.child(caption_spacer(1));
 
         for (index, (glyph, is_close)) in [
             (ICON_MIN, false),
@@ -526,7 +459,7 @@ impl Render for AtlasView {
             let hover_bg = if is_close {
                 rgb(0xC42B1C)
             } else {
-                button_theme.tab_hover_bg
+                button_theme.card_hover
             };
             let hot = if is_close {
                 rgb(0xFFFFFF)
@@ -538,7 +471,7 @@ impl Render for AtlasView {
                 div()
                     .id(ElementId::named_usize("window-control", index))
                     .w(px(46.0))
-                    .h(px(46.0))
+                    .h(px(36.0))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -563,8 +496,9 @@ impl Render for AtlasView {
                 .flex_col()
                 .flex_1()
                 .w(relative(1.0))
-                .px(px(16.0))
-                .py(px(12.0))
+                .bg(theme.bg)
+                .px(px(12.0))
+                .py(px(10.0))
                 .track_focus(&self.focus)
                 .on_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
                     let keystroke = event.keystroke.clone();
@@ -618,52 +552,392 @@ impl Render for AtlasView {
             area.into_any_element()
         };
 
+        // ---- Sidebar --------------------------------------------------
+        // Tabs list on the left: item per session + New tab / settings row.
+        let mut sidebar = div()
+            .flex()
+            .flex_col()
+            .w(px(222.0))
+            .h(relative(1.0))
+            .bg(theme.panel_bg)
+            .border_r_1()
+            .border_color(theme.hairline);
+
+        sidebar = sidebar.child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .h(px(38.0))
+                .pl(px(14.0))
+                .pr(px(8.0))
+                .gap(px(2.0))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_size(px(13.0))
+                        .text_color(theme.chrome_fg_active)
+                        .child("Tabs"),
+                )
+                .child(chrome_icon_button(
+                    ElementId::named_usize("sidebar-action", 0),
+                    ICON_COLUMNS,
+                    13.0,
+                    24.0,
+                    24.0,
+                    6.0,
+                    &theme,
+                ))
+                .child(chrome_icon_button(
+                    ElementId::named_usize("sidebar-action", 1),
+                    ICON_PANEL,
+                    13.0,
+                    24.0,
+                    24.0,
+                    6.0,
+                    &theme,
+                )),
+        );
+
+        sidebar = sidebar.child(
+            div()
+                .px(px(14.0))
+                .pt(px(6.0))
+                .pb(px(4.0))
+                .text_size(px(10.0))
+                .text_color(theme.faint_fg)
+                .child("LOCAL"),
+        );
+
+        let mut list = div()
+            .id(ElementId::named_usize("sidebar-list", 0))
+            .flex()
+            .flex_col()
+            .flex_1()
+            .overflow_y_scroll();
+
+        for ix in 0..self.tabs.len() {
+            let active = ix == self.active;
+            let tab = &self.tabs[ix];
+
+            // Label: leaf of the shell-reported title; subtitle: the shell
+            // itself, plus a dead-session note.
+            let (_, leaf) = breadcrumbs(&tab.title);
+            let shell = shell_label(&tab.session.borrow().shell).to_string();
+            let subtitle = if tab.exited {
+                format!("{shell} · exited")
+            } else {
+                shell
+            };
+            let (icon_bg, icon) = session_icon(&tab.title);
+            let show_dot = !active && !tab.exited;
+
+            let item_theme = theme.clone();
+            let mut item = div()
+                .id(ElementId::named_usize("sidebar-tab", ix))
+                .relative()
+                .flex()
+                .flex_row()
+                .items_center()
+                .flex_shrink_0()
+                .mx(px(8.0))
+                .mb(px(4.0))
+                .h(px(44.0))
+                .pl(px(12.0))
+                .pr(px(8.0))
+                .rounded(px(8.0));
+
+            if active {
+                item = item.bg(item_theme.card_active);
+            } else {
+                let hover = item_theme.card_hover;
+                item = item.hover(move |style| style.bg(hover));
+            }
+
+            // Active marker: accent bar on the item's left edge.
+            if active {
+                let accent = item_theme.accent;
+                item = item.child(
+                    div()
+                        .absolute()
+                        .left(px(0.0))
+                        .top(px(9.0))
+                        .bottom(px(9.0))
+                        .w(px(3.0))
+                        .rounded_full()
+                        .bg(accent),
+                );
+            }
+
+            // Icon tile with an optional running dot on its top-left corner.
+            let mut tile = div()
+                .relative()
+                .w(px(28.0))
+                .h(px(28.0))
+                .rounded(px(7.0))
+                .bg(icon_bg)
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_color(rgb(0xFFFFFF))
+                .child(icon_glyph(icon, 13.0));
+            if show_dot {
+                let good = item_theme.good;
+                let ring = item_theme.panel_bg;
+                tile = tile.child(
+                    div()
+                        .absolute()
+                        .left(px(-3.0))
+                        .top(px(-3.0))
+                        .w(px(8.0))
+                        .h(px(8.0))
+                        .rounded_full()
+                        .bg(good)
+                        .border_2()
+                        .border_color(ring),
+                );
+            }
+
+            // Clicking the tile/title area activates the tab; the close
+            // button is a sibling so it can never double-fire activation.
+            item = item.child(
+                div()
+                    .id(ElementId::named_usize("sidebar-tab-main", ix))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(10.0))
+                    .flex_1()
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        view.active = ix;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    }))
+                    .child(tile)
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .flex_col()
+                            .gap(px(1.0))
+                            .child(
+                                div()
+                                    .text_size(px(12.5))
+                                    .text_color(item_theme.chrome_fg_active)
+                                    .truncate()
+                                    .child(leaf),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .text_color(item_theme.chrome_fg)
+                                    .truncate()
+                                    .child(subtitle),
+                            ),
+                    ),
+            );
+
+            // Close affordance on the active item (same as the mock).
+            if active {
+                let close_hover = item_theme.card_hover;
+                let close_hot = item_theme.chrome_fg_active;
+                item = item.child(
+                    div()
+                        .id(ElementId::named_usize("sidebar-close", ix))
+                        .w(px(18.0))
+                        .h(px(18.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(4.0))
+                        .text_color(item_theme.chrome_fg)
+                        .hover(move |style| style.bg(close_hover).text_color(close_hot))
+                        .child(icon_glyph(ICON_X, 11.0))
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            view.close_tab(ix, cx);
+                            window.focus(&view.focus);
+                        })),
+                );
+            }
+
+            list = list.child(item);
+        }
+
+        sidebar = sidebar.child(list);
+
+        // Bottom bar: New tab + settings gear (popover anchor).
+        let new_tab_theme = theme.clone();
+        let new_hover = new_tab_theme.card_active;
+        let gear_theme = theme.clone();
+        let gear_hover = gear_theme.card_hover;
+        let gear_idle = gear_theme.chrome_fg;
+        let gear_hot = gear_theme.chrome_fg_active;
+        sidebar = sidebar.child(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .p(px(10.0))
+                .child(
+                    div()
+                        .id(ElementId::named_usize("new-tab", 0))
+                        .flex_1()
+                        .h(px(32.0))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_center()
+                        .gap(px(7.0))
+                        .rounded(px(8.0))
+                        .bg(new_tab_theme.card_hover)
+                        .border_1()
+                        .border_color(new_tab_theme.elevated_border)
+                        .text_color(new_tab_theme.chrome_fg_active)
+                        .hover(move |style| style.bg(new_hover))
+                        .child(icon_glyph(ICON_PLUS, 11.0))
+                        .child(div().text_size(px(12.0)).child("New tab"))
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            view.new_tab(cx);
+                            window.focus(&view.focus);
+                        })),
+                )
+                .child(
+                    div()
+                        .id(ElementId::named_usize("settings-toggle", 0))
+                        .w(px(32.0))
+                        .h(px(32.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(8.0))
+                        .text_color(gear_idle)
+                        .hover(move |style| style.bg(gear_hover).text_color(gear_hot))
+                        .child(icon_glyph(ICON_GEAR, 14.0))
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            view.toggle_settings(cx);
+                            window.focus(&view.focus);
+                        })),
+                ),
+        );
+
         // ---- Pane header ---------------------------------------------
-        // Thin row under the titlebar: active tab title + close affordance.
-        // (Split actions stay out until real splits exist.)
+        // Breadcrumb (folder · parent › leaf) + view actions.
         let header_title = self
             .active_tab()
-            .map(|tab| short_title(&tab.title))
+            .map(|tab| tab.title.clone())
             .unwrap_or_else(|| "PowerShell".to_string());
-        let header_hover = theme.tab_hover_bg;
-        let header_idle = theme.chrome_fg;
-        let header_hot = theme.chrome_fg_active;
-        let header = div()
+        let (crumb_a, crumb_b) = breadcrumbs(&header_title);
+        let mut header = div()
             .flex()
             .flex_row()
             .items_center()
+            .gap(px(7.0))
             .w(relative(1.0))
-            .h(px(34.0))
-            .px(px(14.0))
-            .gap(px(8.0))
-            .bg(theme.bg)
+            .h(px(38.0))
+            .pl(px(14.0))
+            .pr(px(8.0))
+            .bg(theme.panel_bg)
             .border_b_1()
             .border_color(theme.hairline)
+            .text_color(theme.chrome_fg)
+            .child(icon_glyph(ICON_FOLDER, 11.5));
+
+        if let Some(parent) = crumb_a {
+            header = header
+                .child(div().text_size(px(12.5)).truncate().child(parent))
+                .child(
+                    div()
+                        .text_color(theme.faint_fg)
+                        .child(icon_glyph(ICON_CHEVRON, 9.0)),
+                );
+        }
+        header = header
             .child(
                 div()
-                    .flex_1()
                     .text_size(px(12.5))
-                    .text_color(theme.chrome_fg)
-                    .child(header_title),
+                    .text_color(theme.chrome_fg_active)
+                    .truncate()
+                    .child(crumb_b),
             )
+            .child(div().flex_1());
+        for (index, glyph) in [ICON_SEARCH, ICON_PEN, ICON_ELLIPSIS].into_iter().enumerate() {
+            header = header.child(chrome_icon_button(
+                ElementId::named_usize("pane-action", index),
+                glyph,
+                12.5,
+                24.0,
+                24.0,
+                6.0,
+                &theme,
+            ));
+        }
+
+        // ---- Status bar ----------------------------------------------
+        let (cols, rows, shell, exited) = match self.active_tab() {
+            Some(tab) => {
+                let session = tab.session.borrow();
+                (
+                    session.cols,
+                    session.rows,
+                    shell_label(&session.shell),
+                    tab.exited,
+                )
+            }
+            None => (0, 0, "PowerShell", false),
+        };
+        let status_title = self
+            .active_tab()
+            .map(|tab| short_title(&tab.title))
+            .unwrap_or_else(|| "PowerShell".to_string());
+        let (state_label, state_color) = if exited {
+            ("Exited", theme.ansi[1])
+        } else {
+            ("Connected", theme.good)
+        };
+        let status = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(8.0))
+            .h(px(28.0))
+            .pl(px(14.0))
+            .pr(px(14.0))
+            .bg(theme.panel_bg)
+            .border_t_1()
+            .border_color(theme.hairline)
+            .text_size(px(11.0))
+            .text_color(theme.chrome_fg)
+            .child(icon_glyph(ICON_FOLDER, 10.0))
             .child(
                 div()
-                    .id(ElementId::named_usize("pane-close", 0))
-                    .w(px(18.0))
-                    .h(px(18.0))
+                    .text_color(theme.chrome_fg_active)
+                    .child(status_title),
+            )
+            .child(div().w(px(1.0)).h(px(12.0)).bg(theme.hairline))
+            .child(div().child(shell))
+            .child(div().flex_1())
+            .child(div().child(format!("{cols} × {rows}")))
+            .child(div().child("UTF-8"))
+            .child(
+                div()
                     .flex()
+                    .flex_row()
                     .items_center()
-                    .justify_center()
-                    .rounded(px(4.0))
-                    .text_color(header_idle)
-                    .hover(move |style| style.bg(header_hover).text_color(header_hot))
-                    .child(icon_glyph(ICON_X, 12.0))
-                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                        let index = view.active;
-                        view.close_tab(index, cx);
-                        window.focus(&view.focus);
-                    })),
+                    .gap(px(5.0))
+                    .text_color(state_color)
+                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(state_color))
+                    .child(div().child(state_label)),
             );
+
+        let main_col = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .h(relative(1.0))
+            .child(header)
+            .child(body)
+            .child(status);
 
         let mut root = div()
             .relative()
@@ -671,11 +945,18 @@ impl Render for AtlasView {
             .flex_col()
             .w(relative(1.0))
             .h(relative(1.0))
-            .bg(theme.bg)
+            .bg(theme.panel_bg)
             .text_color(theme.fg)
             .child(bar)
-            .child(header)
-            .child(body);
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_1()
+                    .w(relative(1.0))
+                    .child(sidebar)
+                    .child(main_col),
+            );
 
         // Settings popover floats above everything; paint it last.
         if self.settings_open {
@@ -1089,6 +1370,16 @@ const ICON_CLOSE: &str = "\u{F2D3}"; // nf-fa-window_close
 const ICON_X: &str = "\u{F00D}"; // nf-fa-xmark
 const ICON_PLUS: &str = "\u{F067}"; // nf-fa-plus
 const ICON_GEAR: &str = "\u{F013}"; // nf-fa-gear
+const ICON_SEARCH: &str = "\u{F002}"; // nf-fa-magnifying_glass
+const ICON_FOLDER: &str = "\u{F07B}"; // nf-fa-folder
+const ICON_CHEVRON: &str = "\u{F105}"; // nf-fa-angle_right
+const ICON_PEN: &str = "\u{F044}"; // nf-fa-pen
+const ICON_ELLIPSIS: &str = "\u{F141}"; // nf-fa-ellipsis
+const ICON_TERMINAL: &str = "\u{F120}"; // nf-fa-terminal
+const ICON_CUBE: &str = "\u{F1B2}"; // nf-fa-cube
+const ICON_CLOUD: &str = "\u{F0C2}"; // nf-fa-cloud
+const ICON_COLUMNS: &str = "\u{F0DB}"; // nf-fa-table_columns
+const ICON_PANEL: &str = "\u{F022}"; // nf-fa-rectangle_list
 
 /// One Nerd Font glyph, centred in its parent; the parent decides the color.
 fn icon_glyph(glyph: &'static str, size: f32) -> impl IntoElement {
@@ -1099,6 +1390,114 @@ fn icon_glyph(glyph: &'static str, size: f32) -> impl IntoElement {
         .font(icon_font())
         .text_size(px(size))
         .child(glyph)
+}
+
+/// A flexible spacer in the titlebar that reports its painted bounds to the
+/// window subclass as drag-band slot `slot` (see `rounded_corners`).
+fn caption_spacer(slot: usize) -> impl IntoElement {
+    div()
+        .id(ElementId::named_usize("caption-spacer", slot))
+        .flex_1()
+        .h(px(36.0))
+        .relative()
+        .child(
+            canvas(
+                move |_bounds, _window, _cx| (),
+                move |bounds, _, _window, _cx| {
+                    crate::rounded_corners::set_caption_rect(
+                        slot,
+                        f32::from(bounds.origin.x),
+                        f32::from(bounds.origin.y),
+                        f32::from(bounds.size.width),
+                        f32::from(bounds.size.height),
+                    );
+                },
+            )
+            .absolute()
+            .inset_0(),
+        )
+}
+
+/// Small decorative icon button (sidebar header, pane header): quiet by
+/// default, brightens on hover, never steals focus from the terminal.
+fn chrome_icon_button(
+    id: ElementId,
+    glyph: &'static str,
+    glyph_size: f32,
+    w: f32,
+    h: f32,
+    radius: f32,
+    theme: &Theme,
+) -> AnyElement {
+    let hover_bg = theme.card_hover;
+    let idle = theme.chrome_fg;
+    let hot = theme.chrome_fg_active;
+    div()
+        .id(id)
+        .w(px(w))
+        .h(px(h))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(radius))
+        .text_color(idle)
+        .hover(move |style| style.bg(hover_bg).text_color(hot))
+        .child(icon_glyph(glyph, glyph_size))
+        .into_any_element()
+}
+
+/// Split a shell-reported title into breadcrumb parts (parent, leaf). A bare
+/// drive root like `C:` is dropped; single-component titles become the leaf.
+fn breadcrumbs(raw: &str) -> (Option<String>, String) {
+    let mut parts: Vec<&str> = raw
+        .trim()
+        .split(['\\', '/'])
+        .filter(|part| !part.is_empty())
+        .collect();
+    parts.retain(|part| !(part.len() == 2 && part.ends_with(':')));
+    let leaf = |part: &str| -> String {
+        let part = part.trim_end_matches(".exe");
+        let mut out: String = part.chars().take(22).collect();
+        if part.chars().count() > 22 {
+            out.push('…');
+        }
+        out
+    };
+    match parts.len() {
+        0 => (None, "PowerShell".to_string()),
+        1 => (None, leaf(parts[0])),
+        n => (Some(leaf(parts[n - 2])), leaf(parts[n - 1])),
+    }
+}
+
+/// Icon tile for a session, keyed off its shell-reported title: PowerShell
+/// blue terminal, WSL/Ubuntu orange cube, remote indigo cloud, dev green.
+fn session_icon(title: &str) -> (Rgba, &'static str) {
+    let lower = title.to_ascii_lowercase();
+    if lower.contains("ubuntu") || lower.contains("wsl") {
+        (rgb(0xE95420), ICON_CUBE)
+    } else if lower.contains("ssh") || lower.contains("edge") || lower.contains("remote") {
+        (rgb(0x6E5BE8), ICON_CLOUD)
+    } else if lower.contains("dev")
+        || lower.contains("server")
+        || lower.contains("vite")
+        || lower.contains("uvicorn")
+        || lower.contains("node")
+        || lower.contains("npm")
+    {
+        (rgb(0x2EA043), ICON_TERMINAL)
+    } else {
+        (rgb(0x2F6FED), ICON_TERMINAL)
+    }
+}
+
+/// Friendly label for the shell executable that was actually spawned.
+fn shell_label(shell: &str) -> &'static str {
+    if shell.eq_ignore_ascii_case("pwsh") {
+        "PowerShell 7"
+    } else {
+        "Windows PowerShell"
+    }
 }
 
 /// Terminal font: Consolas for the cell grid; emoji fonts as shaping
@@ -1133,7 +1532,7 @@ fn pill_button(
         a: 0.16,
         ..theme.chrome_fg_active
     };
-    let hover_bg = theme.tab_hover_bg;
+    let hover_bg = theme.card_active;
     let fg = if active {
         theme.chrome_fg_active
     } else {
@@ -1186,7 +1585,7 @@ fn settings_panel(
             .into_any_element()
     };
 
-    let close_hover = theme.tab_hover_bg;
+    let close_hover = theme.card_active;
     let close_hot = theme.chrome_fg_active;
     let close_button = div()
         .id(ElementId::named_usize("settings-close", 0))
@@ -1340,17 +1739,18 @@ fn settings_panel(
 
     div()
         .absolute()
-        .top(px(52.0))
-        .right(px(12.0))
-        .w(px(330.0))
+        .left(px(10.0))
+        .bottom(px(52.0))
+        .w(px(300.0))
         .flex()
         .flex_col()
         .gap(px(8.0))
         .p(px(14.0))
         .rounded(px(10.0))
-        .bg(theme.chrome_bg)
+        .bg(theme.elevated_bg)
         .border_1()
-        .border_color(theme.hairline)
+        .border_color(theme.elevated_border)
+        .shadow_lg()
         .child(header_row)
         .child(section("APPEARANCE"))
         .child(theme_row)

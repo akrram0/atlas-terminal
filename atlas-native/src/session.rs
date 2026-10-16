@@ -58,6 +58,9 @@ pub struct Session {
     pub parser: Processor,
     pub cols: usize,
     pub rows: usize,
+    /// Shell executable that was actually spawned ("pwsh" or
+    /// "powershell.exe"), for the sidebar/status-bar labels.
+    pub shell: String,
     writer: Option<Box<dyn Write + Send>>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
@@ -85,6 +88,7 @@ impl Session {
         let PtyPair { master, slave } = pair;
 
         let mut child: Option<Box<dyn Child + Send + Sync>> = None;
+        let mut shell_used = "powershell.exe";
         for shell in ["pwsh", "powershell.exe"] {
             let mut cmd = CommandBuilder::new(shell);
             cmd.arg("-NoLogo");
@@ -96,6 +100,7 @@ impl Session {
             match slave.spawn_command(cmd) {
                 Ok(spawned) => {
                     child = Some(spawned);
+                    shell_used = shell;
                     break;
                 }
                 Err(_) => continue,
@@ -149,6 +154,7 @@ impl Session {
                 parser,
                 cols,
                 rows,
+                shell: shell_used.to_string(),
                 writer: Some(writer),
                 master,
                 child,

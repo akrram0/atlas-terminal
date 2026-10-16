@@ -106,12 +106,13 @@ mod rounded_corners {
     /// Top-level window handle, published once `apply` finds it.
     static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
 
-    /// Titlebar caption band reported by the view on every paint, in logical
-    /// client pixels; stored as two f32 bit patterns (top-left, bottom-right).
-    static CAPTION_X0: AtomicI32 = AtomicI32::new(0);
-    static CAPTION_Y0: AtomicI32 = AtomicI32::new(0);
-    static CAPTION_X1: AtomicI32 = AtomicI32::new(0);
-    static CAPTION_Y1: AtomicI32 = AtomicI32::new(0);
+    /// Titlebar drag bands reported by the view on every paint, in logical
+    /// client pixels: 4 slots of two f32 bit patterns (top-left, bottom-right).
+    /// The bands are disjoint — the titlebar is split by its centred search
+    /// pill, so each side reports its own rect.
+    const CAPTION_SLOTS: usize = 4;
+    static CAPTION_RECTS: [AtomicI32; CAPTION_SLOTS * 4] =
+        [const { AtomicI32::new(0) }; CAPTION_SLOTS * 4];
 
     #[link(name = "user32")]
     unsafe extern "system" {
@@ -199,30 +200,43 @@ mod rounded_corners {
         })
     }
 
-    /// The view reports the titlebar drag band here on every paint (logical
-    /// client pixels). The hit test converts to physical pixels via the DPI.
-    pub fn set_caption_rect(x: f32, y: f32, w: f32, h: f32) {
-        CAPTION_X0.store(x.to_bits() as i32, Ordering::Relaxed);
-        CAPTION_Y0.store(y.to_bits() as i32, Ordering::Relaxed);
-        CAPTION_X1.store((x + w).to_bits() as i32, Ordering::Relaxed);
-        CAPTION_Y1.store((y + h).to_bits() as i32, Ordering::Relaxed);
+    /// The view reports its titlebar drag bands here on every paint (logical
+    /// client pixels); `slot` selects one of `CAPTION_SLOTS` disjoint rects.
+    /// A degenerate rect (zero size) marks the slot as unused.
+    pub fn set_caption_rect(slot: usize, x: f32, y: f32, w: f32, h: f32) {
+        if slot >= CAPTION_SLOTS {
+            return;
+        }
+        let base = slot * 4;
+        CAPTION_RECTS[base].store(x.to_bits() as i32, Ordering::Relaxed);
+        CAPTION_RECTS[base + 1].store(y.to_bits() as i32, Ordering::Relaxed);
+        CAPTION_RECTS[base + 2].store((x + w).to_bits() as i32, Ordering::Relaxed);
+        CAPTION_RECTS[base + 3].store((y + h).to_bits() as i32, Ordering::Relaxed);
     }
 
-    /// True when a physical client point lies inside the reported drag band.
+    /// True when a physical client point lies inside one of the reported drag
+    /// bands.
     fn caption_hit(hwnd: Hwnd, client_x: f32, client_y: f32) -> bool {
-        let x0 = f32::from_bits(CAPTION_X0.load(Ordering::Relaxed) as u32);
-        let y0 = f32::from_bits(CAPTION_Y0.load(Ordering::Relaxed) as u32);
-        let x1 = f32::from_bits(CAPTION_X1.load(Ordering::Relaxed) as u32);
-        let y1 = f32::from_bits(CAPTION_Y1.load(Ordering::Relaxed) as u32);
-        if x1 <= x0 || y1 <= y0 {
-            return false;
-        }
         // Safety: `hwnd` is a live top-level window.
         let scale = unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0;
-        client_x >= x0 * scale
-            && client_x < x1 * scale
-            && client_y >= y0 * scale
-            && client_y < y1 * scale
+        for slot in 0..CAPTION_SLOTS {
+            let base = slot * 4;
+            let x0 = f32::from_bits(CAPTION_RECTS[base].load(Ordering::Relaxed) as u32);
+            let y0 = f32::from_bits(CAPTION_RECTS[base + 1].load(Ordering::Relaxed) as u32);
+            let x1 = f32::from_bits(CAPTION_RECTS[base + 2].load(Ordering::Relaxed) as u32);
+            let y1 = f32::from_bits(CAPTION_RECTS[base + 3].load(Ordering::Relaxed) as u32);
+            if x1 <= x0 || y1 <= y0 {
+                continue;
+            }
+            if client_x >= x0 * scale
+                && client_x < x1 * scale
+                && client_y >= y0 * scale
+                && client_y < y1 * scale
+            {
+                return true;
+            }
+        }
+        false
     }
 
     /// Window controls from the titlebar buttons: 0 minimize, 1 toggle
