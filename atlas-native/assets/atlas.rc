@@ -1,0 +1,5 @@
+// gpui's Windows backend loads the window-class icon from the exe's icon
+// resource with id 1 (see gpui `load_icon()`), and the Windows shell shows the
+// lowest-id icon group for the exe itself — so embedding this one resource
+// covers the taskbar, Alt-Tab, Explorer and the exe properties dialog.
+1 ICON "atlas.ico"
