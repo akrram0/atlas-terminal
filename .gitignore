@@ -1,9 +1,5 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-src-tauri/target/
+# Rust build output
+target/
 
 # Environment
 .env
@@ -20,12 +16,5 @@ src-tauri/target/
 Thumbs.db
 Desktop.ini
 
-# Tauri generated
-src-tauri/gen/
-
 # Debug
 *.pdb
-
-# Lock files (keep pnpm-lock.yaml)
-package-lock.json
-yarn.lock
