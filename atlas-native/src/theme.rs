@@ -1,7 +1,8 @@
 //! Atlas theme — one source of truth for every colour in the app.
 //!
-//! The default is the dark terminal palette (near-black terminal, charcoal
-//! chrome); a warm cream variant mirrors it for the light switch.
+//! The default is "Warm Paper": a cream terminal sheet floating over a sand
+//! chrome, with an editorial warm ANSI palette. "Warm Dark" mirrors it with
+//! a matte-stone chrome and a warm charcoal sheet (Ctrl+Shift+T switches).
 
 use alacritty_terminal::vte::ansi::{Color, NamedColor};
 use gpui::{rgb, rgba, Rgba};
@@ -14,16 +15,12 @@ pub struct Theme {
     pub fg: Rgba,
     /// Cursor color.
     pub cursor: Rgba,
-    /// Chrome surfaces: titlebar, sidebar, pane header, status bar.
+    /// Chrome surfaces: the top bar.
     pub panel_bg: Rgba,
-    /// Floating surfaces: new-tab button, settings popover.
+    /// Floating surfaces: pill tabs, menus, the workspace button.
     pub elevated_bg: Rgba,
     /// Hairline border for floating surfaces.
     pub elevated_border: Rgba,
-    /// The titlebar search pill (darker than the bar, like the mock).
-    pub search_bg: Rgba,
-    /// Border of the search pill and its shortcut chip.
-    pub search_border: Rgba,
     /// Chrome text (inactive).
     pub chrome_fg: Rgba,
     /// Chrome text (active / hovered).
@@ -45,82 +42,80 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// Warm Paper: cream sheet (#FAF6EE) over sand chrome (#EFECE4), warm
+    /// deep-charcoal ink, terracotta accent.
     pub fn cream() -> Self {
         Self {
-            bg: rgb(0xFAF3E8),
-            fg: rgb(0x3E3833),
-            cursor: rgb(0x9A4A3A),
-            panel_bg: rgb(0xF4ECDD),
-            elevated_bg: rgb(0xFBF7EF),
-            elevated_border: rgba(0x3E38331F),
-            search_bg: rgb(0xFDF9F1),
-            search_border: rgba(0x3E383324),
-            chrome_fg: rgb(0x9A8F80),
-            chrome_fg_active: rgb(0x3E3833),
-            faint_fg: rgb(0xB3A896),
-            hairline: rgba(0x3E383314),
-            card_hover: rgba(0x3E38330D),
-            card_active: rgba(0xFFFFFFB3),
-            accent: rgb(0x2F6FED),
-            good: rgb(0x1A7F37),
+            bg: rgb(0xFAF6EE),
+            fg: rgb(0x2C2A25),
+            cursor: rgb(0x9A6032),
+            panel_bg: rgb(0xEFECE4),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgba(0x0000000F),
+            chrome_fg: rgb(0x6B6860),
+            chrome_fg_active: rgb(0x2C2A25),
+            faint_fg: rgb(0x8A8378),
+            hairline: rgba(0x0000000F),
+            card_hover: rgba(0x00000008),
+            card_active: rgba(0xD4724E1A),
+            accent: rgb(0xD4724E),
+            good: rgb(0x5F7A46),
             ansi: [
-                rgb(0x4A4440), // 0 black
-                rgb(0xC14B3F), // 1 red
-                rgb(0x5E8C4A), // 2 green
-                rgb(0xB5883A), // 3 yellow
-                rgb(0x3F6EA8), // 4 blue
-                rgb(0x9A5BA8), // 5 magenta
-                rgb(0x3E8E8E), // 6 cyan
-                rgb(0x8E867C), // 7 white
-                rgb(0x6B635A), // 8 bright black
-                rgb(0xE05B4E), // 9 bright red
-                rgb(0x6FA855), // 10 bright green
-                rgb(0xD4A245), // 11 bright yellow
-                rgb(0x4E85C9), // 12 bright blue
-                rgb(0xB472C4), // 13 bright magenta
-                rgb(0x4FA8A8), // 14 bright cyan
-                rgb(0x2F2A25), // 15 bright white
+                rgb(0x2C2A25), // 0 black
+                rgb(0xB8332A), // 1 red
+                rgb(0x5F7A46), // 2 green
+                rgb(0x8F6824), // 3 yellow
+                rgb(0x3F6C9E), // 4 blue
+                rgb(0xA25B69), // 5 magenta
+                rgb(0x3E7A74), // 6 cyan
+                rgb(0xB3AC9C), // 7 white
+                rgb(0x78736A), // 8 bright black
+                rgb(0xD14B3F), // 9 bright red
+                rgb(0x6F9052), // 10 bright green
+                rgb(0xB8882E), // 11 bright yellow
+                rgb(0x5586BC), // 12 bright blue
+                rgb(0xBF7381), // 13 bright magenta
+                rgb(0x4E968E), // 14 bright cyan
+                rgb(0xE8E2D4), // 15 bright white
             ],
         }
     }
 
-    /// Default palette, matched to the reference design: blue-black terminal,
-    /// slate chrome, GitHub-dark ANSI.
+    /// Warm Dark: warm charcoal sheet (#1E1C19) under a matte-stone chrome
+    /// (#181816), warm ivory ink, terracotta accent.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x0D0F12),
-            fg: rgb(0xC9D1D9),
-            cursor: rgb(0xD8E1EA),
-            panel_bg: rgb(0x111318),
-            elevated_bg: rgb(0x1F242C),
-            elevated_border: rgb(0x2E3239),
-            search_bg: rgb(0x0E1217),
-            search_border: rgba(0xFFFFFF14),
-            chrome_fg: rgb(0x9AA3B0),
-            chrome_fg_active: rgb(0xE8EDF4),
-            faint_fg: rgb(0x697380),
-            hairline: rgba(0xFFFFFF0F),
-            card_hover: rgb(0x1D232B),
-            card_active: rgb(0x232A33),
-            accent: rgb(0x4C8DF0),
-            good: rgb(0x3FB950),
+            bg: rgb(0x1E1C19),
+            fg: rgb(0xE8E4DC),
+            cursor: rgb(0xD08A5C),
+            panel_bg: rgb(0x181816),
+            elevated_bg: rgb(0x262624),
+            elevated_border: rgba(0xFFFFFF14),
+            chrome_fg: rgb(0x9C978C),
+            chrome_fg_active: rgb(0xE8E4DC),
+            faint_fg: rgb(0x7A7468),
+            hairline: rgba(0xFFFFFF12),
+            card_hover: rgba(0xFFFFFF0A),
+            card_active: rgba(0xE08A6226),
+            accent: rgb(0xE08A62),
+            good: rgb(0x9BAF7C),
             ansi: [
-                rgb(0x484F58), // 0 black
-                rgb(0xFF7B72), // 1 red
-                rgb(0x3FB950), // 2 green
-                rgb(0xD29922), // 3 yellow
-                rgb(0x58A6FF), // 4 blue
-                rgb(0xBC8CFF), // 5 magenta
-                rgb(0x39C5CF), // 6 cyan
-                rgb(0xB1BAC4), // 7 white
-                rgb(0x6E7681), // 8 bright black
-                rgb(0xFFA198), // 9 bright red
-                rgb(0x56D364), // 10 bright green
-                rgb(0xE3B341), // 11 bright yellow
-                rgb(0x79C0FF), // 12 bright blue
-                rgb(0xD2A8FF), // 13 bright magenta
-                rgb(0x56D4DD), // 14 bright cyan
-                rgb(0xF0F6FC), // 15 bright white
+                rgb(0x262320), // 0 black
+                rgb(0xD06055), // 1 red
+                rgb(0x9BAF7C), // 2 green
+                rgb(0xD9A755), // 3 yellow
+                rgb(0x82A7D0), // 4 blue
+                rgb(0xC98A9A), // 5 magenta
+                rgb(0x7DB8B0), // 6 cyan
+                rgb(0xD8D2C6), // 7 white
+                rgb(0x7A7468), // 8 bright black
+                rgb(0xE07A6E), // 9 bright red
+                rgb(0xB3C795), // 10 bright green
+                rgb(0xEBC070), // 11 bright yellow
+                rgb(0x9BBDDE), // 12 bright blue
+                rgb(0xDBA6B2), // 13 bright magenta
+                rgb(0x93CBC3), // 14 bright cyan
+                rgb(0xF2EEE6), // 15 bright white
             ],
         }
     }

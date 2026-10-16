@@ -1,11 +1,12 @@
 //! AtlasView — the whole UI, drawn by Rust.
 //!
-//! Structure: frameless window -> titlebar (brand + search pill + window
-//! controls, with the drag band split into the two gaps around the search)
-//! -> body: session sidebar (Tabs · LOCAL items · New tab + gear) beside the
-//! main column (terminal · status bar) under a unified titlebar. The terminal
+//! Structure: frameless window -> compact pill top bar (workspace pill,
+//! horizontal pill tabs, action icons, native window controls) over a
+//! floating rounded terminal sheet inset 6px, whose whisper header carries
+//! the pane title and its split/maximize/close micro actions. The terminal
 //! itself is a custom gpui `Element` that walks the alacritty grid and paints
-//! cell backgrounds, text runs and the cursor directly on the GPU canvas.
+//! cell backgrounds, text runs, procedural block glyphs and the cursor
+//! directly on the GPU canvas.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -20,10 +21,10 @@ use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, Context, Element, ElementId,
-    FocusHandle, Font, FontFallbacks, GlobalElementId, InspectorElementId, IntoElement,
-    KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, Pixels, Render, Rgba,
-    ScrollWheelEvent, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas, div,
-    fill, point, px, relative, rgb, rgba,
+    FocusHandle, Font, FontFallbacks, FontWeight, GlobalElementId, InspectorElementId,
+    IntoElement, KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, Pixels, Render,
+    Rgba, ScrollWheelEvent, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas,
+    div, fill, point, px, relative, rgb, rgba,
 };
 
 use crate::keymap;
@@ -34,17 +35,14 @@ use crate::theme::Theme;
 /// Consolas. `terminal_font` picks the first family the text system resolves.
 const FONT_CASCADE: &[&str] = &["Cascadia Code", "Cascadia Mono", "Consolas"];
 const FONT_FALLBACK: &str = "Consolas";
-const FONT_SIZE: f32 = 14.0;
-const LINE_SCALE: f32 = 1.3;
+const FONT_SIZE: f32 = 13.0;
+const LINE_SCALE: f32 = 1.18;
 
 /// Motion timings (ms) — short and quiet, Zed-style: overlay entrances and
-/// exits, the sidebar resize, the settings/terminal body swap and the
-/// sidebar row entrance.
+/// exits and the settings/terminal body swap.
 const OVERLAY_IN_MS: u64 = 170;
 const OVERLAY_OUT_MS: u64 = 110;
-const SIDEBAR_MS: u64 = 190;
 const BODY_IN_MS: u64 = 150;
-const TAB_IN_MS: u64 = 160;
 
 pub struct AtlasView {
     tabs: Vec<Tab>,
@@ -58,25 +56,19 @@ pub struct AtlasView {
     /// Caption-window font: native Segoe caption glyphs when present (`None`
     /// falls back to the bundled Nerd Font window glyphs).
     caption_font: Option<Font>,
-    /// Light/dark switch (settings page + Ctrl+Shift+D).
+    /// Warm Paper / Warm Dark switch (settings page + Ctrl+Shift+T).
     dark: bool,
-    /// Settings page visibility (replaces the terminal body).
+    /// Settings page visibility (replaces the terminal sheet).
     settings_open: bool,
-    /// New-tab profile menu (the ▾ caret) visibility.
+    /// Workspace (new-tab profile) menu visibility.
     profile_menu: bool,
-    /// Sidebar visibility; when collapsed a slim rail keeps the controls.
-    sidebar_open: bool,
-    /// Bottom status-bar visibility (`Ctrl Shift B`).
-    status_open: bool,
-    /// Command palette (Ctrl+Shift+P / search pill / pane search icon).
+    /// Command palette (Ctrl+Shift+P / top-bar search icon).
     palette_open: bool,
     palette_query: String,
     palette_index: usize,
-    /// Rename-tab dialog (pane pen icon).
+    /// Rename-tab dialog (palette).
     rename_open: bool,
     rename_value: String,
-    /// Pane-header "⋯" menu visibility.
-    menu_open: bool,
     /// Terminal font size in px (settings page).
     font_size: f32,
     /// Cursor override; `None` follows the shell's DECSCUSR.
@@ -90,7 +82,6 @@ pub struct AtlasView {
     /// Fade-out flags: an overlay stays mounted while it animates away and a
     /// timer task unmounts it (cleared whenever the open flag drops).
     palette_closing: bool,
-    menu_closing: bool,
     profile_closing: bool,
     /// Smooth scrolling: the pane being eased plus (position, target) display
     /// offsets in lines. Bound to a session so tab switches stay safe.
@@ -103,10 +94,23 @@ struct Tab {
     id: u64,
     /// User-set name (Rename dialog / palette); wins over the shell title.
     custom_title: Option<String>,
-    /// Split panes, left to right; always at least one.
+    /// Split panes; always at least one.
     panes: Vec<Pane>,
-    /// Pane that owns the keyboard, the caret and the status bar.
+    /// Pane that owns the keyboard and the caret.
     active_pane: usize,
+    /// Direction the panes are tiled in (the last split decides).
+    axis: SplitAxis,
+    /// While true only the active pane is shown (header maximize action).
+    maximized: bool,
+}
+
+/// How a tab's panes tile the sheet.
+#[derive(Clone, Copy, PartialEq)]
+enum SplitAxis {
+    /// Side by side, divided by a vertical hairline.
+    Columns,
+    /// Stacked, divided by a horizontal hairline.
+    Rows,
 }
 
 /// One shell inside a tab (a tab is one or more panes side by side).
@@ -136,22 +140,17 @@ impl AtlasView {
             next_id: 1,
             next_epoch: 1,
             focus,
-            theme: Theme::dark(),
+            theme: Theme::cream(),
             font: terminal_font(window),
             caption_font: caption_font(window),
-            dark: true,
+            dark: false,
             settings_open: false,
             profile_menu: false,
-            // Auto-collapsed while only one tab exists (see `new_tab` /
-            // `close_tab`); `Ctrl B` overrides.
-            sidebar_open: false,
-            status_open: true,
             palette_open: false,
             palette_query: String::new(),
             palette_index: 0,
             rename_open: false,
             rename_value: String::new(),
-            menu_open: false,
             font_size: FONT_SIZE,
             cursor_style: None,
             cursor_on: true,
@@ -159,7 +158,6 @@ impl AtlasView {
             palette_focus: cx.focus_handle(),
             rename_focus: cx.focus_handle(),
             palette_closing: false,
-            menu_closing: false,
             profile_closing: false,
             scroll_anim: None,
             scroll_task: false,
@@ -188,8 +186,8 @@ impl AtlasView {
         blink.detach();
 
         // Working-directory poll: reads each live shell's PEB every 1.5 s so
-        // the sidebar subtitle and status bar track `cd` like a real
-        // terminal. Repaints only when a path actually changed.
+        // the pane title can track `cd` like a real terminal. Repaints only
+        // when a path actually changed.
         let cwd_poll = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
@@ -274,15 +272,10 @@ impl AtlasView {
                         exited: false,
                     }],
                     active_pane: 0,
+                    axis: SplitAxis::Columns,
+                    maximized: false,
                 });
                 self.active = self.tabs.len() - 1;
-                // Auto policy: rail while a single tab exists, full list the
-                // moment a second one does (Ctrl+B overrides in between).
-                if self.tabs.len() == 1 {
-                    self.sidebar_open = false;
-                } else if self.tabs.len() == 2 {
-                    self.sidebar_open = true;
-                }
                 Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("tab {id}: shell spawned"));
             }
@@ -308,10 +301,6 @@ impl AtlasView {
         }
         if self.active >= self.tabs.len() {
             self.active = self.tabs.len() - 1;
-        }
-        // One tab left: glide back to the rail.
-        if self.tabs.len() == 1 {
-            self.sidebar_open = false;
         }
         cx.notify();
     }
@@ -355,8 +344,8 @@ impl AtlasView {
     }
 
     /// Split the active tab: a new pane running the active pane's profile is
-    /// spawned to the right and takes focus.
-    fn split_active(&mut self, cx: &mut Context<Self>) {
+    /// spawned in `axis` and takes focus. The whole tab re-tiles to that axis.
+    fn split_active(&mut self, axis: SplitAxis, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
@@ -383,6 +372,8 @@ impl AtlasView {
                         exited: false,
                     });
                     tab.active_pane = tab.panes.len() - 1;
+                    tab.axis = axis;
+                    tab.maximized = false;
                 }
                 Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("pane split: shell spawned (epoch {epoch})"));
@@ -408,6 +399,20 @@ impl AtlasView {
         tab.panes.remove(tab.active_pane);
         if tab.active_pane >= tab.panes.len() {
             tab.active_pane = tab.panes.len() - 1;
+        }
+        if tab.panes.len() == 1 {
+            tab.maximized = false;
+        }
+        cx.notify();
+    }
+
+    /// Toggle zoom on the active pane: the sheet shows only it while the
+    /// hidden panes keep running (the header's maximize action).
+    fn toggle_maximize(&mut self, cx: &mut Context<Self>) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            if tab.panes.len() > 1 {
+                tab.maximized = !tab.maximized;
+            }
         }
         cx.notify();
     }
@@ -732,13 +737,10 @@ impl AtlasView {
         }
     }
 
-    /// Run a palette / pane-menu command; both overlays fade out on the way.
+    /// Run a palette command; the palette fades out on the way.
     fn run_command(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette_open {
             self.close_palette(window, cx);
-        }
-        if self.menu_open {
-            self.dismiss_menu(cx);
         }
         match command {
             Command::NewTab => {
@@ -751,7 +753,16 @@ impl AtlasView {
             }
             Command::SplitPane => {
                 self.settings_open = false;
-                self.split_active(cx);
+                self.split_active(SplitAxis::Columns, cx);
+                window.focus(&self.focus);
+            }
+            Command::SplitPaneDown => {
+                self.settings_open = false;
+                self.split_active(SplitAxis::Rows, cx);
+                window.focus(&self.focus);
+            }
+            Command::MaximizePane => {
+                self.toggle_maximize(cx);
                 window.focus(&self.focus);
             }
             Command::ClosePane => {
@@ -789,16 +800,6 @@ impl AtlasView {
                 window.focus(&self.settings_focus);
                 cx.notify();
             }
-            Command::ToggleSidebar => {
-                self.sidebar_open = !self.sidebar_open;
-                window.focus(&self.focus);
-                cx.notify();
-            }
-            Command::ToggleStatusBar => {
-                self.status_open = !self.status_open;
-                window.focus(&self.focus);
-                cx.notify();
-            }
             Command::FontInc => {
                 self.font_size = (self.font_size + 1.0).min(24.0);
                 self.focus_main(window);
@@ -825,18 +826,6 @@ impl AtlasView {
         cx.notify();
     }
 
-    /// The pane-header "⋯" button: open the menu, or fade it away.
-    fn toggle_menu(&mut self, cx: &mut Context<Self>) {
-        if self.menu_closing {
-            self.menu_closing = false;
-        } else if self.menu_open {
-            self.dismiss_menu(cx);
-        } else {
-            self.menu_open = true;
-        }
-        cx.notify();
-    }
-
     /// Fade the profile (new-tab) menu out, then unmount it.
     fn dismiss_profile(&mut self, cx: &mut Context<Self>) {
         if self.profile_closing {
@@ -859,28 +848,6 @@ impl AtlasView {
         .detach();
     }
 
-    /// Fade the pane menu out, then unmount it.
-    fn dismiss_menu(&mut self, cx: &mut Context<Self>) {
-        if self.menu_closing {
-            return;
-        }
-        self.menu_closing = true;
-        cx.notify();
-        cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(Duration::from_millis(OVERLAY_OUT_MS))
-                .await;
-            let _ = this.update(cx, |view, cx| {
-                if view.menu_closing {
-                    view.menu_closing = false;
-                    view.menu_open = false;
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
-    }
-
     /// Open the rename dialog prefilled with the tab's current name.
     fn open_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else {
@@ -896,9 +863,6 @@ impl AtlasView {
         self.rename_open = true;
         if self.palette_open {
             self.close_palette(window, cx);
-        }
-        if self.menu_open {
-            self.dismiss_menu(cx);
         }
         window.focus(&self.rename_focus);
         cx.notify();
@@ -1153,81 +1117,7 @@ impl AtlasView {
             .into_any_element()
     }
 
-    /// Titlebar "⋯" menu: quick tab actions under its button.
-    fn pane_menu(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let entries: [(Command, &'static str, &'static str, &'static str); 7] = [
-            (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
-            (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
-            (Command::SplitPane, ICON_COLUMNS, "Split pane to the right", ""),
-            (Command::RenameTab, ICON_PEN, "Rename tab", ""),
-            (Command::RestartTab, ICON_REFRESH, "Restart pane", ""),
-            (Command::ClosePane, ICON_X, "Close pane", ""),
-            (Command::CloseTab, ICON_X, "Close tab", "Ctrl Shift W"),
-        ];
-        let mut menu = div()
-            .absolute()
-            .top(px(44.0))
-            .right(px(144.0))
-            .w(px(230.0))
-            .flex()
-            .flex_col()
-            .p(px(5.0))
-            .rounded(px(10.0))
-            .bg(theme.elevated_bg)
-            .border_1()
-            .border_color(theme.elevated_border)
-            .shadow_lg();
-        for (index, (command, icon, label, shortcut)) in entries.into_iter().enumerate() {
-            let hover = theme.card_hover;
-            menu = menu.child(
-                div()
-                    .id(ElementId::named_usize("pane-menu-item", index))
-                    .h(px(30.0))
-                    .px(px(10.0))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(9.0))
-                    .rounded(px(6.0))
-                    .text_size(px(12.0))
-                    .text_color(theme.chrome_fg)
-                    .hover(move |style| style.bg(hover))
-                    .child(icon_glyph(icon, 12.5))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_color(theme.chrome_fg_active)
-                            .child(label),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.0))
-                            .text_color(theme.faint_fg)
-                            .child(shortcut),
-                    )
-                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                        view.run_command(command, window, cx);
-                    })),
-            );
-        }
-        let closing = self.menu_closing;
-        menu.with_animation(
-            ElementId::named_usize("pane-menu-anim", closing as usize),
-            Animation::new(Duration::from_millis(if closing {
-                OVERLAY_OUT_MS
-            } else {
-                OVERLAY_IN_MS
-            }))
-            .with_easing(ease_out_cubic),
-            move |el, delta| {
-                let t = if closing { 1.0 - delta } else { delta };
-                el.opacity(t).top(px(44.0 - 6.0 * (1.0 - t)))
-            },
-        )
-        .into_any_element()
-    }
-
-    /// Full settings page shown in place of the terminal body.
+    /// Full settings page shown in place of the terminal sheet.
     fn settings_page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let card = || {
             div()
@@ -1263,7 +1153,7 @@ impl AtlasView {
             .gap(px(6.0))
             .child(row_label("Theme"))
             .child(pill_button(
-                "Light".to_string(),
+                "Paper".to_string(),
                 10,
                 !self.dark,
                 theme,
@@ -1415,7 +1305,6 @@ impl AtlasView {
             .flex_col()
             .flex_1()
             .w(relative(1.0))
-            .bg(theme.bg)
             .track_focus(&self.settings_focus)
             .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                 if event.keystroke.key == "escape" {
@@ -1460,13 +1349,10 @@ impl AtlasView {
         // Solid cursor while typing; the blink task flips it back on its own.
         self.cursor_on = true;
 
-        if key == "escape" && (self.settings_open || self.profile_menu || self.menu_open) {
+        if key == "escape" && (self.settings_open || self.profile_menu) {
             self.settings_open = false;
             if self.profile_menu {
                 self.dismiss_profile(cx);
-            }
-            if self.menu_open {
-                self.dismiss_menu(cx);
             }
             cx.notify();
             return;
@@ -1475,18 +1361,14 @@ impl AtlasView {
         // App-level chords (swallowed so they never leak into the shell).
         if modifiers.control && modifiers.shift {
             match key {
-                "t" => self.new_tab(Profile::PowerShell, cx),
+                "t" => self.toggle_theme(cx),
+                "n" => self.new_tab(Profile::PowerShell, cx),
                 "w" => {
                     let index = self.active;
                     self.close_tab(index, cx);
                 }
                 "v" => self.paste(cx),
-                "d" => self.toggle_theme(cx),
                 "p" => self.open_palette(window, cx),
-                "b" => {
-                    self.status_open = !self.status_open;
-                    cx.notify();
-                }
                 "tab" => {
                     self.cycle(-1);
                     cx.notify();
@@ -1499,11 +1381,6 @@ impl AtlasView {
             match key {
                 "tab" => {
                     self.cycle(1);
-                    cx.notify();
-                    return;
-                }
-                "b" => {
-                    self.sidebar_open = !self.sidebar_open;
                     cx.notify();
                     return;
                 }
@@ -1549,196 +1426,187 @@ impl Render for AtlasView {
         if !self.palette_open {
             self.palette_closing = false;
         }
-        if !self.menu_open {
-            self.menu_closing = false;
-        }
         if !self.profile_menu {
             self.profile_closing = false;
         }
         let theme = self.theme.clone();
 
-        // ---- Titlebar ------------------------------------------------
-        // Brand · drag gap · centred search pill · drag gap · window
-        // controls. The two gaps report themselves as caption slots 0/1 so
-        // presses there run the native move loop.
+        // ---- Pill top bar --------------------------------------------
+        // Workspace pill · horizontal pill tabs · drag gap · settings /
+        // palette / new-tab icons · native window controls. The gap reports
+        // itself as caption slot 0 so presses there start the native move.
         let tb = theme.clone();
         let mut bar = div()
             .flex()
             .flex_row()
             .items_center()
+            .gap(px(6.0))
             .w(relative(1.0))
-            .h(px(38.0))
-            .pl(px(12.0))
+            .h(px(36.0))
+            .pl(px(8.0))
             .bg(tb.panel_bg)
             .border_b_1()
             .border_color(tb.hairline);
 
+        // Workspace switcher pill (28×22): opens the new-tab profile menu.
+        let ws_bg = tb.elevated_bg;
+        let ws_border = tb.elevated_border;
+        let ws_icon = tb.accent;
+        let ws_hot = tb.chrome_fg_active;
         bar = bar.child(
             div()
+                .id(ElementId::named_usize("workspace-pill", 0))
+                .w(px(28.0))
+                .h(px(22.0))
                 .flex()
-                .flex_row()
                 .items_center()
-                .gap(px(8.0))
-                .child(
-                    div()
-                        .w(px(18.0))
-                        .h(px(18.0))
-                        .rounded(px(5.0))
-                        .bg(rgb(0x2F6FED))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_color(rgb(0xFFFFFF))
-                        .child(icon_glyph(ICON_TERMINAL, 9.5)),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.5))
-                        .text_color(tb.chrome_fg_active)
-                        .child("Atlas Terminal"),
-                ),
-        );
-
-        bar = bar.child(caption_spacer(0));
-
-        let search_theme = theme.clone();
-        let pill_hover = search_theme.card_hover;
-        let pill_text = if self.palette_open && !self.palette_query.is_empty() {
-            self.palette_query.clone()
-        } else {
-            "Search commands, tabs and history".to_string()
-        };
-        let pill_fg = if self.palette_open {
-            search_theme.chrome_fg_active
-        } else {
-            search_theme.faint_fg
-        };
-        // Palette shortcut as individual kbd pills.
-        let mut shortcuts = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(3.0));
-        for key in ["Ctrl", "Shift", "P"] {
-            shortcuts = shortcuts.child(
-                div()
-                    .h(px(16.0))
-                    .px(px(5.0))
-                    .flex()
-                    .items_center()
-                    .rounded(px(4.0))
-                    .border_1()
-                    .border_color(search_theme.search_border)
-                    .text_size(px(9.5))
-                    .text_color(search_theme.faint_fg)
-                    .child(key),
-            );
-        }
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("search-pill", 0))
-                .w(px(360.0))
-                .h(px(28.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(12.0))
-                .rounded(px(14.0))
-                .bg(search_theme.search_bg)
+                .justify_center()
+                .rounded(px(6.0))
+                .bg(ws_bg)
                 .border_1()
-                .border_color(search_theme.search_border)
-                .text_color(pill_fg)
-                .hover(move |style| style.bg(pill_hover))
-                .child(icon_glyph(ICON_SEARCH, 13.0))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(px(12.0))
-                        .truncate()
-                        .child(pill_text),
-                )
-                .child(shortcuts)
+                .border_color(ws_border)
+                .text_color(ws_icon)
+                .hover(move |style| style.text_color(ws_hot))
+                .child(icon_glyph(ICON_SPARK, 11.0))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.open_palette(window, cx);
+                    view.toggle_profile_menu(cx);
+                    window.focus(&view.focus);
                 })),
         );
 
-        bar = bar.child(caption_spacer(1));
-
-        // Unified titlebar actions (the old pane header is gone): split and
-        // the pane menu while the terminal is up; a quiet label + close while
-        // settings is open. They sit in the interactive zone before the
-        // window controls, so the drag band stays between the search pill and
-        // this cluster.
-        let mut cluster = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(2.0))
-            .pr(px(6.0));
-        if self.settings_open {
-            let close_hover = theme.card_hover;
-            let close_hot = theme.chrome_fg_active;
-            cluster = cluster
-                .child(
-                    div()
-                        .px(px(6.0))
-                        .text_size(px(12.0))
-                        .text_color(theme.chrome_fg)
-                        .child("Settings"),
+        // Horizontal pill tabs: the active one is a floating pill (white on
+        // paper, slate on stone) with a warm badge and its close mark; the
+        // rest are quiet labels that tint on hover.
+        for ix in 0..self.tabs.len() {
+            let active = ix == self.active;
+            let tab = &self.tabs[ix];
+            let pane = tab.panes.get(tab.active_pane);
+            let label = match pane {
+                Some(pane) => tab
+                    .custom_title
+                    .clone()
+                    .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile))),
+                None => "Terminal".to_string(),
+            };
+            let icon = match pane {
+                Some(pane) => session_icon(&pane.title),
+                None => ICON_TERMINAL,
+            };
+            let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
+                (
+                    tb.elevated_bg,
+                    tb.elevated_border,
+                    tb.chrome_fg_active,
+                    tb.accent,
                 )
+            } else {
+                (
+                    rgba(0x00000000),
+                    rgba(0x00000000),
+                    tb.chrome_fg,
+                    tb.chrome_fg,
+                )
+            };
+            let pill_hover = tb.card_hover;
+            let pill_hot = tb.chrome_fg_active;
+            let mut pill = div()
+                .id(ElementId::named_usize("tab-pill", ix))
+                .h(px(26.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(10.0))
+                .flex_shrink_0()
+                .rounded_full()
+                .bg(pill_bg)
+                .border_1()
+                .border_color(pill_border)
+                .text_color(pill_fg)
+                .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
+                .child(div().text_color(pill_icon).child(icon_glyph(icon, 14.0)))
                 .child(
                     div()
-                        .id(ElementId::named_usize("settings-close", 0))
-                        .w(px(28.0))
-                        .h(px(28.0))
+                        .text_size(px(12.0))
+                        .truncate()
+                        .child(label),
+                )
+                .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                    view.active = ix;
+                    view.settings_open = false;
+                    window.focus(&view.focus);
+                    cx.notify();
+                }));
+            if active {
+                let close_hot = tb.chrome_fg_active;
+                pill = pill.child(
+                    div()
+                        .id(ElementId::named_usize("tab-close", ix))
+                        .w(px(16.0))
+                        .h(px(16.0))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(6.0))
-                        .text_color(theme.chrome_fg)
-                        .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                        .child(icon_glyph(ICON_X, 13.0))
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.settings_open = false;
+                        .rounded_full()
+                        .text_color(tb.faint_fg)
+                        .hover(move |style| style.text_color(close_hot))
+                        .child(icon_glyph(ICON_X, 9.0))
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            view.close_tab(ix, cx);
                             window.focus(&view.focus);
-                            cx.notify();
                         })),
                 );
-        } else {
-            cluster = cluster
-                .child(chrome_action_button(
-                    ElementId::named_usize("titlebar-split", 0),
-                    ICON_COLUMNS,
-                    13.5,
-                    30.0,
-                    30.0,
-                    6.0,
-                    &theme,
-                    |view, window, cx| {
-                        view.settings_open = false;
-                        view.split_active(cx);
-                        window.focus(&view.focus);
-                    },
-                    cx,
-                ))
-                .child(chrome_action_button(
-                    ElementId::named_usize("titlebar-menu", 0),
-                    ICON_ELLIPSIS,
-                    13.5,
-                    30.0,
-                    30.0,
-                    6.0,
-                    &theme,
-                    |view, window, cx| {
-                        view.toggle_menu(cx);
-                        window.focus(&view.focus);
-                    },
-                    cx,
-                ));
+            }
+            bar = bar.child(pill.with_animation(
+                ElementId::named_usize("tab-pill-in", tab.id as usize),
+                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_out_cubic),
+                |el, delta| el.opacity(delta),
+            ));
         }
-        bar = bar.child(cluster);
+
+        bar = bar.child(caption_spacer(0));
+
+        // Right cluster: settings (eye), command palette (search), new tab.
+        bar = bar.child(chrome_action_button(
+            ElementId::named_usize("topbar-settings", 0),
+            ICON_EYE,
+            14.0,
+            30.0,
+            26.0,
+            6.0,
+            &theme,
+            |view, window, cx| {
+                view.toggle_settings(window, cx);
+            },
+            cx,
+        ));
+        bar = bar.child(chrome_action_button(
+            ElementId::named_usize("topbar-palette", 0),
+            ICON_SEARCH,
+            14.0,
+            30.0,
+            26.0,
+            6.0,
+            &theme,
+            |view, window, cx| {
+                view.open_palette(window, cx);
+            },
+            cx,
+        ));
+        bar = bar.child(chrome_action_button(
+            ElementId::named_usize("topbar-new", 0),
+            ICON_PLUS,
+            14.0,
+            30.0,
+            26.0,
+            6.0,
+            &theme,
+            |view, window, cx| {
+                view.new_tab(Profile::PowerShell, cx);
+                window.focus(&view.focus);
+            },
+            cx,
+        ));
 
         // Window controls: native Segoe caption glyphs when available,
         // bundled Nerd fallbacks otherwise; the maximize slot is zoomed-aware
@@ -1789,7 +1657,7 @@ impl Render for AtlasView {
                 div()
                     .id(ElementId::named_usize("window-control", index))
                     .w(px(46.0))
-                    .h(px(38.0))
+                    .h(px(36.0))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -1806,22 +1674,21 @@ impl Render for AtlasView {
         }
 
         // ---- Terminal area -------------------------------------------
+        let index = self.active.min(self.tabs.len().saturating_sub(1));
         let body: AnyElement = if self.settings_open {
             self.settings_page(&theme, cx)
         } else if self.tabs.is_empty() {
             div().flex_1().into_any_element()
         } else {
-            let index = self.active.min(self.tabs.len() - 1);
             let tab = &self.tabs[index];
+            let axis = tab.axis;
 
             let mut area = div()
                 .id(ElementId::named_usize("terminal-area", 0))
                 .flex()
-                .flex_row()
                 .flex_1()
                 .w(relative(1.0))
                 .h(relative(1.0))
-                .bg(theme.bg)
                 .track_focus(&self.focus)
                 .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                     let keystroke = event.keystroke.clone();
@@ -1840,20 +1707,42 @@ impl Render for AtlasView {
                         window.focus(&view.focus);
                     }),
                 );
+            area = match axis {
+                SplitAxis::Columns => area.flex_row(),
+                SplitAxis::Rows => area.flex_col(),
+            };
 
-            // One cell per pane, left to right, with a hairline gutter.
-            for (pane_ix, pane) in tab.panes.iter().enumerate() {
-                if pane_ix > 0 {
-                    area = area.child(div().w(px(1.0)).h(relative(1.0)).bg(theme.hairline));
+            // One padded cell per visible pane with a hairline divider
+            // between; maximizing hides the inactive panes without killing
+            // their shells.
+            let visible: Vec<usize> = if tab.maximized && tab.panes.len() > 1 {
+                vec![tab.active_pane]
+            } else {
+                (0..tab.panes.len()).collect()
+            };
+            for (slot, &pane_ix) in visible.iter().enumerate() {
+                let pane = &tab.panes[pane_ix];
+                if slot > 0 {
+                    area = area.child(match axis {
+                        SplitAxis::Columns => div()
+                            .w(px(1.0))
+                            .h(relative(1.0))
+                            .flex_shrink_0()
+                            .bg(theme.hairline),
+                        SplitAxis::Rows => div()
+                            .h(px(1.0))
+                            .w(relative(1.0))
+                            .flex_shrink_0()
+                            .bg(theme.hairline),
+                    });
                 }
                 let mut cell = div()
                     .id(ElementId::named_usize("pane-cell", pane_ix))
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .h(relative(1.0))
-                    .px(px(20.0))
-                    .py(px(16.0))
+                    .px(px(14.0))
+                    .py(px(10.0))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |view, _: &MouseDownEvent, window, cx| {
@@ -1866,6 +1755,10 @@ impl Render for AtlasView {
                             window.focus(&view.focus);
                         }),
                     );
+                cell = match axis {
+                    SplitAxis::Columns => cell.h(relative(1.0)),
+                    SplitAxis::Rows => cell.w(relative(1.0)),
+                };
                 if pane.exited {
                     cell = cell
                         .items_center()
@@ -1917,479 +1810,124 @@ impl Render for AtlasView {
                 |el, delta| el.opacity(delta),
             );
 
-        // ---- Sidebar --------------------------------------------------
-        // Tabs list on the left: item per session + New tab / settings row.
-        let mut sidebar = div()
+        // ---- Whisper header + floating sheet --------------------------
+        // The sheet is the paper: a quiet title on the left and micro
+        // actions (split right / split down / maximize / close) right.
+        let header_theme = theme.clone();
+        let label = if self.settings_open {
+            "Settings".to_string()
+        } else {
+            match self.tabs.get(index) {
+                Some(tab) => match tab.panes.get(tab.active_pane) {
+                    Some(pane) => tab
+                        .custom_title
+                        .clone()
+                        .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile))),
+                    None => "Atlas".to_string(),
+                },
+                None => "Atlas".to_string(),
+            }
+        };
+        let mut head = div()
             .flex()
-            .flex_col()
-            .h(relative(1.0))
-            .bg(theme.panel_bg)
-            .border_r_1()
-            .border_color(theme.hairline);
-
-        sidebar = sidebar.child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .h(px(40.0))
-                .pl(px(14.0))
-                .pr(px(8.0))
-                .gap(px(2.0))
-                .child(
-                    div()
-                        .flex_1()
-                        .text_size(px(13.0))
-                        .text_color(theme.chrome_fg_active)
-                        .child("Tabs"),
-                )
-                .child(chrome_action_button(
-                    ElementId::named_usize("sidebar-action", 0),
+            .flex_row()
+            .items_center()
+            .gap(px(2.0))
+            .h(px(28.0))
+            .pl(px(12.0))
+            .pr(px(6.0))
+            .text_color(header_theme.chrome_fg)
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(icon_glyph(ICON_SPARK, 9.5))
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(FontWeight::BOLD)
+                            .child(label),
+                    ),
+            )
+            .child(div().flex_1());
+        if self.settings_open {
+            let close_hover = theme.card_hover;
+            let close_hot = theme.chrome_fg_active;
+            head = head.child(
+                div()
+                    .id(ElementId::named_usize("settings-close", 0))
+                    .w(px(22.0))
+                    .h(px(20.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(5.0))
+                    .text_color(theme.faint_fg)
+                    .hover(move |style| style.bg(close_hover).text_color(close_hot))
+                    .child(icon_glyph(ICON_X, 12.0))
+                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                        view.settings_open = false;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    })),
+            );
+        } else {
+            head = head
+                .child(micro_action(
+                    ElementId::named_usize("pane-action", 0),
                     ICON_COLUMNS,
-                    13.0,
-                    24.0,
-                    24.0,
-                    6.0,
                     &theme,
                     |view, window, cx| {
-                        view.split_active(cx);
+                        view.split_active(SplitAxis::Columns, cx);
                         window.focus(&view.focus);
                     },
                     cx,
                 ))
-                .child(chrome_action_button(
-                    ElementId::named_usize("sidebar-action", 1),
-                    ICON_PANEL,
-                    13.0,
-                    24.0,
-                    24.0,
-                    6.0,
+                .child(micro_action(
+                    ElementId::named_usize("pane-action", 1),
+                    ICON_BARS,
                     &theme,
                     |view, window, cx| {
-                        view.sidebar_open = false;
+                        view.split_active(SplitAxis::Rows, cx);
                         window.focus(&view.focus);
-                        cx.notify();
                     },
                     cx,
-                )),
-        );
-
-        sidebar = sidebar.child(
-            div()
-                .px(px(14.0))
-                .pt(px(8.0))
-                .pb(px(4.0))
-                .text_size(px(10.5))
-                .text_color(theme.faint_fg)
-                .child("LOCAL"),
-        );
-
-        let mut list = div()
-            .id(ElementId::named_usize("sidebar-list", 0))
-            .flex()
-            .flex_col()
-            .flex_1()
-            .overflow_y_scroll();
-
-        for ix in 0..self.tabs.len() {
-            let active = ix == self.active;
-            let tab = &self.tabs[ix];
-
-            // Name from the shell-reported title; subtitle: the live location
-            // (shell title path first — WSL reports its Linux cwd there — and
-            // the PEB poll as fallback), plus a dead-pane note.
-            let Some(pane) = tab.panes.get(tab.active_pane) else {
-                continue;
-            };
-            let name = tab
-                .custom_title
-                .clone()
-                .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)));
-            let shell = shell_label(&pane.session.borrow().shell);
-            let base = pane_location(pane).unwrap_or_else(|| shell.to_string());
-            let subtitle = if pane.exited {
-                format!("{base} · exited")
-            } else {
-                base
-            };
-            let icon = session_icon(&format!("{} {}", profile_title(pane.profile), pane.title));
-            let show_dot = !active && !pane.exited;
-
-            let item_theme = theme.clone();
-            let mut item = div()
-                .id(ElementId::named_usize("sidebar-tab", ix))
-                .relative()
-                .flex()
-                .flex_row()
-                .items_center()
-                .flex_shrink_0()
-                .mx(px(10.0))
-                .mb(px(2.0))
-                .h(px(50.0))
-                .pl(px(12.0))
-                .pr(px(8.0))
-                .rounded(px(10.0));
-
-            if active {
-                item = item.bg(item_theme.card_active);
-            } else {
-                let hover = item_theme.card_hover;
-                item = item.hover(move |style| style.bg(hover));
-            }
-
-            // Active marker: accent bar on the item's left edge.
-            if active {
-                let accent = item_theme.accent;
-                item = item.child(
-                    div()
-                        .absolute()
-                        .left(px(0.0))
-                        .top(px(9.0))
-                        .bottom(px(9.0))
-                        .w(px(3.0))
-                        .rounded_full()
-                        .bg(accent),
-                );
-            }
-
-            // Monochrome session mark (no heavy coloured tile): quiet when
-            // idle, bright while the tab is active. The running dot stays.
-            let icon_fg = if active {
-                item_theme.chrome_fg_active
-            } else {
-                item_theme.chrome_fg
-            };
-            let mut mark = div()
-                .relative()
-                .w(px(18.0))
-                .h(px(18.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_color(icon_fg)
-                .child(icon_glyph(icon, 14.0));
-            if show_dot {
-                let good = item_theme.good;
-                let ring = item_theme.panel_bg;
-                mark = mark.child(
-                    div()
-                        .absolute()
-                        .right(px(-4.0))
-                        .top(px(-4.0))
-                        .w(px(7.0))
-                        .h(px(7.0))
-                        .rounded_full()
-                        .bg(good)
-                        .border_2()
-                        .border_color(ring),
-                );
-            }
-
-            // Clicking the icon/title area activates the tab; the close
-            // button is a sibling so it can never double-fire activation.
-            item = item.child(
-                div()
-                    .id(ElementId::named_usize("sidebar-tab-main", ix))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(10.0))
-                    .flex_1()
-                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                        view.active = ix;
-                        view.settings_open = false;
+                ))
+                .child(micro_action(
+                    ElementId::named_usize("pane-action", 2),
+                    ICON_WINDOW_MAX,
+                    &theme,
+                    |view, window, cx| {
+                        view.toggle_maximize(cx);
                         window.focus(&view.focus);
-                        cx.notify();
-                    }))
-                    .child(mark)
-                    .child(
-                        div()
-                            .flex_1()
-                            .flex()
-                            .flex_col()
-                            .gap(px(1.0))
-                            .child(
-                                div()
-                                    .text_size(px(13.0))
-                                    .text_color(item_theme.chrome_fg_active)
-                                    .truncate()
-                                    .child(name),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.0))
-                                    .text_color(item_theme.chrome_fg)
-                                    .truncate()
-                                    .child(subtitle),
-                            ),
-                    ),
-            );
-
-            // Close affordance on the active item (same as the mock).
-            if active {
-                let close_hover = item_theme.card_hover;
-                let close_hot = item_theme.chrome_fg_active;
-                item = item.child(
-                    div()
-                        .id(ElementId::named_usize("sidebar-close", ix))
-                        .w(px(20.0))
-                        .h(px(20.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(4.0))
-                        .text_color(item_theme.chrome_fg)
-                        .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                        .child(icon_glyph(ICON_X, 12.0))
-                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                            view.close_tab(ix, cx);
-                            window.focus(&view.focus);
-                        })),
-                );
-            }
-
-            list = list.child(item.with_animation(
-                ElementId::named_usize("tab-in", tab.id as usize),
-                Animation::new(Duration::from_millis(TAB_IN_MS)).with_easing(ease_out_cubic),
-                |el, delta| el.opacity(delta).left(px(-12.0 * (1.0 - delta))),
-            ));
+                    },
+                    cx,
+                ))
+                .child(micro_action(
+                    ElementId::named_usize("pane-action", 3),
+                    ICON_X,
+                    &theme,
+                    |view, window, cx| {
+                        view.close_pane(cx);
+                        view.focus_main(window);
+                    },
+                    cx,
+                ));
         }
 
-        sidebar = sidebar.child(list);
-
-        // Bottom bar: New tab (click spawns PowerShell, ▾ opens the profile
-        // menu) + settings gear (popover anchor).
-        let new_tab_theme = theme.clone();
-        let new_hover = new_tab_theme.card_active;
-        let caret_hover = new_hover;
-        let gear_theme = theme.clone();
-        let gear_hover = gear_theme.card_hover;
-        let gear_idle = gear_theme.chrome_fg;
-        let gear_hot = gear_theme.chrome_fg_active;
-        sidebar = sidebar.child(
-            div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .p(px(10.0))
-                .child(
-                    // Visual container only: the click surface and the caret
-                    // are siblings inside it, so opening the menu never also
-                    // spawns a tab.
-                    div()
-                        .flex_1()
-                        .h(px(34.0))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .rounded(px(9.0))
-                        .bg(new_tab_theme.card_hover)
-                        .border_1()
-                        .border_color(new_tab_theme.elevated_border)
-                        .child(
-                            div()
-                                .id(ElementId::named_usize("new-tab", 0))
-                                .flex_1()
-                                .h_full()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(7.0))
-                                .pl(px(12.0))
-                                .rounded(px(9.0))
-                                .text_color(new_tab_theme.chrome_fg_active)
-                                .hover(move |style| style.bg(new_hover))
-                                .child(icon_glyph(ICON_PLUS, 11.5))
-                                .child(div().text_size(px(12.5)).child("New tab"))
-                                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                                    view.new_tab(Profile::PowerShell, cx);
-                                    window.focus(&view.focus);
-                                })),
-                        )
-                        .child(
-                            div()
-                                .w(px(1.0))
-                                .h(px(16.0))
-                                .bg(new_tab_theme.hairline),
-                        )
-                        .child(
-                            div()
-                                .id(ElementId::named_usize("profile-caret", 0))
-                                .w(px(28.0))
-                                .h_full()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded(px(9.0))
-                                .text_color(new_tab_theme.chrome_fg)
-                                .hover(move |style| style.bg(caret_hover))
-                                .child(icon_glyph(ICON_CHEVRON_DOWN, 10.0))
-                                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                                    view.toggle_profile_menu(cx);
-                                    window.focus(&view.focus);
-                                })),
-                        ),
-                )
-                .child(
-                    div()
-                        .id(ElementId::named_usize("settings-toggle", 0))
-                        .w(px(32.0))
-                        .h(px(34.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(9.0))
-                        .text_color(gear_idle)
-                        .hover(move |style| style.bg(gear_hover).text_color(gear_hot))
-                        .child(icon_glyph(ICON_GEAR, 14.0))
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.toggle_settings(window, cx);
-                        })),
-                ),
-        );
-
-        // Collapsed state: a slim rail keeps expand + new-tab reachable.
-        let (content, from_w, to_w): (AnyElement, f32, f32) = if self.sidebar_open {
-            (sidebar.into_any_element(), 46.0, 190.0)
-        } else {
-            let rail_theme = theme.clone();
-            let mut rail = div()
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap(px(4.0))
-                .h(relative(1.0))
-                .pt(px(9.0))
-                .bg(rail_theme.panel_bg)
-                .border_r_1()
-                .border_color(rail_theme.hairline);
-            rail = rail.child(chrome_action_button(
-                ElementId::named_usize("rail-action", 0),
-                ICON_PANEL,
-                13.0,
-                28.0,
-                28.0,
-                7.0,
-                &rail_theme,
-                |view, window, cx| {
-                    view.sidebar_open = true;
-                    window.focus(&view.focus);
-                    cx.notify();
-                },
-                cx,
-            ));
-            rail = rail.child(chrome_action_button(
-                ElementId::named_usize("rail-action", 1),
-                ICON_PLUS,
-                13.0,
-                28.0,
-                28.0,
-                7.0,
-                &rail_theme,
-                |view, window, cx| {
-                    view.new_tab(Profile::PowerShell, cx);
-                    window.focus(&view.focus);
-                },
-                cx,
-            ));
-            (rail.into_any_element(), 190.0, 46.0)
-        };
-
-        // Animate the width and fade the inbound content so the collapse /
-        // expand glides; contents stretch to the animated width.
-        let open = self.sidebar_open;
-        let sidebar: AnyElement = div()
-            .flex()
-            .flex_col()
-            .flex_shrink_0()
-            .h(relative(1.0))
-            .child(content)
-            .with_animation(
-                ElementId::named_usize("sidebar-anim", open as usize),
-                Animation::new(Duration::from_millis(SIDEBAR_MS)).with_easing(ease_in_out_cubic),
-                move |el, delta| {
-                    let opacity = if open {
-                        ((delta - 0.25) / 0.75).max(0.0)
-                    } else {
-                        delta
-                    };
-                    el.w(px(from_w + (to_w - from_w) * delta)).opacity(opacity)
-                },
-            )
-            .into_any_element();
-
-        // The pane header / breadcrumb is gone: location lives in the
-        // status bar, actions live in the unified titlebar and the palette.
-
-        // ---- Status bar ----------------------------------------------
-        let (cols, rows, shell, exited, branch, status_left) = match self.active_pane() {
-            Some(pane) => {
-                let session = pane.session.borrow();
-                let cols = session.cols;
-                let rows = session.rows;
-                let shell = shell_label(&session.shell);
-                drop(session);
-                let left = pane_location(pane)
-                    .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)));
-                (cols, rows, shell, pane.exited, pane.branch.clone(), left)
-            }
-            None => (0, 0, "PowerShell", false, None, "PowerShell".to_string()),
-        };
-        // Mock-style left segment: git branch when the working directory is a
-        // repository, the directory itself otherwise.
-        let (status_icon, status_left) = match branch {
-            Some(branch) => (ICON_BRANCH, branch),
-            None => (ICON_FOLDER, status_left),
-        };
-        let (state_label, state_color) = if exited {
-            ("Exited", theme.ansi[1])
-        } else {
-            ("Connected", theme.good)
-        };
-        let status = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(10.0))
-            .h(px(30.0))
-            .pl(px(16.0))
-            .pr(px(14.0))
-            .bg(theme.panel_bg)
-            .border_t_1()
-            .border_color(theme.hairline)
-            .text_size(px(11.5))
-            .text_color(theme.chrome_fg)
-            .child(icon_glyph(status_icon, 11.0))
-            .child(
-                div()
-                    .text_color(theme.chrome_fg_active)
-                    .child(status_left),
-            )
-            .child(div().w(px(1.0)).h(px(12.0)).bg(theme.hairline))
-            .child(div().child(shell))
-            .child(div().flex_1())
-            .child(div().child(format!("{cols} × {rows}")))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(5.0))
-                    .text_color(state_color)
-                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(state_color))
-                    .child(div().child(state_label)),
-            );
-
-        let mut main_col = div()
+        let sheet = div()
             .flex()
             .flex_col()
             .flex_1()
-            .h(relative(1.0))
+            .w(relative(1.0))
+            .rounded(px(10.0))
+            .bg(theme.bg)
+            .border_1()
+            .border_color(theme.hairline)
+            .child(head)
             .child(body);
-        if self.status_open {
-            main_col = main_col.child(status);
-        }
 
         let mut root = div()
             .relative()
@@ -2404,16 +1942,16 @@ impl Render for AtlasView {
             .child(
                 div()
                     .flex()
-                    .flex_row()
+                    .flex_col()
                     .flex_1()
                     .w(relative(1.0))
-                    .child(sidebar)
-                    .child(main_col),
+                    .px(px(6.0))
+                    .pb(px(6.0))
+                    .child(sheet),
             );
-
         // Overlays paint last: each is a dim click-catcher plus its panel, in
-        // stacking order (profile menu, pane menu, palette, rename dialog).
-        // The `*_closing` flags drive fade-outs; dismissal tasks unmount them.
+        // stacking order (profile menu, palette, rename dialog). The
+        // `*_closing` flags drive fade-outs; dismissal tasks unmount them.
         if self.profile_menu {
             let closing = self.profile_closing;
             root = root.child(overlay_backdrop(
@@ -2426,17 +1964,6 @@ impl Render for AtlasView {
                 cx,
             ));
             root = root.child(profile_menu(&theme, closing, cx));
-        }
-        if self.menu_open {
-            root = root.child(overlay_backdrop(
-                1,
-                self.menu_closing,
-                |view, _window, cx| {
-                    view.dismiss_menu(cx);
-                },
-                cx,
-            ));
-            root = root.child(self.pane_menu(&theme, cx));
         }
         if self.palette_open {
             root = root.child(overlay_backdrop(
@@ -2474,15 +2001,6 @@ fn ease_out_cubic(d: f32) -> f32 {
     1.0 - (1.0 - d).powi(3)
 }
 
-/// Cubic ease-in-out for layout resizes.
-fn ease_in_out_cubic(d: f32) -> f32 {
-    if d < 0.5 {
-        4.0 * d * d * d
-    } else {
-        1.0 - (-2.0 * d + 2.0).powi(3) / 2.0
-    }
-}
-
 // ----------------------------------------------------------------------------
 // Terminal renderer
 // ----------------------------------------------------------------------------
@@ -2496,13 +2014,15 @@ struct TerminalElement {
     cursor_override: Option<CursorShape>,
 }
 
-/// How a cell's glyph is shaped: with the terminal font, isolated from its
-/// neighbours (emoji, CJK…), or with the bundled Nerd symbols font.
+/// How a cell's glyph is drawn: shaped with the terminal font, isolated from
+/// its neighbours (emoji, CJK…), with the bundled Nerd symbols font, or
+/// painted procedurally as pixel-exact quads (block elements, box drawing).
 #[derive(Clone, Copy, PartialEq)]
 enum CharClass {
     Text,
     Other,
     Icon,
+    Block,
 }
 
 fn char_class(c: char) -> CharClass {
@@ -2510,12 +2030,260 @@ fn char_class(c: char) -> CharClass {
     match u {
         // Private use areas: Nerd Font icons, Powerline separators, …
         0xE000..=0xF8FF | 0xF0000..=0x10FFFD => CharClass::Icon,
+        // Block elements and the box-drawing pieces this renderer draws
+        // itself: font glyphs there leave hairline seams between cells.
+        0x2500..=0x259F if is_procedural(c) => CharClass::Block,
         // Latin-ish ranges the terminal font covers: keep runs long.
         0x20..=0x2BFF => CharClass::Text,
         // Emoji, CJK, exotic scripts: shape in isolation so their glyph
         // advances can never shift the rest of the row off the cell grid.
         _ => CharClass::Other,
     }
+}
+
+/// True for the codepoints drawn procedurally (block elements + the
+/// box-drawing pieces this renderer knows); everything else falls back to
+/// the font, so a glyph can never go missing.
+fn is_procedural(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x2580..=0x259F
+            | 0x2500
+            | 0x2501
+            | 0x2502
+            | 0x2503
+            | 0x250C
+            | 0x250F
+            | 0x2510
+            | 0x2513
+            | 0x2514
+            | 0x2517
+            | 0x2518
+            | 0x251B
+            | 0x251C
+            | 0x2523
+            | 0x2524
+            | 0x252B
+            | 0x252C
+            | 0x2533
+            | 0x2534
+            | 0x253B
+            | 0x253C
+            | 0x254B
+            | 0x256D..=0x2570
+    )
+}
+
+/// Cell-local rects `(x0, y0, x1, y1)` + paint colour for a procedurally
+/// drawn character: block elements fill exact fractions of the cell, box
+/// drawing turns into centred 1px/2px strokes, shades become translucent
+/// full-cell fills — all seam-free by construction.
+fn procedural_cell(
+    ch: char,
+    cw: f32,
+    lh: f32,
+    fg: Rgba,
+) -> Option<(Vec<(f32, f32, f32, f32)>, Rgba)> {
+    let u = ch as u32;
+    let mut rects: Vec<(f32, f32, f32, f32)> = Vec::new();
+    let cx = (cw / 2.0).floor();
+    let cy = (lh / 2.0).floor();
+    let half_w = (cw / 2.0).floor();
+    let half_h = (lh / 2.0).floor();
+    // Light strokes are 1px, heavy 2px, both pinned to the cell centre.
+    let hline = |rects: &mut Vec<(f32, f32, f32, f32)>, x0: f32, x1: f32, th: f32| {
+        rects.push((x0, cy + 1.0 - th, x1, cy + 1.0));
+    };
+    let vline = |rects: &mut Vec<(f32, f32, f32, f32)>, y0: f32, y1: f32, th: f32| {
+        rects.push((cx + 1.0 - th, y0, cx + 1.0, y1));
+    };
+    let alpha = match u {
+        // Linear fractional blocks: upper/lower eighths, left eighths,
+        // right half, upper / right one-eighths, full block.
+        0x2580 => {
+            rects.push((0.0, 0.0, cw, half_h));
+            1.0
+        }
+        0x2581..=0x2588 => {
+            let k = (u - 0x2580) as f32;
+            let h = (lh * k / 8.0).floor();
+            rects.push((0.0, lh - h, cw, lh));
+            1.0
+        }
+        0x2589..=0x258F => {
+            let k = (0x2590 - u) as f32;
+            let w = (cw * k / 8.0).floor();
+            rects.push((0.0, 0.0, w, lh));
+            1.0
+        }
+        0x2590 => {
+            rects.push((half_w, 0.0, cw, lh));
+            1.0
+        }
+        // Shades: ░ ▒ ▓ = translucent full-cell fills.
+        0x2591..=0x2593 => {
+            rects.push((0.0, 0.0, cw, lh));
+            [0.25, 0.5, 0.75][(u - 0x2591) as usize]
+        }
+        0x2594 => {
+            let h = (lh / 8.0).floor().max(1.0);
+            rects.push((0.0, 0.0, cw, h));
+            1.0
+        }
+        0x2595 => {
+            let w = (cw / 8.0).floor().max(1.0);
+            rects.push((cw - w, 0.0, cw, lh));
+            1.0
+        }
+        // Quadrants: every combination of upper/lower × left/right halves.
+        0x2596..=0x259F => {
+            match u {
+                0x2596 => rects.push((0.0, half_h, half_w, lh)),
+                0x2597 => rects.push((half_w, half_h, cw, lh)),
+                0x2598 => rects.push((0.0, 0.0, half_w, half_h)),
+                0x2599 => {
+                    rects.push((0.0, 0.0, half_w, half_h));
+                    rects.push((0.0, half_h, cw, lh));
+                }
+                0x259A => {
+                    rects.push((0.0, 0.0, half_w, half_h));
+                    rects.push((half_w, half_h, cw, lh));
+                }
+                0x259B => {
+                    rects.push((0.0, 0.0, cw, half_h));
+                    rects.push((0.0, half_h, half_w, lh));
+                }
+                0x259C => {
+                    rects.push((0.0, 0.0, cw, half_h));
+                    rects.push((half_w, half_h, cw, lh));
+                }
+                0x259D => rects.push((half_w, 0.0, cw, half_h)),
+                0x259E => {
+                    rects.push((half_w, 0.0, cw, half_h));
+                    rects.push((0.0, half_h, half_w, lh));
+                }
+                _ => {
+                    rects.push((half_w, 0.0, cw, half_h));
+                    rects.push((0.0, half_h, cw, lh));
+                }
+            }
+            1.0
+        }
+        // Box drawing: light (1px) and heavy (2px) lines, corners, tees and
+        // crosses; rounded corners reuse the square geometry at this size.
+        0x2500 => {
+            hline(&mut rects, 0.0, cw, 1.0);
+            1.0
+        }
+        0x2501 => {
+            hline(&mut rects, 0.0, cw, 2.0);
+            1.0
+        }
+        0x2502 => {
+            vline(&mut rects, 0.0, lh, 1.0);
+            1.0
+        }
+        0x2503 => {
+            vline(&mut rects, 0.0, lh, 2.0);
+            1.0
+        }
+        0x250C | 0x256D => {
+            hline(&mut rects, cx, cw, 1.0);
+            vline(&mut rects, cy, lh, 1.0);
+            1.0
+        }
+        0x2510 | 0x256E => {
+            hline(&mut rects, 0.0, cx + 1.0, 1.0);
+            vline(&mut rects, cy, lh, 1.0);
+            1.0
+        }
+        0x2514 | 0x256F => {
+            hline(&mut rects, cx, cw, 1.0);
+            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            1.0
+        }
+        0x2518 | 0x2570 => {
+            hline(&mut rects, 0.0, cx + 1.0, 1.0);
+            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            1.0
+        }
+        0x250F => {
+            hline(&mut rects, cx - 1.0, cw, 2.0);
+            vline(&mut rects, cy - 1.0, lh, 2.0);
+            1.0
+        }
+        0x2513 => {
+            hline(&mut rects, 0.0, cx + 1.0, 2.0);
+            vline(&mut rects, cy - 1.0, lh, 2.0);
+            1.0
+        }
+        0x2517 => {
+            hline(&mut rects, cx - 1.0, cw, 2.0);
+            vline(&mut rects, 0.0, cy + 1.0, 2.0);
+            1.0
+        }
+        0x251B => {
+            hline(&mut rects, 0.0, cx + 1.0, 2.0);
+            vline(&mut rects, 0.0, cy + 1.0, 2.0);
+            1.0
+        }
+        0x251C => {
+            vline(&mut rects, 0.0, lh, 1.0);
+            hline(&mut rects, cx, cw, 1.0);
+            1.0
+        }
+        0x2524 => {
+            vline(&mut rects, 0.0, lh, 1.0);
+            hline(&mut rects, 0.0, cx + 1.0, 1.0);
+            1.0
+        }
+        0x252C => {
+            hline(&mut rects, 0.0, cw, 1.0);
+            vline(&mut rects, cy, lh, 1.0);
+            1.0
+        }
+        0x2534 => {
+            hline(&mut rects, 0.0, cw, 1.0);
+            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            1.0
+        }
+        0x253C => {
+            hline(&mut rects, 0.0, cw, 1.0);
+            vline(&mut rects, 0.0, lh, 1.0);
+            1.0
+        }
+        0x2523 => {
+            vline(&mut rects, 0.0, lh, 2.0);
+            hline(&mut rects, cx, cw, 1.0);
+            1.0
+        }
+        0x252B => {
+            vline(&mut rects, 0.0, lh, 2.0);
+            hline(&mut rects, 0.0, cx + 1.0, 1.0);
+            1.0
+        }
+        0x2533 => {
+            hline(&mut rects, 0.0, cw, 2.0);
+            vline(&mut rects, cy, lh, 1.0);
+            1.0
+        }
+        0x253B => {
+            hline(&mut rects, 0.0, cw, 2.0);
+            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            1.0
+        }
+        0x254B => {
+            hline(&mut rects, 0.0, cw, 2.0);
+            vline(&mut rects, 0.0, lh, 2.0);
+            1.0
+        }
+        _ => return None,
+    };
+    let color = Rgba {
+        a: fg.a * alpha,
+        ..fg
+    };
+    Some((rects, color))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -2587,12 +2355,15 @@ impl Element for TerminalElement {
         let text_system = window.text_system().clone();
         let font_id = text_system.resolve_font(&self.font);
         let font_size = px(self.font_size);
-        let cell_width = text_system
+        // Integer cell metrics: block/box quads and merged background strips
+        // must land on whole pixels or hairline seams appear between cells.
+        let cell_width = (text_system
             .em_advance(font_id, font_size)
             .map(f32::from)
-            .unwrap_or(8.4)
-            .max(1.0);
-        let cell_height = f32::from(font_size) * LINE_SCALE;
+            .unwrap_or(7.8)
+            .max(1.0))
+        .round();
+        let cell_height = (f32::from(font_size) * LINE_SCALE).round().max(1.0);
 
         let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;
         let rows = (f32::from(bounds.size.height) / cell_height).floor().max(1.0) as usize;
@@ -2615,15 +2386,18 @@ impl Element for TerminalElement {
         let text_system = window.text_system().clone();
         let font_size = px(self.font_size);
         let font_id = text_system.resolve_font(&self.font);
-        let cell_width = text_system
+        let cell_width = (text_system
             .em_advance(font_id, font_size)
             .map(f32::from)
-            .unwrap_or(8.4)
-            .max(1.0);
-        let cell_height = f32::from(font_size) * LINE_SCALE;
+            .unwrap_or(7.8)
+            .max(1.0))
+        .round();
+        let cell_height = (f32::from(font_size) * LINE_SCALE).round().max(1.0);
 
-        let left = f32::from(bounds.left());
-        let top = f32::from(bounds.top());
+        // Integer pixel snapping: rounded cell sizes + whole-pixel origin
+        // keep every quad boundary crisp.
+        let left = f32::from(bounds.left()).round();
+        let top = f32::from(bounds.top()).round();
 
         // Snapshot the grid into paint-ready rows (no borrows outlive this block).
         let (rows, cursor_cell, cursor_shape) = {
@@ -2730,20 +2504,32 @@ impl Element for TerminalElement {
             let y1 = y0 + cell_height;
             let x = |col: usize| left + cell_width * col as f32;
 
-            // Cell backgrounds.
+            // Cell backgrounds: one quad per run of equal colour, so
+            // highlight strips (prompt rows, selections) paint as a single
+            // seamless rectangle instead of per-cell quads.
             let mut col = 0usize;
-            for run in &row.runs {
-                if run.style.bg != theme.bg {
+            let mut span_start = 0usize;
+            let mut span_bg = theme.bg;
+            let mut flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
+                if span_bg != theme.bg && col > span_start {
                     window.paint_quad(fill(
                         Bounds::from_corners(
-                            point(px(x(col)), px(y0)),
-                            point(px(x(col + run.cells)), px(y1)),
+                            point(px(x(span_start)), px(y0)),
+                            point(px(x(col)), px(y1)),
                         ),
-                        run.style.bg,
+                        span_bg,
                     ));
+                }
+            };
+            for run in &row.runs {
+                if run.style.bg != span_bg {
+                    flush(col, span_start, span_bg, window);
+                    span_start = col;
+                    span_bg = run.style.bg;
                 }
                 col += run.cells;
             }
+            flush(col, span_start, span_bg, window);
 
             // Cursor: solid block fills the cell (its colours were inverted
             // above, so the glyph stays readable); hollow block is an outline;
@@ -2806,7 +2592,7 @@ impl Element for TerminalElement {
                 if run.style.italic {
                     font = font.italic();
                 }
-                if run.style.class == CharClass::Icon {
+                if matches!(run.style.class, CharClass::Icon | CharClass::Block) {
                     let mut cell = col;
                     let mut offset = 0usize;
                     for c in run_text.chars() {
@@ -2834,6 +2620,27 @@ impl Element for TerminalElement {
             }
             for segment in &segments {
                 if segment.text.trim().is_empty() {
+                    continue;
+                }
+                // Block elements and box drawing: painted as quads on exact
+                // cell boundaries, never through a font glyph, so pixel-art
+                // logos and separator runs are 100% solid.
+                if segment.style.class == CharClass::Block {
+                    if let Some(ch) = segment.text.chars().next() {
+                        if let Some((rects, color)) =
+                            procedural_cell(ch, cell_width, cell_height, segment.style.fg)
+                        {
+                            for (rx0, ry0, rx1, ry1) in rects {
+                                window.paint_quad(fill(
+                                    Bounds::from_corners(
+                                        point(px(segment.x0 + rx0), px(y0 + ry0)),
+                                        point(px(segment.x0 + rx1), px(y0 + ry1)),
+                                    ),
+                                    color,
+                                ));
+                            }
+                        }
+                    }
                     continue;
                 }
                 let text_run = TextRun {
@@ -2933,14 +2740,9 @@ const ICON_X: &str = "\u{EA76}"; // nf-cod-close
 const ICON_PLUS: &str = "\u{EA60}"; // nf-cod-add
 const ICON_GEAR: &str = "\u{EAF8}"; // nf-cod-gear
 const ICON_SEARCH: &str = "\u{EA6D}"; // nf-cod-search
-const ICON_FOLDER: &str = "\u{EA83}"; // nf-cod-folder
 const ICON_CHEVRON: &str = "\u{EAB6}"; // nf-cod-chevron_right
 const ICON_PEN: &str = "\u{EA73}"; // nf-cod-edit
-const ICON_ELLIPSIS: &str = "\u{EA7C}"; // nf-cod-ellipsis
-const ICON_BRANCH: &str = "\u{EC6F}"; // nf-cod-git_branch
-const ICON_CHEVRON_DOWN: &str = "\u{EAB4}"; // nf-cod-chevron_down
 const ICON_COLUMNS: &str = "\u{EB56}"; // nf-cod-split_horizontal
-const ICON_PANEL: &str = "\u{EBF3}"; // nf-cod-layout_panel_left
 
 /// Session icons (monochrome marks; the parent decides colour).
 const ICON_TERMINAL: &str = "\u{F120}"; // nf-fa-terminal
@@ -2964,13 +2766,18 @@ const ICON_CHEVRON_LEFT: &str = "\u{EAB5}"; // nf-cod-chevron_left
 const ICON_REFRESH: &str = "\u{EB37}"; // nf-cod-refresh
 const ICON_COLOR_MODE: &str = "\u{EAC6}"; // nf-cod-color_mode
 const ICON_TEXT_SIZE: &str = "\u{EB69}"; // nf-cod-text_size
+const ICON_EYE: &str = "\u{F06E}"; // nf-fa-eye
+const ICON_BARS: &str = "\u{F0C9}"; // nf-fa-bars (stacked rows)
+const ICON_SPARK: &str = "\u{F069}"; // nf-fa-asterisk (Atlas brand mark)
 
-/// Commands offered by the palette and the pane "⋯" menu.
+/// Commands offered by the palette.
 #[derive(Clone, Copy)]
 enum Command {
     NewTab,
     NewTabWsl,
     SplitPane,
+    SplitPaneDown,
+    MaximizePane,
     ClosePane,
     CloseTab,
     NextTab,
@@ -2979,20 +2786,20 @@ enum Command {
     RenameTab,
     ToggleTheme,
     OpenSettings,
-    ToggleSidebar,
-    ToggleStatusBar,
     FontInc,
     FontDec,
 }
 
 /// Palette entries: command, icon, label, shortcut hint.
 const COMMANDS: [(Command, &str, &str, &str); 15] = [
-    (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
+    (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift N"),
     (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
+    (Command::SplitPane, ICON_COLUMNS, "Split pane right", ""),
+    (Command::SplitPaneDown, ICON_BARS, "Split pane down", ""),
     (
-        Command::SplitPane,
-        ICON_COLUMNS,
-        "Split pane to the right",
+        Command::MaximizePane,
+        ICON_WINDOW_MAX,
+        "Toggle maximize pane",
         "",
     ),
     (Command::ClosePane, ICON_X, "Close pane", ""),
@@ -3009,17 +2816,10 @@ const COMMANDS: [(Command, &str, &str, &str); 15] = [
     (
         Command::ToggleTheme,
         ICON_COLOR_MODE,
-        "Toggle light / dark theme",
-        "Ctrl Shift D",
+        "Warm paper / warm dark",
+        "Ctrl Shift T",
     ),
     (Command::OpenSettings, ICON_GEAR, "Open settings", ""),
-    (Command::ToggleSidebar, ICON_PANEL, "Toggle sidebar", "Ctrl B"),
-    (
-        Command::ToggleStatusBar,
-        ICON_PANEL,
-        "Toggle status bar",
-        "Ctrl Shift B",
-    ),
     (Command::FontInc, ICON_TEXT_SIZE, "Increase font size", ""),
     (Command::FontDec, ICON_TEXT_SIZE, "Decrease font size", ""),
 ];
@@ -3048,7 +2848,7 @@ fn caption_spacer(slot: usize) -> impl IntoElement {
     div()
         .id(ElementId::named_usize("caption-spacer", slot))
         .flex_1()
-        .h(px(38.0))
+        .h(px(36.0))
         .relative()
         .child(
             canvas(
@@ -3068,9 +2868,7 @@ fn caption_spacer(slot: usize) -> impl IntoElement {
         )
 }
 
-/// Profile picker behind the New-tab caret, anchored above the bottom bar.
-/// Entries reuse the sidebar's icon table so the new session arrives already
-/// looking like its mock entry.
+/// Profile picker behind the workspace pill, anchored under the top bar.
 fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
     let entries: [(&'static str, Profile); 2] = [
         ("PowerShell", Profile::PowerShell),
@@ -3079,7 +2877,7 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
     let item_hover = theme.card_hover;
     let mut menu = div()
         .absolute()
-        .bottom(px(56.0))
+        .top(px(44.0))
         .left(px(10.0))
         .w(px(236.0))
         .flex()
@@ -3123,15 +2921,49 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
         .with_easing(ease_out_cubic),
         move |el, delta| {
             let t = if closing { 1.0 - delta } else { delta };
-            el.opacity(t).bottom(px(56.0 - 6.0 * (1.0 - t)))
+            el.opacity(t).top(px(44.0 - 6.0 * (1.0 - t)))
         },
     )
     .into_any_element()
 }
 
-/// Small icon button (sidebar header, pane header, rail): quiet by default,
-/// brightens on hover, runs `on_click` — which owns focus placement, so
-/// overlays can take focus without the terminal snatching it back.
+/// Micro pane-header action: a 12px glyph at 45% ink that comes to 90% on
+/// hover (the whisper row inside the sheet).
+fn micro_action(
+    id: ElementId,
+    glyph: &'static str,
+    theme: &Theme,
+    on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
+    cx: &mut Context<AtlasView>,
+) -> AnyElement {
+    let idle = Rgba {
+        a: 0.45,
+        ..theme.chrome_fg
+    };
+    let hot = Rgba {
+        a: 0.9,
+        ..theme.chrome_fg_active
+    };
+    div()
+        .id(id)
+        .w(px(22.0))
+        .h(px(20.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(5.0))
+        .text_color(idle)
+        .hover(move |style| style.text_color(hot))
+        .child(icon_glyph(glyph, 12.0))
+        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+            on_click(view, window, cx);
+        }))
+        .into_any_element()
+}
+
+/// Small icon button (top-bar actions): quiet by default, brightens on
+/// hover, runs `on_click` — which owns focus placement, so overlays can take
+/// focus without the terminal snatching it back.
 fn chrome_action_button(
     id: ElementId,
     glyph: &'static str,
@@ -3213,22 +3045,6 @@ fn title_path(raw: &str) -> Option<String> {
     }
 }
 
-/// Raw location string for a pane: the title path first (WSL shells report
-/// their Linux cwd there), the PEB-polled Windows cwd as fallback.
-fn pane_raw_location(pane: &Pane) -> Option<String> {
-    if let Some(path) = title_path(&pane.title) {
-        return Some(path);
-    }
-    pane.cwd
-        .as_ref()
-        .map(|cwd| cwd.to_string_lossy().into_owned())
-}
-
-/// Short display form of a pane's location (`…/Users/me`, `~\projects\api`).
-fn pane_location(pane: &Pane) -> Option<String> {
-    pane_raw_location(pane).map(|raw| display_cwd(Path::new(&raw)))
-}
-
 /// Working directory to run git against: the title path mapped back to
 /// Windows (`/mnt/c/…` → `C:\…`), `None` for Linux-only paths, the PEB poll
 /// otherwise.
@@ -3275,18 +3091,7 @@ fn session_icon(title: &str) -> &'static str {
     }
 }
 
-/// Friendly label for the shell executable that was actually spawned.
-fn shell_label(shell: &str) -> &'static str {
-    if shell.eq_ignore_ascii_case("pwsh") {
-        "PowerShell 7"
-    } else if shell.eq_ignore_ascii_case("wsl.exe") {
-        "WSL"
-    } else {
-        "Windows PowerShell"
-    }
-}
-
-/// Sidebar/default title for a freshly spawned profile.
+/// Default title for a freshly spawned profile.
 fn profile_title(profile: Profile) -> String {
     match profile {
         Profile::PowerShell => "PowerShell".to_string(),
@@ -3415,56 +3220,4 @@ fn tab_name(raw: &str, fallback: &str) -> String {
         name.push('…');
     }
     name
-}
-
-/// Mock-style working-directory label: `C:\Users\me\projects\api` ->
-/// `~\projects\api`; deeper paths keep the root and the last two parts.
-fn display_cwd(cwd: &Path) -> String {
-    let lossy = cwd.to_string_lossy();
-    let trimmed = lossy.trim_end_matches(['\\', '/']);
-
-    // Unix paths (WSL, MSYS): keep forward slashes and show the tail.
-    if trimmed.starts_with('/') {
-        let parts: Vec<&str> = trimmed.split('/').filter(|part| !part.is_empty()).collect();
-        return match parts.len() {
-            0 => "/".to_string(),
-            1 => format!("/{}", parts[0]),
-            2 => format!("/{}/{}", parts[0], parts[1]),
-            n => format!("…/{}/{}", parts[n - 2], parts[n - 1]),
-        };
-    }
-
-    let home = std::env::var_os("USERPROFILE").map(|home| home.to_string_lossy().into_owned());
-    let home = home.as_deref().map(|home| home.trim_end_matches(['\\', '/']));
-
-    let (root, rest) = match home {
-        Some(home) if trimmed.eq_ignore_ascii_case(home) => return "~".to_string(),
-        Some(home)
-            if trimmed.len() > home.len()
-                && trimmed.to_ascii_lowercase().starts_with(&home.to_ascii_lowercase())
-                && matches!(trimmed.as_bytes()[home.len()], b'\\' | b'/') =>
-        {
-            (
-                "~".to_string(),
-                trimmed[home.len()..]
-                    .trim_start_matches(['\\', '/'])
-                    .to_string(),
-            )
-        }
-        _ => match trimmed.split_once(":\\") {
-            Some((drive, rest)) => (format!("{drive}:\\"), rest.to_string()),
-            None => (String::new(), trimmed.to_string()),
-        },
-    };
-
-    let parts: Vec<&str> = rest
-        .split(['\\', '/'])
-        .filter(|part| !part.is_empty())
-        .collect();
-    match parts.len() {
-        0 => root,
-        1 => format!("{root}{}", parts[0]),
-        2 => format!("{root}{}\\{}", parts[0], parts[1]),
-        n => format!("{root}…\\{}", parts[n - 2..].join("\\")),
-    }
 }
