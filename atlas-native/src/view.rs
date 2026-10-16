@@ -10,19 +10,20 @@
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Duration;
 
 use alacritty_terminal::event::Event;
-use alacritty_terminal::grid::Scroll;
+use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, App, Bounds, ClickEvent, Context, Element, ElementId, FocusHandle, Font,
-    FontFallbacks, GlobalElementId, InspectorElementId, IntoElement, KeyDownEvent, Keystroke,
-    LayoutId, MouseButton, MouseDownEvent, Pixels, Render, Rgba, ScrollWheelEvent,
-    StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas, div, fill, point, px,
-    relative, rgb, rgba,
+    Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, Context, Element, ElementId,
+    FocusHandle, Font, FontFallbacks, GlobalElementId, InspectorElementId, IntoElement,
+    KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, Pixels, Render, Rgba,
+    ScrollWheelEvent, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas, div,
+    fill, point, px, relative, rgb, rgba,
 };
 
 use crate::keymap;
@@ -35,6 +36,15 @@ const FONT_CASCADE: &[&str] = &["Cascadia Code", "Cascadia Mono", "Consolas"];
 const FONT_FALLBACK: &str = "Consolas";
 const FONT_SIZE: f32 = 14.0;
 const LINE_SCALE: f32 = 1.3;
+
+/// Motion timings (ms) — short and quiet, Zed-style: overlay entrances and
+/// exits, the sidebar resize, the settings/terminal body swap and the
+/// sidebar row entrance.
+const OVERLAY_IN_MS: u64 = 170;
+const OVERLAY_OUT_MS: u64 = 110;
+const SIDEBAR_MS: u64 = 190;
+const BODY_IN_MS: u64 = 150;
+const TAB_IN_MS: u64 = 160;
 
 pub struct AtlasView {
     tabs: Vec<Tab>,
@@ -75,6 +85,16 @@ pub struct AtlasView {
     settings_focus: FocusHandle,
     palette_focus: FocusHandle,
     rename_focus: FocusHandle,
+    /// Fade-out flags: an overlay stays mounted while it animates away and a
+    /// timer task unmounts it (cleared whenever the open flag drops).
+    palette_closing: bool,
+    menu_closing: bool,
+    profile_closing: bool,
+    /// Smooth scrolling: the pane being eased plus (position, target) display
+    /// offsets in lines. Bound to a session so tab switches stay safe.
+    scroll_anim: Option<(Rc<RefCell<Session>>, f32, f32)>,
+    /// One easing task per wheel gesture burst; stops when the anim settles.
+    scroll_task: bool,
 }
 
 struct Tab {
@@ -133,6 +153,11 @@ impl AtlasView {
             settings_focus: cx.focus_handle(),
             palette_focus: cx.focus_handle(),
             rename_focus: cx.focus_handle(),
+            palette_closing: false,
+            menu_closing: false,
+            profile_closing: false,
+            scroll_anim: None,
+            scroll_task: false,
         };
         view.new_tab(Profile::PowerShell, cx);
 
@@ -422,13 +447,88 @@ impl AtlasView {
         }
     }
 
-    fn scroll(&self, lines: i32) {
+    /// Keyboard paging: instant, and it wins over any in-flight wheel easing.
+    fn scroll(&mut self, lines: i32) {
+        self.scroll_anim = None;
         if let Some(pane) = self.active_pane() {
             pane.session
                 .borrow_mut()
                 .term
                 .scroll_display(Scroll::Delta(lines));
         }
+    }
+
+    /// Wheel scrolling: let the display offset glide toward the gesture target
+    /// instead of stepping line-by-line (the trackpad "smooth" feel). Deltas
+    /// accumulate while the gesture is hot; the easing task stops itself once
+    /// the offset has settled.
+    fn scroll_smooth(&mut self, lines: f32, cx: &mut Context<Self>) {
+        if lines == 0.0 {
+            return;
+        }
+        let Some(pane) = self.active_pane() else {
+            return;
+        };
+        let session = pane.session.clone();
+        let current = session.borrow().term.renderable_content().display_offset as f32;
+        let max = session.borrow().term.history_size() as f32;
+
+        let same_pane = match &self.scroll_anim {
+            Some((bound, _, _)) => Rc::ptr_eq(bound, &session),
+            None => false,
+        };
+        if same_pane {
+            if let Some((_, _, target)) = self.scroll_anim.as_mut() {
+                *target = (*target + lines).clamp(0.0, max);
+            }
+        } else {
+            self.scroll_anim = Some((session, current, (current + lines).clamp(0.0, max)));
+        }
+
+        if self.scroll_task {
+            return;
+        }
+        self.scroll_task = true;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(16))
+                    .await;
+                let tick = this.update(cx, |view, cx| {
+                    let Some((session, pos, target)) = view.scroll_anim.clone() else {
+                        view.scroll_task = false;
+                        return true;
+                    };
+                    // Exponential approach: quick at first, gentle at the end.
+                    let next = if (target - pos).abs() < 0.35 {
+                        target
+                    } else {
+                        pos + (target - pos) * 0.38
+                    };
+                    let settled = next == target;
+                    view.scroll_anim = if settled {
+                        None
+                    } else {
+                        Some((session.clone(), next, target))
+                    };
+                    if settled {
+                        view.scroll_task = false;
+                    }
+                    let mut guard = session.borrow_mut();
+                    let current = guard.term.renderable_content().display_offset as i32;
+                    let delta = next.round() as i32 - current;
+                    if delta != 0 {
+                        guard.term.scroll_display(Scroll::Delta(delta));
+                    }
+                    cx.notify();
+                    settled
+                });
+                if !matches!(tick, Ok(false)) {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     fn paste(&self, cx: &mut Context<Self>) {
@@ -498,6 +598,7 @@ impl AtlasView {
 
     fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.palette_open = true;
+        self.palette_closing = false;
         self.palette_query.clear();
         self.palette_index = 0;
         self.profile_menu = false;
@@ -505,10 +606,28 @@ impl AtlasView {
         cx.notify();
     }
 
+    /// Fade the palette out, then unmount it once the timer task fires; a
+    /// fresh open cancels the pending dismissal.
     fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.palette_open = false;
+        if self.palette_closing {
+            return;
+        }
+        self.palette_closing = true;
         self.focus_main(window);
         cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(OVERLAY_OUT_MS))
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if view.palette_closing {
+                    view.palette_closing = false;
+                    view.palette_open = false;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// Commands matching the current query, in declaration order.
@@ -581,10 +700,14 @@ impl AtlasView {
         }
     }
 
-    /// Run a palette / pane-menu command; both overlays close on the way.
+    /// Run a palette / pane-menu command; both overlays fade out on the way.
     fn run_command(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
-        self.palette_open = false;
-        self.menu_open = false;
+        if self.palette_open {
+            self.close_palette(window, cx);
+        }
+        if self.menu_open {
+            self.dismiss_menu(cx);
+        }
         match command {
             Command::NewTab => {
                 self.new_tab(Profile::PowerShell, cx);
@@ -653,11 +776,72 @@ impl AtlasView {
     }
 
     fn toggle_profile_menu(&mut self, cx: &mut Context<Self>) {
-        self.profile_menu = !self.profile_menu;
-        if self.profile_menu {
-            self.settings_open = false;
+        if self.profile_closing {
+            // Clicking the caret again while the menu fades keeps it open.
+            self.profile_closing = false;
+        } else {
+            self.profile_menu = !self.profile_menu;
+            if self.profile_menu {
+                self.settings_open = false;
+            }
         }
         cx.notify();
+    }
+
+    /// The pane-header "⋯" button: open the menu, or fade it away.
+    fn toggle_menu(&mut self, cx: &mut Context<Self>) {
+        if self.menu_closing {
+            self.menu_closing = false;
+        } else if self.menu_open {
+            self.dismiss_menu(cx);
+        } else {
+            self.menu_open = true;
+        }
+        cx.notify();
+    }
+
+    /// Fade the profile (new-tab) menu out, then unmount it.
+    fn dismiss_profile(&mut self, cx: &mut Context<Self>) {
+        if self.profile_closing {
+            return;
+        }
+        self.profile_closing = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(OVERLAY_OUT_MS))
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if view.profile_closing {
+                    view.profile_closing = false;
+                    view.profile_menu = false;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Fade the pane menu out, then unmount it.
+    fn dismiss_menu(&mut self, cx: &mut Context<Self>) {
+        if self.menu_closing {
+            return;
+        }
+        self.menu_closing = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(OVERLAY_OUT_MS))
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if view.menu_closing {
+                    view.menu_closing = false;
+                    view.menu_open = false;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// Open the rename dialog prefilled with the tab's current name.
@@ -673,8 +857,12 @@ impl AtlasView {
             .clone()
             .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)));
         self.rename_open = true;
-        self.palette_open = false;
-        self.menu_open = false;
+        if self.palette_open {
+            self.close_palette(window, cx);
+        }
+        if self.menu_open {
+            self.dismiss_menu(cx);
+        }
         window.focus(&self.rename_focus);
         cx.notify();
     }
@@ -728,6 +916,7 @@ impl AtlasView {
     /// Command palette overlay, centred under the titlebar.
     fn palette(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let matches = self.palette_matches();
+        let closing = self.palette_closing;
 
         let mut text_row = div()
             .flex()
@@ -843,6 +1032,19 @@ impl AtlasView {
                     .child(div().h(px(1.0)).bg(theme.hairline))
                     .child(list),
             )
+            .with_animation(
+                ElementId::named_usize("palette-anim", closing as usize),
+                Animation::new(Duration::from_millis(if closing {
+                    OVERLAY_OUT_MS
+                } else {
+                    OVERLAY_IN_MS
+                }))
+                .with_easing(ease_out_cubic),
+                move |el, delta| {
+                    let t = if closing { 1.0 - delta } else { delta };
+                    el.opacity(t).top(px(54.0 - 8.0 * (1.0 - t)))
+                },
+            )
             .into_any_element()
     }
 
@@ -906,6 +1108,11 @@ impl AtlasView {
                             .child("Enter to apply · Esc to cancel · empty restores the shell name"),
                     ),
             )
+            .with_animation(
+                ElementId::named_usize("rename-anim", 0),
+                Animation::new(Duration::from_millis(OVERLAY_IN_MS)).with_easing(ease_out_cubic),
+                |el, delta| el.opacity(delta).top(px(120.0 - 8.0 * (1.0 - delta))),
+            )
             .into_any_element()
     }
 
@@ -965,7 +1172,21 @@ impl AtlasView {
                     })),
             );
         }
-        menu.into_any_element()
+        let closing = self.menu_closing;
+        menu.with_animation(
+            ElementId::named_usize("pane-menu-anim", closing as usize),
+            Animation::new(Duration::from_millis(if closing {
+                OVERLAY_OUT_MS
+            } else {
+                OVERLAY_IN_MS
+            }))
+            .with_easing(ease_out_cubic),
+            move |el, delta| {
+                let t = if closing { 1.0 - delta } else { delta };
+                el.opacity(t).top(px(84.0 - 6.0 * (1.0 - t)))
+            },
+        )
+        .into_any_element()
     }
 
     /// Full settings page shown in place of the terminal body.
@@ -1203,8 +1424,12 @@ impl AtlasView {
 
         if key == "escape" && (self.settings_open || self.profile_menu || self.menu_open) {
             self.settings_open = false;
-            self.profile_menu = false;
-            self.menu_open = false;
+            if self.profile_menu {
+                self.dismiss_profile(cx);
+            }
+            if self.menu_open {
+                self.dismiss_menu(cx);
+            }
             cx.notify();
             return;
         }
@@ -1268,6 +1493,16 @@ impl AtlasView {
 
 impl Render for AtlasView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A dismissal that raced another state change must not stay armed.
+        if !self.palette_open {
+            self.palette_closing = false;
+        }
+        if !self.menu_open {
+            self.menu_closing = false;
+        }
+        if !self.profile_menu {
+            self.profile_closing = false;
+        }
         let theme = self.theme.clone();
 
         // ---- Titlebar ------------------------------------------------
@@ -1459,13 +1694,10 @@ impl Render for AtlasView {
                 }))
                 .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
                     let lines = match event.delta {
-                        gpui::ScrollDelta::Lines(delta) => delta.y as i32,
-                        gpui::ScrollDelta::Pixels(delta) => (f32::from(delta.y) / 18.0) as i32,
+                        gpui::ScrollDelta::Lines(delta) => delta.y as f32,
+                        gpui::ScrollDelta::Pixels(delta) => f32::from(delta.y) / 18.0,
                     };
-                    if lines != 0 {
-                        view.scroll(lines);
-                        cx.notify();
-                    }
+                    view.scroll_smooth(lines, cx);
                 }))
                 .on_mouse_down(
                     MouseButton::Left,
@@ -1526,18 +1758,35 @@ impl Render for AtlasView {
                         cursor_override: self.cursor_style,
                     });
                 }
-                area = area.child(cell);
+                area = area.child(cell.with_animation(
+                    ElementId::named_usize("pane-in", pane.epoch as usize),
+                    Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_out_cubic),
+                    |el, delta| el.opacity(delta),
+                ));
             }
 
             area.into_any_element()
         };
+
+        // Swap the body through a quick fade: the settings page slides in over
+        // the terminal, and the terminal fades back when settings closes (its
+        // element remounts, which restarts the animation).
+        let body = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .child(body)
+            .with_animation(
+                ElementId::named_usize("body-anim", self.settings_open as usize),
+                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_out_cubic),
+                |el, delta| el.opacity(delta),
+            );
 
         // ---- Sidebar --------------------------------------------------
         // Tabs list on the left: item per session + New tab / settings row.
         let mut sidebar = div()
             .flex()
             .flex_col()
-            .w(px(254.0))
             .h(relative(1.0))
             .bg(theme.panel_bg)
             .border_r_1()
@@ -1762,7 +2011,11 @@ impl Render for AtlasView {
                 );
             }
 
-            list = list.child(item);
+            list = list.child(item.with_animation(
+                ElementId::named_usize("tab-in", tab.id as usize),
+                Animation::new(Duration::from_millis(TAB_IN_MS)).with_easing(ease_out_cubic),
+                |el, delta| el.opacity(delta).left(px(-12.0 * (1.0 - delta))),
+            ));
         }
 
         sidebar = sidebar.child(list);
@@ -1860,8 +2113,8 @@ impl Render for AtlasView {
         );
 
         // Collapsed state: a slim rail keeps expand + new-tab reachable.
-        let sidebar: AnyElement = if self.sidebar_open {
-            sidebar.into_any_element()
+        let (content, from_w, to_w): (AnyElement, f32, f32) = if self.sidebar_open {
+            (sidebar.into_any_element(), 46.0, 254.0)
         } else {
             let rail_theme = theme.clone();
             let mut rail = div()
@@ -1869,7 +2122,6 @@ impl Render for AtlasView {
                 .flex_col()
                 .items_center()
                 .gap(px(4.0))
-                .w(px(46.0))
                 .h(relative(1.0))
                 .pt(px(9.0))
                 .bg(rail_theme.panel_bg)
@@ -1904,8 +2156,31 @@ impl Render for AtlasView {
                 },
                 cx,
             ));
-            rail.into_any_element()
+            (rail.into_any_element(), 254.0, 46.0)
         };
+
+        // Animate the width and fade the inbound content so the collapse /
+        // expand glides; contents stretch to the animated width.
+        let open = self.sidebar_open;
+        let sidebar: AnyElement = div()
+            .flex()
+            .flex_col()
+            .flex_shrink_0()
+            .h(relative(1.0))
+            .child(content)
+            .with_animation(
+                ElementId::named_usize("sidebar-anim", open as usize),
+                Animation::new(Duration::from_millis(SIDEBAR_MS)).with_easing(ease_in_out_cubic),
+                move |el, delta| {
+                    let opacity = if open {
+                        ((delta - 0.25) / 0.75).max(0.0)
+                    } else {
+                        delta
+                    };
+                    el.w(px(from_w + (to_w - from_w) * delta)).opacity(opacity)
+                },
+            )
+            .into_any_element();
 
         // ---- Pane header ---------------------------------------------
         // Breadcrumb (folder · parent › leaf) + view actions.
@@ -2021,9 +2296,8 @@ impl Render for AtlasView {
                     6.0,
                     &theme,
                     |view, window, cx| {
-                        view.menu_open = !view.menu_open;
+                        view.toggle_menu(cx);
                         window.focus(&view.focus);
-                        cx.notify();
                     },
                     cx,
                 ));
@@ -2120,24 +2394,26 @@ impl Render for AtlasView {
 
         // Overlays paint last: each is a dim click-catcher plus its panel, in
         // stacking order (profile menu, pane menu, palette, rename dialog).
+        // The `*_closing` flags drive fade-outs; dismissal tasks unmount them.
         if self.profile_menu {
+            let closing = self.profile_closing;
             root = root.child(overlay_backdrop(
                 0,
+                closing,
                 |view, window, cx| {
-                    view.profile_menu = false;
                     window.focus(&view.focus);
-                    cx.notify();
+                    view.dismiss_profile(cx);
                 },
                 cx,
             ));
-            root = root.child(profile_menu(&theme, cx));
+            root = root.child(profile_menu(&theme, closing, cx));
         }
         if self.menu_open {
             root = root.child(overlay_backdrop(
                 1,
+                self.menu_closing,
                 |view, _window, cx| {
-                    view.menu_open = false;
-                    cx.notify();
+                    view.dismiss_menu(cx);
                 },
                 cx,
             ));
@@ -2146,6 +2422,7 @@ impl Render for AtlasView {
         if self.palette_open {
             root = root.child(overlay_backdrop(
                 2,
+                self.palette_closing,
                 |view, window, cx| {
                     view.close_palette(window, cx);
                 },
@@ -2156,6 +2433,7 @@ impl Render for AtlasView {
         if self.rename_open {
             root = root.child(overlay_backdrop(
                 3,
+                false,
                 |view, window, cx| {
                     view.close_rename(window, cx);
                 },
@@ -2165,6 +2443,24 @@ impl Render for AtlasView {
         }
 
         root
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Motion
+// ----------------------------------------------------------------------------
+
+/// Cubic ease-out for entrances: quick takeoff, soft landing.
+fn ease_out_cubic(d: f32) -> f32 {
+    1.0 - (1.0 - d).powi(3)
+}
+
+/// Cubic ease-in-out for layout resizes.
+fn ease_in_out_cubic(d: f32) -> f32 {
+    if d < 0.5 {
+        4.0 * d * d * d
+    } else {
+        1.0 - (-2.0 * d + 2.0).powi(3) / 2.0
     }
 }
 
@@ -2697,7 +2993,7 @@ fn caption_spacer(slot: usize) -> impl IntoElement {
 /// Profile picker behind the New-tab caret, anchored above the bottom bar.
 /// Entries reuse the sidebar's icon table so the new session arrives already
 /// looking like its mock entry.
-fn profile_menu(theme: &Theme, cx: &mut Context<AtlasView>) -> AnyElement {
+fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
     let entries: [(&'static str, Profile); 2] = [
         ("PowerShell", Profile::PowerShell),
         ("Ubuntu (WSL)", Profile::Wsl),
@@ -2734,12 +3030,25 @@ fn profile_menu(theme: &Theme, cx: &mut Context<AtlasView>) -> AnyElement {
                 .child(label)
                 .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                     view.new_tab(profile, cx);
-                    view.profile_menu = false;
+                    view.dismiss_profile(cx);
                     window.focus(&view.focus);
                 })),
         );
     }
-    menu.into_any_element()
+    menu.with_animation(
+        ElementId::named_usize("profile-anim", closing as usize),
+        Animation::new(Duration::from_millis(if closing {
+            OVERLAY_OUT_MS
+        } else {
+            OVERLAY_IN_MS
+        }))
+        .with_easing(ease_out_cubic),
+        move |el, delta| {
+            let t = if closing { 1.0 - delta } else { delta };
+            el.opacity(t).bottom(px(56.0 - 6.0 * (1.0 - t)))
+        },
+    )
+    .into_any_element()
 }
 
 /// Small icon button (sidebar header, pane header, rail): quiet by default,
@@ -2776,10 +3085,11 @@ fn chrome_action_button(
         .into_any_element()
 }
 
-/// Full-screen click-catcher painted under an overlay panel; dims the chrome
-/// a touch and dismisses the overlay on any click.
+/// Full-screen click-catcher painted under an overlay panel; fades in with
+/// the panel, dims the chrome a touch and dismisses the overlay on any click.
 fn overlay_backdrop(
     id: usize,
+    closing: bool,
     on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
     cx: &mut Context<AtlasView>,
 ) -> AnyElement {
@@ -2791,6 +3101,16 @@ fn overlay_backdrop(
         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
             on_click(view, window, cx);
         }))
+        .with_animation(
+            ElementId::named_usize("backdrop-anim", id * 2 + closing as usize),
+            Animation::new(Duration::from_millis(if closing {
+                OVERLAY_OUT_MS
+            } else {
+                OVERLAY_IN_MS
+            }))
+            .with_easing(ease_out_cubic),
+            move |el, delta| el.opacity(if closing { 1.0 - delta } else { delta }),
+        )
         .into_any_element()
 }
 
