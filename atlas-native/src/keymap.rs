@@ -24,6 +24,10 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
         "enter" => vec![b'\r'],
         "backspace" => vec![0x7f],
         "escape" => vec![0x1b],
+        // gpui never fills `key_char` for the space bar (VK_SPACE lives in its
+        // "immutable keys" table), so forward it here — Ctrl+Space stays in
+        // the control-chord arm below (0x00).
+        "space" if !modifiers.control => vec![b' '],
         "tab" if modifiers.shift => vec![0x1b, b'[', b'Z'], // CBT
         "tab" => vec![b'\t'],
         "up" => cursor_key(b'A', app_cursor),

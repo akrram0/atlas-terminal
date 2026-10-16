@@ -79,13 +79,24 @@ pub struct AtlasView {
 
 struct Tab {
     id: u64,
-    epoch: u64,
-    title: String,
     /// User-set name (Rename dialog / palette); wins over the shell title.
     custom_title: Option<String>,
-    session: Rc<RefCell<Session>>,
-    /// Which profile this tab runs (kept so Restart reuses it).
+    /// Split panes, left to right; always at least one.
+    panes: Vec<Pane>,
+    /// Pane that owns the keyboard, the caret and the status bar.
+    active_pane: usize,
+}
+
+/// One shell inside a tab (a tab is one or more panes side by side).
+struct Pane {
+    /// Bumped on every (re)spawn; stale session messages are dropped.
+    epoch: u64,
+    /// Which profile this pane runs (Restart reuses it).
     profile: Profile,
+    /// Latest shell-reported title (OSC 0/2), e.g. `vite` or
+    /// `user@host: /mnt/c/Users/me`.
+    title: String,
+    session: Rc<RefCell<Session>>,
     /// Working directory of the shell, polled from the process (`crate::cwd`).
     cwd: Option<PathBuf>,
     /// Git branch of the working directory, polled alongside it.
@@ -158,22 +169,24 @@ impl AtlasView {
                     .update(cx, |view, cx| {
                         let mut changed = false;
                         for tab in &mut view.tabs {
-                            if tab.exited {
-                                continue;
-                            }
-                            let Some(cwd) =
-                                tab.session.borrow().pid.and_then(crate::cwd::process_cwd)
-                            else {
-                                continue;
-                            };
-                            if tab.cwd.as_deref() != Some(cwd.as_path()) {
-                                tab.cwd = Some(cwd.clone());
-                                changed = true;
-                            }
-                            let branch = git_branch(&cwd);
-                            if branch != tab.branch {
-                                tab.branch = branch;
-                                changed = true;
+                            for pane in &mut tab.panes {
+                                if pane.exited {
+                                    continue;
+                                }
+                                let Some(cwd) =
+                                    pane.session.borrow().pid.and_then(crate::cwd::process_cwd)
+                                else {
+                                    continue;
+                                };
+                                if pane.cwd.as_deref() != Some(cwd.as_path()) {
+                                    pane.cwd = Some(cwd);
+                                    changed = true;
+                                }
+                                let branch = git_cwd(pane).as_deref().and_then(git_branch);
+                                if branch != pane.branch {
+                                    pane.branch = branch;
+                                    changed = true;
+                                }
                             }
                         }
                         if changed {
@@ -206,17 +219,20 @@ impl AtlasView {
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
                 self.tabs.push(Tab {
                     id,
-                    epoch,
-                    title: profile_title(profile),
                     custom_title: None,
-                    session: session.clone(),
-                    profile,
-                    cwd,
-                    branch: None,
-                    exited: false,
+                    panes: vec![Pane {
+                        epoch,
+                        profile,
+                        title: profile_title(profile),
+                        session: session.clone(),
+                        cwd,
+                        branch: None,
+                        exited: false,
+                    }],
+                    active_pane: 0,
                 });
                 self.active = self.tabs.len() - 1;
-                Self::watch(id, epoch, session, rx, cx);
+                Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("tab {id}: shell spawned"));
             }
             Err(err) => {
@@ -245,27 +261,33 @@ impl AtlasView {
         cx.notify();
     }
 
+    /// Restart the active pane of a tab with a fresh session.
     fn restart_tab(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some(tab) = self.tabs.get(index) else {
-            return;
+        let (id, profile, pane_ix) = match self.tabs.get(index) {
+            Some(tab) => match tab.panes.get(tab.active_pane) {
+                Some(pane) => (tab.id, pane.profile, tab.active_pane),
+                None => return,
+            },
+            None => return,
         };
-        let id = tab.id;
         let epoch = self.next_epoch;
         self.next_epoch += 1;
 
-        match Session::spawn(80, 24, home_dir(), tab.profile) {
+        match Session::spawn(80, 24, home_dir(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
                 if let Some(tab) = self.tabs.get_mut(index) {
-                    tab.epoch = epoch;
-                    tab.session = session.clone();
-                    tab.cwd = cwd;
-                    tab.branch = None;
-                    tab.title = profile_title(tab.profile);
-                    tab.exited = false;
+                    if let Some(pane) = tab.panes.get_mut(pane_ix) {
+                        pane.epoch = epoch;
+                        pane.session = session.clone();
+                        pane.cwd = cwd;
+                        pane.branch = None;
+                        pane.title = profile_title(profile);
+                        pane.exited = false;
+                    }
                 }
-                Self::watch(id, epoch, session, rx, cx);
+                Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("tab {id}: shell restarted"));
             }
             Err(err) => {
@@ -276,12 +298,68 @@ impl AtlasView {
         cx.notify();
     }
 
+    /// Split the active tab: a new pane running the active pane's profile is
+    /// spawned to the right and takes focus.
+    fn split_active(&mut self, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let profile = match tab.panes.get(tab.active_pane) {
+            Some(pane) => pane.profile,
+            None => return,
+        };
+        let epoch = self.next_epoch;
+        self.next_epoch += 1;
+
+        match Session::spawn(80, 24, home_dir(), profile) {
+            Ok((session, rx)) => {
+                let session = Rc::new(RefCell::new(session));
+                let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    tab.panes.push(Pane {
+                        epoch,
+                        profile,
+                        title: profile_title(profile),
+                        session: session.clone(),
+                        cwd,
+                        branch: None,
+                        exited: false,
+                    });
+                    tab.active_pane = tab.panes.len() - 1;
+                }
+                Self::watch(epoch, session, rx, cx);
+                crate::log_line(&format!("pane split: shell spawned (epoch {epoch})"));
+            }
+            Err(err) => {
+                eprintln!("atlas-native: failed to split pane: {err:#}");
+                crate::log_line(&format!("pane split failed: {err:#}"));
+            }
+        }
+        cx.notify();
+    }
+
+    /// Close the active pane; the tab itself goes when its last pane does.
+    fn close_pane(&mut self, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return;
+        };
+        if tab.panes.len() <= 1 {
+            let index = self.active;
+            self.close_tab(index, cx);
+            return;
+        }
+        tab.panes.remove(tab.active_pane);
+        if tab.active_pane >= tab.panes.len() {
+            tab.active_pane = tab.panes.len() - 1;
+        }
+        cx.notify();
+    }
+
     /// Drain one session's output/event stream into the UI.
     ///
-    /// The task exits when the tab is gone or the session's channel closes.
-    /// Stale messages from a previous session of the same tab are ignored.
+    /// The task exits when the pane is gone or the session's channel closes.
+    /// Stale messages from a previous session are ignored (epoch guard).
     fn watch(
-        id: u64,
         epoch: u64,
         session: Rc<RefCell<Session>>,
         rx: smol::channel::Receiver<SessionMsg>,
@@ -290,20 +368,23 @@ impl AtlasView {
         cx.spawn(async move |this, cx| {
             while let Ok(msg) = rx.recv().await {
                 let keep = this.update(cx, |view, cx| {
-                    let Some(tab) = view.tabs.iter_mut().find(|tab| tab.id == id) else {
+                    let Some((tab_ix, pane_ix)) = view.tabs.iter().enumerate().find_map(|(ti, tab)| {
+                        tab.panes
+                            .iter()
+                            .position(|pane| pane.epoch == epoch && Rc::ptr_eq(&pane.session, &session))
+                            .map(|pi| (ti, pi))
+                    }) else {
                         return false;
                     };
-                    if tab.epoch != epoch || !Rc::ptr_eq(&tab.session, &session) {
-                        return true;
-                    }
+                    let pane = &mut view.tabs[tab_ix].panes[pane_ix];
                     match msg {
-                        SessionMsg::Output(bytes) => tab.session.borrow_mut().feed(&bytes),
+                        SessionMsg::Output(bytes) => pane.session.borrow_mut().feed(&bytes),
                         SessionMsg::Event(Event::Title(title)) => {
                             if !title.trim().is_empty() {
-                                tab.title = title;
+                                pane.title = title;
                             }
                         }
-                        SessionMsg::Event(Event::Exit) => tab.exited = true,
+                        SessionMsg::Event(Event::Exit) => pane.exited = true,
                         SessionMsg::Event(_) => {}
                     }
                     cx.notify();
@@ -322,21 +403,28 @@ impl AtlasView {
         self.tabs.get(self.active)
     }
 
+    /// Pane that owns the keyboard and the status bar.
+    fn active_pane(&self) -> Option<&Pane> {
+        self.tabs
+            .get(self.active)
+            .and_then(|tab| tab.panes.get(tab.active_pane))
+    }
+
     fn active_mode(&self) -> TermMode {
-        self.active_tab()
-            .map(|tab| *tab.session.borrow().term.mode())
+        self.active_pane()
+            .map(|pane| *pane.session.borrow().term.mode())
             .unwrap_or_else(TermMode::empty)
     }
 
     fn write_to_shell(&self, bytes: &[u8]) {
-        if let Some(tab) = self.active_tab() {
-            tab.session.borrow_mut().write_bytes(bytes);
+        if let Some(pane) = self.active_pane() {
+            pane.session.borrow_mut().write_bytes(bytes);
         }
     }
 
     fn scroll(&self, lines: i32) {
-        if let Some(tab) = self.active_tab() {
-            tab.session
+        if let Some(pane) = self.active_pane() {
+            pane.session
                 .borrow_mut()
                 .term
                 .scroll_display(Scroll::Delta(lines));
@@ -344,7 +432,7 @@ impl AtlasView {
     }
 
     fn paste(&self, cx: &mut Context<Self>) {
-        let Some(tab) = self.active_tab() else {
+        let Some(pane) = self.active_pane() else {
             return;
         };
         let Some(item) = cx.read_from_clipboard() else {
@@ -353,7 +441,7 @@ impl AtlasView {
         let Some(text) = item.text() else {
             return;
         };
-        let bracketed = tab
+        let bracketed = pane
             .session
             .borrow()
             .term
@@ -368,7 +456,7 @@ impl AtlasView {
         if bracketed {
             bytes.extend_from_slice(b"\x1b[201~");
         }
-        tab.session.borrow_mut().write_bytes(&bytes);
+        pane.session.borrow_mut().write_bytes(&bytes);
         cx.notify();
     }
 
@@ -470,15 +558,23 @@ impl AtlasView {
                 cx.notify();
             }
             _ => {
-                if let Some(text) = ks.key_char.as_deref() {
-                    if !ks.modifiers.control && !ks.modifiers.alt {
-                        let typed: String =
-                            text.chars().filter(|c| !c.is_control()).collect();
-                        if !typed.is_empty() {
-                            self.palette_query.push_str(&typed);
-                            self.palette_index = 0;
-                            cx.notify();
-                        }
+                if !ks.modifiers.control && !ks.modifiers.alt {
+                    // The space bar arrives without `key_char` (gpui treats
+                    // it as an immutable key), so type it by hand.
+                    let typed: String = if ks.key == "space" {
+                        " ".to_string()
+                    } else {
+                        ks.key_char
+                            .as_deref()
+                            .map(|text| {
+                                text.chars().filter(|c| !c.is_control()).collect()
+                            })
+                            .unwrap_or_default()
+                    };
+                    if !typed.is_empty() {
+                        self.palette_query.push_str(&typed);
+                        self.palette_index = 0;
+                        cx.notify();
                     }
                 }
             }
@@ -497,6 +593,15 @@ impl AtlasView {
             Command::NewTabWsl => {
                 self.new_tab(Profile::Wsl, cx);
                 window.focus(&self.focus);
+            }
+            Command::SplitPane => {
+                self.settings_open = false;
+                self.split_active(cx);
+                window.focus(&self.focus);
+            }
+            Command::ClosePane => {
+                self.close_pane(cx);
+                self.focus_main(window);
             }
             Command::CloseTab => {
                 let index = self.active;
@@ -560,10 +665,13 @@ impl AtlasView {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
+        let Some(pane) = tab.panes.get(tab.active_pane) else {
+            return;
+        };
         self.rename_value = tab
             .custom_title
             .clone()
-            .unwrap_or_else(|| tab_name(&tab.title));
+            .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)));
         self.rename_open = true;
         self.palette_open = false;
         self.menu_open = false;
@@ -596,14 +704,21 @@ impl AtlasView {
                 }
             }
             _ => {
-                if let Some(text) = ks.key_char.as_deref() {
-                    if !ks.modifiers.control && !ks.modifiers.alt {
-                        let typed: String =
-                            text.chars().filter(|c| !c.is_control()).collect();
-                        if !typed.is_empty() {
-                            self.rename_value.push_str(&typed);
-                            cx.notify();
-                        }
+                if !ks.modifiers.control && !ks.modifiers.alt {
+                    // Space arrives without `key_char` (gpui quirk).
+                    let typed: String = if ks.key == "space" {
+                        " ".to_string()
+                    } else {
+                        ks.key_char
+                            .as_deref()
+                            .map(|text| {
+                                text.chars().filter(|c| !c.is_control()).collect()
+                            })
+                            .unwrap_or_default()
+                    };
+                    if !typed.is_empty() {
+                        self.rename_value.push_str(&typed);
+                        cx.notify();
                     }
                 }
             }
@@ -796,10 +911,12 @@ impl AtlasView {
 
     /// Pane-header "⋯" menu: quick tab actions under the header.
     fn pane_menu(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let entries: [(Command, &'static str, &'static str, &'static str); 4] = [
+        let entries: [(Command, &'static str, &'static str, &'static str); 6] = [
             (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
             (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
-            (Command::RestartTab, ICON_REFRESH, "Restart tab", ""),
+            (Command::SplitPane, ICON_COLUMNS, "Split pane to the right", ""),
+            (Command::RestartTab, ICON_REFRESH, "Restart pane", ""),
+            (Command::ClosePane, ICON_X, "Close pane", ""),
             (Command::CloseTab, ICON_X, "Close tab", "Ctrl Shift W"),
         ];
         let mut menu = div()
@@ -1132,8 +1249,8 @@ impl AtlasView {
             }
         }
 
-        // Dead session: only R restarts.
-        if self.active_tab().map(|tab| tab.exited).unwrap_or(false) {
+        // Dead pane: only R restarts it.
+        if self.active_pane().map(|pane| pane.exited).unwrap_or(false) {
             if !modifiers.control && !modifiers.alt && key == "r" {
                 let index = self.active;
                 self.restart_tab(index, cx);
@@ -1325,16 +1442,16 @@ impl Render for AtlasView {
             div().flex_1().into_any_element()
         } else {
             let index = self.active.min(self.tabs.len() - 1);
+            let tab = &self.tabs[index];
 
             let mut area = div()
                 .id(ElementId::named_usize("terminal-area", 0))
                 .flex()
-                .flex_col()
+                .flex_row()
                 .flex_1()
                 .w(relative(1.0))
+                .h(relative(1.0))
                 .bg(theme.bg)
-                .px(px(20.0))
-                .py(px(12.0))
                 .track_focus(&self.focus)
                 .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                     let keystroke = event.keystroke.clone();
@@ -1357,32 +1474,59 @@ impl Render for AtlasView {
                     }),
                 );
 
-            if self.tabs[index].exited {
-                area = area
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .text_size(px(13.0))
-                            .text_color(theme.fg)
-                            .child("Process exited"),
-                    )
-                    .child(
-                        div()
-                            .mt(px(6.0))
-                            .text_size(px(11.5))
-                            .text_color(theme.chrome_fg)
-                            .child("Press R to restart this tab"),
+            // One cell per pane, left to right, with a hairline gutter.
+            for (pane_ix, pane) in tab.panes.iter().enumerate() {
+                if pane_ix > 0 {
+                    area = area.child(div().w(px(1.0)).h(relative(1.0)).bg(theme.hairline));
+                }
+                let mut cell = div()
+                    .id(ElementId::named_usize("pane-cell", pane_ix))
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .h(relative(1.0))
+                    .px(px(16.0))
+                    .py(px(10.0))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |view, _: &MouseDownEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                if tab.active_pane != pane_ix {
+                                    tab.active_pane = pane_ix;
+                                    cx.notify();
+                                }
+                            }
+                            window.focus(&view.focus);
+                        }),
                     );
-            } else {
-                area = area.child(TerminalElement {
-                    session: self.tabs[index].session.clone(),
-                    theme: theme.clone(),
-                    font: self.font.clone(),
-                    font_size: self.font_size,
-                    cursor_on: self.cursor_on,
-                    cursor_override: self.cursor_style,
-                });
+                if pane.exited {
+                    cell = cell
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .text_size(px(13.0))
+                                .text_color(theme.fg)
+                                .child("Process exited"),
+                        )
+                        .child(
+                            div()
+                                .mt(px(6.0))
+                                .text_size(px(11.5))
+                                .text_color(theme.chrome_fg)
+                                .child("Press R to restart this pane"),
+                        );
+                } else {
+                    cell = cell.child(TerminalElement {
+                        session: pane.session.clone(),
+                        theme: theme.clone(),
+                        font: self.font.clone(),
+                        font_size: self.font_size,
+                        cursor_on: self.cursor_on,
+                        cursor_override: self.cursor_style,
+                    });
+                }
+                area = area.child(cell);
             }
 
             area.into_any_element()
@@ -1424,7 +1568,7 @@ impl Render for AtlasView {
                     6.0,
                     &theme,
                     |view, window, cx| {
-                        view.new_tab(Profile::PowerShell, cx);
+                        view.split_active(cx);
                         window.focus(&view.focus);
                     },
                     cx,
@@ -1467,25 +1611,26 @@ impl Render for AtlasView {
             let active = ix == self.active;
             let tab = &self.tabs[ix];
 
-            // Name from the shell-reported title; subtitle: the live working
-            // directory (PEB poll), falling back to the shell label, plus a
-            // dead-session note.
+            // Name from the shell-reported title; subtitle: the live location
+            // (shell title path first — WSL reports its Linux cwd there — and
+            // the PEB poll as fallback), plus a dead-pane note.
+            let Some(pane) = tab.panes.get(tab.active_pane) else {
+                continue;
+            };
             let name = tab
                 .custom_title
                 .clone()
-                .unwrap_or_else(|| tab_name(&tab.title));
-            let shell = shell_label(&tab.session.borrow().shell);
-            let base = match &tab.cwd {
-                Some(cwd) => display_cwd(cwd),
-                None => shell.to_string(),
-            };
-            let subtitle = if tab.exited {
+                .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)));
+            let shell = shell_label(&pane.session.borrow().shell);
+            let base = pane_location(pane).unwrap_or_else(|| shell.to_string());
+            let subtitle = if pane.exited {
                 format!("{base} · exited")
             } else {
                 base
             };
-            let (icon_bg, icon) = session_icon(&tab.title);
-            let show_dot = !active && !tab.exited;
+            let (icon_bg, icon) =
+                session_icon(&format!("{} {}", profile_title(pane.profile), pane.title));
+            let show_dot = !active && !pane.exited;
 
             let item_theme = theme.clone();
             let mut item = div()
@@ -1764,16 +1909,17 @@ impl Render for AtlasView {
 
         // ---- Pane header ---------------------------------------------
         // Breadcrumb (folder · parent › leaf) + view actions.
-        let header_source = self
-            .active_tab()
-            .map(|tab| match tab.cwd.as_ref() {
-                Some(cwd) => cwd.to_string_lossy().into_owned(),
-                None => tab
-                    .custom_title
-                    .clone()
-                    .unwrap_or_else(|| tab_name(&tab.title)),
-            })
-            .unwrap_or_else(|| "PowerShell".to_string());
+        let header_source = match self.tabs.get(self.active) {
+            Some(tab) => match tab.panes.get(tab.active_pane) {
+                Some(pane) => pane_raw_location(pane).unwrap_or_else(|| {
+                    tab.custom_title
+                        .clone()
+                        .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)))
+                }),
+                None => "PowerShell".to_string(),
+            },
+            None => "PowerShell".to_string(),
+        };
         let (crumb_a, crumb_b) = breadcrumbs(&header_source);
         let mut header = div()
             .flex()
@@ -1884,21 +2030,16 @@ impl Render for AtlasView {
         }
 
         // ---- Status bar ----------------------------------------------
-        let (cols, rows, shell, exited, branch, status_left) = match self.active_tab() {
-            Some(tab) => {
-                let session = tab.session.borrow();
+        let (cols, rows, shell, exited, branch, status_left) = match self.active_pane() {
+            Some(pane) => {
+                let session = pane.session.borrow();
                 let cols = session.cols;
                 let rows = session.rows;
                 let shell = shell_label(&session.shell);
                 drop(session);
-                let left = match &tab.cwd {
-                    Some(cwd) => display_cwd(cwd),
-                    None => tab
-                        .custom_title
-                        .clone()
-                        .unwrap_or_else(|| tab_name(&tab.title)),
-                };
-                (cols, rows, shell, tab.exited, tab.branch.clone(), left)
+                let left = pane_location(pane)
+                    .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)));
+                (cols, rows, shell, pane.exited, pane.branch.clone(), left)
             }
             None => (0, 0, "PowerShell", false, None, "PowerShell".to_string()),
         };
@@ -2462,6 +2603,8 @@ const ICON_TEXT_SIZE: &str = "\u{EB69}"; // nf-cod-text_size
 enum Command {
     NewTab,
     NewTabWsl,
+    SplitPane,
+    ClosePane,
     CloseTab,
     NextTab,
     PrevTab,
@@ -2475,9 +2618,16 @@ enum Command {
 }
 
 /// Palette entries: command, icon, label, shortcut hint.
-const COMMANDS: [(Command, &str, &str, &str); 12] = [
+const COMMANDS: [(Command, &str, &str, &str); 14] = [
     (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
     (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
+    (
+        Command::SplitPane,
+        ICON_COLUMNS,
+        "Split pane to the right",
+        "",
+    ),
+    (Command::ClosePane, ICON_X, "Close pane", ""),
     (Command::CloseTab, ICON_X, "Close tab", "Ctrl Shift W"),
     (Command::NextTab, ICON_CHEVRON, "Next tab", "Ctrl Tab"),
     (
@@ -2486,7 +2636,7 @@ const COMMANDS: [(Command, &str, &str, &str); 12] = [
         "Previous tab",
         "Ctrl Shift Tab",
     ),
-    (Command::RestartTab, ICON_REFRESH, "Restart tab", ""),
+    (Command::RestartTab, ICON_REFRESH, "Restart pane", ""),
     (Command::RenameTab, ICON_PEN, "Rename tab", ""),
     (
         Command::ToggleTheme,
@@ -2647,8 +2797,25 @@ fn overlay_backdrop(
 /// Split a shell-reported title into breadcrumb parts (parent, leaf). A bare
 /// drive root like `C:` is dropped; single-component titles become the leaf.
 fn breadcrumbs(raw: &str) -> (Option<String>, String) {
+    let raw = raw.trim();
+    // Unix (WSL) paths keep forward slashes and more context so they never
+    // read as Windows paths.
+    if raw.starts_with('/') {
+        let parts: Vec<&str> = raw.split('/').filter(|part| !part.is_empty()).collect();
+        return match parts.len() {
+            0 => (None, "/".to_string()),
+            1 => (None, format!("/{}", parts[0])),
+            2 => (None, format!("/{}", parts.join("/"))),
+            n => {
+                let mut parent = parts[..n - 1].join("/");
+                if parent.chars().count() > 22 {
+                    parent = format!("…/{}", parts[n - 2]);
+                }
+                (Some(format!("/{parent}")), parts[n - 1].to_string())
+            }
+        };
+    }
     let mut parts: Vec<&str> = raw
-        .trim()
         .split(['\\', '/'])
         .filter(|part| !part.is_empty())
         .collect();
@@ -2666,6 +2833,65 @@ fn breadcrumbs(raw: &str) -> (Option<String>, String) {
         1 => (None, leaf(parts[0])),
         n => (Some(leaf(parts[n - 2])), leaf(parts[n - 1])),
     }
+}
+
+/// Absolute path carried by a shell title (`user@host: /mnt/c/Users/me` →
+/// `/mnt/c/Users/me`). "Windows PowerShell"-style titles return `None`.
+fn title_path(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let candidate = match trimmed.rsplit_once(": ") {
+        Some((_, path)) => path.trim(),
+        None => trimmed,
+    };
+    let looks_like_path = candidate.starts_with('/')
+        || candidate.starts_with('~')
+        || candidate.contains(":\\")
+        || candidate.starts_with("\\\\");
+    if looks_like_path && !candidate.contains('@') {
+        Some(candidate.to_string())
+    } else {
+        None
+    }
+}
+
+/// Raw location string for a pane: the title path first (WSL shells report
+/// their Linux cwd there), the PEB-polled Windows cwd as fallback.
+fn pane_raw_location(pane: &Pane) -> Option<String> {
+    if let Some(path) = title_path(&pane.title) {
+        return Some(path);
+    }
+    pane.cwd
+        .as_ref()
+        .map(|cwd| cwd.to_string_lossy().into_owned())
+}
+
+/// Short display form of a pane's location (`…/Users/me`, `~\projects\api`).
+fn pane_location(pane: &Pane) -> Option<String> {
+    pane_raw_location(pane).map(|raw| display_cwd(Path::new(&raw)))
+}
+
+/// Working directory to run git against: the title path mapped back to
+/// Windows (`/mnt/c/…` → `C:\…`), `None` for Linux-only paths, the PEB poll
+/// otherwise.
+fn git_cwd(pane: &Pane) -> Option<PathBuf> {
+    if let Some(path) = title_path(&pane.title) {
+        if let Some(rest) = path.strip_prefix("/mnt/") {
+            let bytes = rest.as_bytes();
+            if bytes.len() > 2 && bytes[1] == b'/' && bytes[0].is_ascii_alphabetic() {
+                return Some(PathBuf::from(format!(
+                    "{}:\\{}",
+                    (bytes[0] as char).to_ascii_uppercase(),
+                    &rest[2..]
+                )));
+            }
+            return None;
+        }
+        if path.starts_with('/') || path.starts_with('~') {
+            return None;
+        }
+        return Some(PathBuf::from(path));
+    }
+    pane.cwd.clone()
 }
 
 /// Icon tile for a session, keyed off its shell-reported title: PowerShell
@@ -2811,17 +3037,19 @@ fn pill_button(
 }
 
 /// Sidebar/pane label for a tab: the shell-reported title when it reads as a
-/// name (e.g. "vite"), the friendly shell name when it is shell-ish or a
-/// bare path (the path itself is the subtitle/breadcrumb).
-fn tab_name(raw: &str) -> String {
+/// real name (e.g. "vite"), the profile label when it is shell-ish, a prompt
+/// string (`user@host: /path`) or a bare path (the path itself is shown in
+/// the subtitle/breadcrumb instead).
+fn tab_name(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     let lower = trimmed.to_ascii_lowercase();
     let shellish = matches!(
         lower.as_str(),
-        "powershell" | "pwsh" | "windows powershell" | "powershell 7"
-    );
-    if trimmed.is_empty() || shellish || trimmed.contains(['\\', '/']) {
-        return "PowerShell".to_string();
+        "powershell" | "pwsh" | "windows powershell" | "powershell 7" | "ubuntu" | "wsl"
+    ) || lower.contains("windows powershell");
+    let promptish = trimmed.contains('@') && trimmed.contains(": ");
+    if trimmed.is_empty() || shellish || promptish || trimmed.contains(['\\', '/']) {
+        return fallback.to_string();
     }
     let mut name: String = trimmed.chars().take(24).collect();
     if trimmed.chars().count() > 24 {
@@ -2835,6 +3063,18 @@ fn tab_name(raw: &str) -> String {
 fn display_cwd(cwd: &Path) -> String {
     let lossy = cwd.to_string_lossy();
     let trimmed = lossy.trim_end_matches(['\\', '/']);
+
+    // Unix paths (WSL, MSYS): keep forward slashes and show the tail.
+    if trimmed.starts_with('/') {
+        let parts: Vec<&str> = trimmed.split('/').filter(|part| !part.is_empty()).collect();
+        return match parts.len() {
+            0 => "/".to_string(),
+            1 => format!("/{}", parts[0]),
+            2 => format!("/{}/{}", parts[0], parts[1]),
+            n => format!("…/{}/{}", parts[n - 2], parts[n - 1]),
+        };
+    }
+
     let home = std::env::var_os("USERPROFILE").map(|home| home.to_string_lossy().into_owned());
     let home = home.as_deref().map(|home| home.trim_end_matches(['\\', '/']));
 
