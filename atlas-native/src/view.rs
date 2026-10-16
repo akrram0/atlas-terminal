@@ -3,7 +3,7 @@
 //! Structure: frameless window -> titlebar (brand + search pill + window
 //! controls, with the drag band split into the two gaps around the search)
 //! -> body: session sidebar (Tabs · LOCAL items · New tab + gear) beside the
-//! main column (breadcrumb header · terminal · status bar). The terminal
+//! main column (terminal · status bar) under a unified titlebar. The terminal
 //! itself is a custom gpui `Element` that walks the alacritty grid and paints
 //! cell backgrounds, text runs and the cursor directly on the GPU canvas.
 
@@ -66,6 +66,8 @@ pub struct AtlasView {
     profile_menu: bool,
     /// Sidebar visibility; when collapsed a slim rail keeps the controls.
     sidebar_open: bool,
+    /// Bottom status-bar visibility (`Ctrl Shift B`).
+    status_open: bool,
     /// Command palette (Ctrl+Shift+P / search pill / pane search icon).
     palette_open: bool,
     palette_query: String,
@@ -140,7 +142,10 @@ impl AtlasView {
             dark: true,
             settings_open: false,
             profile_menu: false,
-            sidebar_open: true,
+            // Auto-collapsed while only one tab exists (see `new_tab` /
+            // `close_tab`); `Ctrl B` overrides.
+            sidebar_open: false,
+            status_open: true,
             palette_open: false,
             palette_query: String::new(),
             palette_index: 0,
@@ -183,7 +188,7 @@ impl AtlasView {
         blink.detach();
 
         // Working-directory poll: reads each live shell's PEB every 1.5 s so
-        // the sidebar subtitle and breadcrumb track `cd` like a real
+        // the sidebar subtitle and status bar track `cd` like a real
         // terminal. Repaints only when a path actually changed.
         let cwd_poll = cx.spawn(async move |this, cx| {
             loop {
@@ -229,6 +234,19 @@ impl AtlasView {
         view
     }
 
+    /// Grid size to spawn a new PTY at: the active pane's current grid when
+    /// one exists, so a fresh shell starts at (roughly) its final width
+    /// instead of the classic 80×24 and reflowing under its first prompt.
+    fn default_grid_size(&self) -> (usize, usize) {
+        self.active_pane()
+            .map(|pane| {
+                let session = pane.session.borrow();
+                (session.cols, session.rows)
+            })
+            .filter(|(cols, rows)| *cols > 0 && *rows > 0)
+            .unwrap_or((80, 24))
+    }
+
     fn new_tab(&mut self, profile: Profile, cx: &mut Context<Self>) {
         let id = self.next_id;
         let epoch = self.next_epoch;
@@ -238,7 +256,8 @@ impl AtlasView {
         // A fresh terminal should be visible, not hidden behind settings.
         self.settings_open = false;
 
-        match Session::spawn(80, 24, home_dir(), profile) {
+        let (init_cols, init_rows) = self.default_grid_size();
+        match Session::spawn(init_cols, init_rows, home_dir(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
@@ -257,6 +276,13 @@ impl AtlasView {
                     active_pane: 0,
                 });
                 self.active = self.tabs.len() - 1;
+                // Auto policy: rail while a single tab exists, full list the
+                // moment a second one does (Ctrl+B overrides in between).
+                if self.tabs.len() == 1 {
+                    self.sidebar_open = false;
+                } else if self.tabs.len() == 2 {
+                    self.sidebar_open = true;
+                }
                 Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("tab {id}: shell spawned"));
             }
@@ -283,6 +309,10 @@ impl AtlasView {
         if self.active >= self.tabs.len() {
             self.active = self.tabs.len() - 1;
         }
+        // One tab left: glide back to the rail.
+        if self.tabs.len() == 1 {
+            self.sidebar_open = false;
+        }
         cx.notify();
     }
 
@@ -298,7 +328,8 @@ impl AtlasView {
         let epoch = self.next_epoch;
         self.next_epoch += 1;
 
-        match Session::spawn(80, 24, home_dir(), profile) {
+        let (init_cols, init_rows) = self.default_grid_size();
+        match Session::spawn(init_cols, init_rows, home_dir(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
@@ -336,7 +367,8 @@ impl AtlasView {
         let epoch = self.next_epoch;
         self.next_epoch += 1;
 
-        match Session::spawn(80, 24, home_dir(), profile) {
+        let (init_cols, init_rows) = self.default_grid_size();
+        match Session::spawn(init_cols, init_rows, home_dir(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
@@ -762,6 +794,11 @@ impl AtlasView {
                 window.focus(&self.focus);
                 cx.notify();
             }
+            Command::ToggleStatusBar => {
+                self.status_open = !self.status_open;
+                window.focus(&self.focus);
+                cx.notify();
+            }
             Command::FontInc => {
                 self.font_size = (self.font_size + 1.0).min(24.0);
                 self.focus_main(window);
@@ -1116,20 +1153,21 @@ impl AtlasView {
             .into_any_element()
     }
 
-    /// Pane-header "⋯" menu: quick tab actions under the header.
+    /// Titlebar "⋯" menu: quick tab actions under its button.
     fn pane_menu(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let entries: [(Command, &'static str, &'static str, &'static str); 6] = [
+        let entries: [(Command, &'static str, &'static str, &'static str); 7] = [
             (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
             (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
             (Command::SplitPane, ICON_COLUMNS, "Split pane to the right", ""),
+            (Command::RenameTab, ICON_PEN, "Rename tab", ""),
             (Command::RestartTab, ICON_REFRESH, "Restart pane", ""),
             (Command::ClosePane, ICON_X, "Close pane", ""),
             (Command::CloseTab, ICON_X, "Close tab", "Ctrl Shift W"),
         ];
         let mut menu = div()
             .absolute()
-            .top(px(84.0))
-            .right(px(12.0))
+            .top(px(44.0))
+            .right(px(144.0))
             .w(px(230.0))
             .flex()
             .flex_col()
@@ -1183,7 +1221,7 @@ impl AtlasView {
             .with_easing(ease_out_cubic),
             move |el, delta| {
                 let t = if closing { 1.0 - delta } else { delta };
-                el.opacity(t).top(px(84.0 - 6.0 * (1.0 - t)))
+                el.opacity(t).top(px(44.0 - 6.0 * (1.0 - t)))
             },
         )
         .into_any_element()
@@ -1445,6 +1483,10 @@ impl AtlasView {
                 "v" => self.paste(cx),
                 "d" => self.toggle_theme(cx),
                 "p" => self.open_palette(window, cx),
+                "b" => {
+                    self.status_open = !self.status_open;
+                    cx.notify();
+                }
                 "tab" => {
                     self.cycle(-1);
                     cx.notify();
@@ -1453,10 +1495,20 @@ impl AtlasView {
             }
             return;
         }
-        if modifiers.control && !modifiers.shift && key == "tab" {
-            self.cycle(1);
-            cx.notify();
-            return;
+        if modifiers.control && !modifiers.shift && !modifiers.alt {
+            match key {
+                "tab" => {
+                    self.cycle(1);
+                    cx.notify();
+                    return;
+                }
+                "b" => {
+                    self.sidebar_open = !self.sidebar_open;
+                    cx.notify();
+                    return;
+                }
+                _ => {}
+            }
         }
         if modifiers.shift && !modifiers.control && !modifiers.alt {
             match key {
@@ -1561,6 +1613,27 @@ impl Render for AtlasView {
         } else {
             search_theme.faint_fg
         };
+        // Palette shortcut as individual kbd pills.
+        let mut shortcuts = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(3.0));
+        for key in ["Ctrl", "Shift", "P"] {
+            shortcuts = shortcuts.child(
+                div()
+                    .h(px(16.0))
+                    .px(px(5.0))
+                    .flex()
+                    .items_center()
+                    .rounded(px(4.0))
+                    .border_1()
+                    .border_color(search_theme.search_border)
+                    .text_size(px(9.5))
+                    .text_color(search_theme.faint_fg)
+                    .child(key),
+            );
+        }
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("search-pill", 0))
@@ -1585,25 +1658,87 @@ impl Render for AtlasView {
                         .truncate()
                         .child(pill_text),
                 )
-                .child(
-                    div()
-                        .h(px(18.0))
-                        .px(px(7.0))
-                        .flex()
-                        .items_center()
-                        .rounded(px(5.0))
-                        .border_1()
-                        .border_color(search_theme.hairline)
-                        .text_size(px(10.0))
-                        .text_color(search_theme.faint_fg)
-                        .child("Ctrl Shift P"),
-                )
+                .child(shortcuts)
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.open_palette(window, cx);
                 })),
         );
 
         bar = bar.child(caption_spacer(1));
+
+        // Unified titlebar actions (the old pane header is gone): split and
+        // the pane menu while the terminal is up; a quiet label + close while
+        // settings is open. They sit in the interactive zone before the
+        // window controls, so the drag band stays between the search pill and
+        // this cluster.
+        let mut cluster = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(2.0))
+            .pr(px(6.0));
+        if self.settings_open {
+            let close_hover = theme.card_hover;
+            let close_hot = theme.chrome_fg_active;
+            cluster = cluster
+                .child(
+                    div()
+                        .px(px(6.0))
+                        .text_size(px(12.0))
+                        .text_color(theme.chrome_fg)
+                        .child("Settings"),
+                )
+                .child(
+                    div()
+                        .id(ElementId::named_usize("settings-close", 0))
+                        .w(px(28.0))
+                        .h(px(28.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .text_color(theme.chrome_fg)
+                        .hover(move |style| style.bg(close_hover).text_color(close_hot))
+                        .child(icon_glyph(ICON_X, 13.0))
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            view.settings_open = false;
+                            window.focus(&view.focus);
+                            cx.notify();
+                        })),
+                );
+        } else {
+            cluster = cluster
+                .child(chrome_action_button(
+                    ElementId::named_usize("titlebar-split", 0),
+                    ICON_COLUMNS,
+                    13.5,
+                    30.0,
+                    30.0,
+                    6.0,
+                    &theme,
+                    |view, window, cx| {
+                        view.settings_open = false;
+                        view.split_active(cx);
+                        window.focus(&view.focus);
+                    },
+                    cx,
+                ))
+                .child(chrome_action_button(
+                    ElementId::named_usize("titlebar-menu", 0),
+                    ICON_ELLIPSIS,
+                    13.5,
+                    30.0,
+                    30.0,
+                    6.0,
+                    &theme,
+                    |view, window, cx| {
+                        view.toggle_menu(cx);
+                        window.focus(&view.focus);
+                    },
+                    cx,
+                ));
+        }
+        bar = bar.child(cluster);
 
         // Window controls: native Segoe caption glyphs when available,
         // bundled Nerd fallbacks otherwise; the maximize slot is zoomed-aware
@@ -1717,8 +1852,8 @@ impl Render for AtlasView {
                     .flex_col()
                     .flex_1()
                     .h(relative(1.0))
-                    .px(px(16.0))
-                    .py(px(10.0))
+                    .px(px(20.0))
+                    .py(px(16.0))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |view, _: &MouseDownEvent, window, cx| {
@@ -1877,8 +2012,7 @@ impl Render for AtlasView {
             } else {
                 base
             };
-            let (icon_bg, icon) =
-                session_icon(&format!("{} {}", profile_title(pane.profile), pane.title));
+            let icon = session_icon(&format!("{} {}", profile_title(pane.profile), pane.title));
             let show_dot = !active && !pane.exited;
 
             let item_theme = theme.clone();
@@ -1918,29 +2052,32 @@ impl Render for AtlasView {
                 );
             }
 
-            // Icon tile with an optional running dot on its top-right corner
-            // (as in the mock).
-            let mut tile = div()
+            // Monochrome session mark (no heavy coloured tile): quiet when
+            // idle, bright while the tab is active. The running dot stays.
+            let icon_fg = if active {
+                item_theme.chrome_fg_active
+            } else {
+                item_theme.chrome_fg
+            };
+            let mut mark = div()
                 .relative()
-                .w(px(30.0))
-                .h(px(30.0))
-                .rounded(px(9.0))
-                .bg(icon_bg)
+                .w(px(18.0))
+                .h(px(18.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_color(rgb(0xFFFFFF))
+                .text_color(icon_fg)
                 .child(icon_glyph(icon, 14.0));
             if show_dot {
                 let good = item_theme.good;
                 let ring = item_theme.panel_bg;
-                tile = tile.child(
+                mark = mark.child(
                     div()
                         .absolute()
-                        .right(px(-3.0))
-                        .top(px(-3.0))
-                        .w(px(8.0))
-                        .h(px(8.0))
+                        .right(px(-4.0))
+                        .top(px(-4.0))
+                        .w(px(7.0))
+                        .h(px(7.0))
                         .rounded_full()
                         .bg(good)
                         .border_2()
@@ -1948,7 +2085,7 @@ impl Render for AtlasView {
                 );
             }
 
-            // Clicking the tile/title area activates the tab; the close
+            // Clicking the icon/title area activates the tab; the close
             // button is a sibling so it can never double-fire activation.
             item = item.child(
                 div()
@@ -1964,7 +2101,7 @@ impl Render for AtlasView {
                         window.focus(&view.focus);
                         cx.notify();
                     }))
-                    .child(tile)
+                    .child(mark)
                     .child(
                         div()
                             .flex_1()
@@ -2114,7 +2251,7 @@ impl Render for AtlasView {
 
         // Collapsed state: a slim rail keeps expand + new-tab reachable.
         let (content, from_w, to_w): (AnyElement, f32, f32) = if self.sidebar_open {
-            (sidebar.into_any_element(), 46.0, 254.0)
+            (sidebar.into_any_element(), 46.0, 190.0)
         } else {
             let rail_theme = theme.clone();
             let mut rail = div()
@@ -2156,7 +2293,7 @@ impl Render for AtlasView {
                 },
                 cx,
             ));
-            (rail.into_any_element(), 254.0, 46.0)
+            (rail.into_any_element(), 190.0, 46.0)
         };
 
         // Animate the width and fade the inbound content so the collapse /
@@ -2182,126 +2319,8 @@ impl Render for AtlasView {
             )
             .into_any_element();
 
-        // ---- Pane header ---------------------------------------------
-        // Breadcrumb (folder · parent › leaf) + view actions.
-        let header_source = match self.tabs.get(self.active) {
-            Some(tab) => match tab.panes.get(tab.active_pane) {
-                Some(pane) => pane_raw_location(pane).unwrap_or_else(|| {
-                    tab.custom_title
-                        .clone()
-                        .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)))
-                }),
-                None => "PowerShell".to_string(),
-            },
-            None => "PowerShell".to_string(),
-        };
-        let (crumb_a, crumb_b) = breadcrumbs(&header_source);
-        let mut header = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(8.0))
-            .w(relative(1.0))
-            .h(px(40.0))
-            .pl(px(16.0))
-            .pr(px(8.0))
-            .bg(theme.panel_bg)
-            .border_b_1()
-            .border_color(theme.hairline)
-            .text_color(theme.chrome_fg);
-
-        if self.settings_open {
-            // Settings header: gear + title + close.
-            let close_hover = theme.card_hover;
-            let close_hot = theme.chrome_fg_active;
-            header = header
-                .child(icon_glyph(ICON_GEAR, 13.0))
-                .child(
-                    div()
-                        .text_size(px(13.0))
-                        .text_color(theme.chrome_fg_active)
-                        .child("Settings"),
-                )
-                .child(div().flex_1())
-                .child(
-                    div()
-                        .id(ElementId::named_usize("settings-close", 0))
-                        .w(px(24.0))
-                        .h(px(24.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(6.0))
-                        .text_color(theme.chrome_fg)
-                        .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                        .child(icon_glyph(ICON_X, 13.0))
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.settings_open = false;
-                            window.focus(&view.focus);
-                            cx.notify();
-                        })),
-                );
-        } else {
-            header = header.child(icon_glyph(ICON_FOLDER, 13.0));
-            if let Some(parent) = crumb_a {
-                header = header
-                    .child(div().text_size(px(13.0)).truncate().child(parent))
-                    .child(
-                        div()
-                            .text_color(theme.faint_fg)
-                            .child(icon_glyph(ICON_CHEVRON, 10.0)),
-                    );
-            }
-            header = header
-                .child(
-                    div()
-                        .text_size(px(13.0))
-                        .text_color(theme.chrome_fg_active)
-                        .truncate()
-                        .child(crumb_b),
-                )
-                .child(div().flex_1())
-                .child(chrome_action_button(
-                    ElementId::named_usize("pane-action", 0),
-                    ICON_SEARCH,
-                    13.0,
-                    24.0,
-                    24.0,
-                    6.0,
-                    &theme,
-                    |view, window, cx| {
-                        view.open_palette(window, cx);
-                    },
-                    cx,
-                ))
-                .child(chrome_action_button(
-                    ElementId::named_usize("pane-action", 1),
-                    ICON_PEN,
-                    13.0,
-                    24.0,
-                    24.0,
-                    6.0,
-                    &theme,
-                    |view, window, cx| {
-                        view.open_rename(window, cx);
-                    },
-                    cx,
-                ))
-                .child(chrome_action_button(
-                    ElementId::named_usize("pane-action", 2),
-                    ICON_ELLIPSIS,
-                    13.0,
-                    24.0,
-                    24.0,
-                    6.0,
-                    &theme,
-                    |view, window, cx| {
-                        view.toggle_menu(cx);
-                        window.focus(&view.focus);
-                    },
-                    cx,
-                ));
-        }
+        // The pane header / breadcrumb is gone: location lives in the
+        // status bar, actions live in the unified titlebar and the palette.
 
         // ---- Status bar ----------------------------------------------
         let (cols, rows, shell, exited, branch, status_left) = match self.active_pane() {
@@ -2351,7 +2370,6 @@ impl Render for AtlasView {
             .child(div().child(shell))
             .child(div().flex_1())
             .child(div().child(format!("{cols} × {rows}")))
-            .child(div().child("UTF-8"))
             .child(
                 div()
                     .flex()
@@ -2363,14 +2381,15 @@ impl Render for AtlasView {
                     .child(div().child(state_label)),
             );
 
-        let main_col = div()
+        let mut main_col = div()
             .flex()
             .flex_col()
             .flex_1()
             .h(relative(1.0))
-            .child(header)
-            .child(body)
-            .child(status);
+            .child(body);
+        if self.status_open {
+            main_col = main_col.child(status);
+        }
 
         let mut root = div()
             .relative()
@@ -2766,6 +2785,8 @@ impl Element for TerminalElement {
             struct Segment<'a> {
                 text: &'a str,
                 x0: f32,
+                /// Grid cells this segment covers (wide glyphs span two).
+                cells: usize,
                 font: Font,
                 style: &'a CellStyle,
             }
@@ -2793,6 +2814,7 @@ impl Element for TerminalElement {
                         segments.push(Segment {
                             text: &run_text[offset..end],
                             x0: x(cell),
+                            cells: 1,
                             font: font.clone(),
                             style: &run.style,
                         });
@@ -2803,6 +2825,7 @@ impl Element for TerminalElement {
                     segments.push(Segment {
                         text: run_text,
                         x0: x(col),
+                        cells: run.cells,
                         font,
                         style: &run.style,
                     });
@@ -2828,13 +2851,61 @@ impl Element for TerminalElement {
                         color: Some(segment.style.fg.into()),
                     }),
                 };
-                let line = text_system.shape_line(
+                // Strict cell-grid snapping: when a segment's glyphs map
+                // one-to-one onto cells, shaping with `force_width =
+                // cell_width` makes gpui pin glyph i to
+                // `start + i * cell_width` (it moves any glyph sitting more
+                // than 1px off its snapped spot), so long runs can never
+                // accumulate drift off the grid. Segments with wide glyphs
+                // (CJK, emoji) or combining marks flow naturally — their
+                // start is already pinned to the exact column.
+                let glyphs = segment.text.chars().count();
+                let force = if glyphs == segment.cells {
+                    Some(px(cell_width))
+                } else {
+                    None
+                };
+                let mut line = text_system.shape_line(
                     segment.text.to_string().into(),
                     font_size,
-                    &[text_run],
-                    None,
+                    &[text_run.clone()],
+                    force,
                 );
-                let _ = line.paint(point(px(segment.x0), px(y0)), px(cell_height), window, cx);
+                let mut dx = 0.0;
+                // Nerd Font icons come from the bundled symbols font and can
+                // carry ink larger than one cell. When they do, shape the
+                // icon smaller and centre it inside its cell so it never
+                // bleeds into the neighbouring text.
+                if segment.style.class == CharClass::Icon {
+                    if let Some(ch) = segment.text.chars().next() {
+                        if segment.text.len() == ch.len_utf8() {
+                            let icon_id = text_system.resolve_font(&segment.font);
+                            if let Ok(ink) = text_system.typographic_bounds(icon_id, font_size, ch)
+                            {
+                                let ink_w = f32::from(ink.size.width).max(0.1);
+                                let ink_h = f32::from(ink.size.height).max(0.1);
+                                let scale = (cell_width * 0.98 / ink_w)
+                                    .min(cell_height * 0.98 / ink_h)
+                                    .min(1.0);
+                                if scale < 0.999 {
+                                    line = text_system.shape_line(
+                                        segment.text.to_string().into(),
+                                        px(f32::from(font_size) * scale),
+                                        &[text_run.clone()],
+                                        None,
+                                    );
+                                    dx = ((cell_width - ink_w * scale) / 2.0).max(0.0);
+                                }
+                            }
+                        }
+                    }
+                }
+                let _ = line.paint(
+                    point(px(segment.x0 + dx), px(y0)),
+                    px(cell_height),
+                    window,
+                    cx,
+                );
             }
         }
     }
@@ -2871,7 +2942,7 @@ const ICON_CHEVRON_DOWN: &str = "\u{EAB4}"; // nf-cod-chevron_down
 const ICON_COLUMNS: &str = "\u{EB56}"; // nf-cod-split_horizontal
 const ICON_PANEL: &str = "\u{EBF3}"; // nf-cod-layout_panel_left
 
-/// Session-tile icons (white mark on a colored tile, as in the mock).
+/// Session icons (monochrome marks; the parent decides colour).
 const ICON_TERMINAL: &str = "\u{F120}"; // nf-fa-terminal
 const ICON_UBUNTU: &str = "\u{EF72}"; // nf-fa-ubuntu (brand mark)
 const ICON_CLOUD: &str = "\u{F0C2}"; // nf-fa-cloud
@@ -2909,12 +2980,13 @@ enum Command {
     ToggleTheme,
     OpenSettings,
     ToggleSidebar,
+    ToggleStatusBar,
     FontInc,
     FontDec,
 }
 
 /// Palette entries: command, icon, label, shortcut hint.
-const COMMANDS: [(Command, &str, &str, &str); 14] = [
+const COMMANDS: [(Command, &str, &str, &str); 15] = [
     (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
     (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
     (
@@ -2941,7 +3013,13 @@ const COMMANDS: [(Command, &str, &str, &str); 14] = [
         "Ctrl Shift D",
     ),
     (Command::OpenSettings, ICON_GEAR, "Open settings", ""),
-    (Command::ToggleSidebar, ICON_PANEL, "Toggle sidebar", ""),
+    (Command::ToggleSidebar, ICON_PANEL, "Toggle sidebar", "Ctrl B"),
+    (
+        Command::ToggleStatusBar,
+        ICON_PANEL,
+        "Toggle status bar",
+        "Ctrl Shift B",
+    ),
     (Command::FontInc, ICON_TEXT_SIZE, "Increase font size", ""),
     (Command::FontDec, ICON_TEXT_SIZE, "Decrease font size", ""),
 ];
@@ -3013,7 +3091,7 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
         .border_color(theme.elevated_border)
         .shadow_lg();
     for (index, (label, profile)) in entries.into_iter().enumerate() {
-        let icon = session_icon(&profile_title(profile)).1;
+        let icon = session_icon(&profile_title(profile));
         menu = menu.child(
             div()
                 .id(ElementId::named_usize("profile-item", index))
@@ -3114,49 +3192,9 @@ fn overlay_backdrop(
         .into_any_element()
 }
 
-/// Split a shell-reported title into breadcrumb parts (parent, leaf). A bare
-/// drive root like `C:` is dropped; single-component titles become the leaf.
-fn breadcrumbs(raw: &str) -> (Option<String>, String) {
-    let raw = raw.trim();
-    // Unix (WSL) paths keep forward slashes and more context so they never
-    // read as Windows paths.
-    if raw.starts_with('/') {
-        let parts: Vec<&str> = raw.split('/').filter(|part| !part.is_empty()).collect();
-        return match parts.len() {
-            0 => (None, "/".to_string()),
-            1 => (None, format!("/{}", parts[0])),
-            2 => (None, format!("/{}", parts.join("/"))),
-            n => {
-                let mut parent = parts[..n - 1].join("/");
-                if parent.chars().count() > 22 {
-                    parent = format!("…/{}", parts[n - 2]);
-                }
-                (Some(format!("/{parent}")), parts[n - 1].to_string())
-            }
-        };
-    }
-    let mut parts: Vec<&str> = raw
-        .split(['\\', '/'])
-        .filter(|part| !part.is_empty())
-        .collect();
-    parts.retain(|part| !(part.len() == 2 && part.ends_with(':')));
-    let leaf = |part: &str| -> String {
-        let part = part.trim_end_matches(".exe");
-        let mut out: String = part.chars().take(22).collect();
-        if part.chars().count() > 22 {
-            out.push('…');
-        }
-        out
-    };
-    match parts.len() {
-        0 => (None, "PowerShell".to_string()),
-        1 => (None, leaf(parts[0])),
-        n => (Some(leaf(parts[n - 2])), leaf(parts[n - 1])),
-    }
-}
-
 /// Absolute path carried by a shell title (`user@host: /mnt/c/Users/me` →
-/// `/mnt/c/Users/me`). "Windows PowerShell"-style titles return `None`.
+/// `/mnt/c/Users/me`). "Windows PowerShell"-style titles — including the
+/// legacy `…\powershell.exe` startup title — return `None`.
 fn title_path(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     let candidate = match trimmed.rsplit_once(": ") {
@@ -3167,7 +3205,8 @@ fn title_path(raw: &str) -> Option<String> {
         || candidate.starts_with('~')
         || candidate.contains(":\\")
         || candidate.starts_with("\\\\");
-    if looks_like_path && !candidate.contains('@') {
+    let is_executable = candidate.to_ascii_lowercase().ends_with(".exe");
+    if looks_like_path && !candidate.contains('@') && !is_executable {
         Some(candidate.to_string())
     } else {
         None
@@ -3214,15 +3253,15 @@ fn git_cwd(pane: &Pane) -> Option<PathBuf> {
     pane.cwd.clone()
 }
 
-/// Icon tile for a session, keyed off its shell-reported title: PowerShell
-/// blue terminal, WSL/Ubuntu orange brand mark, remote indigo cloud, dev
-/// green desktop.
-fn session_icon(title: &str) -> (Rgba, &'static str) {
+/// Session mark for a tab, keyed off its shell-reported title: Ubuntu brand
+/// for WSL, cloud for remote, desktop for dev servers, terminal otherwise.
+/// Drawn monochrome (the parent decides colour).
+fn session_icon(title: &str) -> &'static str {
     let lower = title.to_ascii_lowercase();
     if lower.contains("ubuntu") || lower.contains("wsl") {
-        (rgb(0xE95420), ICON_UBUNTU)
+        ICON_UBUNTU
     } else if lower.contains("ssh") || lower.contains("edge") || lower.contains("remote") {
-        (rgb(0x6E5BE8), ICON_CLOUD)
+        ICON_CLOUD
     } else if lower.contains("dev")
         || lower.contains("server")
         || lower.contains("vite")
@@ -3230,9 +3269,9 @@ fn session_icon(title: &str) -> (Rgba, &'static str) {
         || lower.contains("node")
         || lower.contains("npm")
     {
-        (rgb(0x2EA043), ICON_SCREEN)
+        ICON_SCREEN
     } else {
-        (rgb(0x2F6FED), ICON_TERMINAL)
+        ICON_TERMINAL
     }
 }
 
@@ -3359,7 +3398,7 @@ fn pill_button(
 /// Sidebar/pane label for a tab: the shell-reported title when it reads as a
 /// real name (e.g. "vite"), the profile label when it is shell-ish, a prompt
 /// string (`user@host: /path`) or a bare path (the path itself is shown in
-/// the subtitle/breadcrumb instead).
+/// the subtitle and status bar instead).
 fn tab_name(raw: &str, fallback: &str) -> String {
     let trimmed = raw.trim();
     let lower = trimmed.to_ascii_lowercase();

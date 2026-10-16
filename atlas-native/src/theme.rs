@@ -88,10 +88,10 @@ impl Theme {
     /// slate chrome, GitHub-dark ANSI.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x0C0F15),
+            bg: rgb(0x0D0F12),
             fg: rgb(0xC9D1D9),
             cursor: rgb(0xD8E1EA),
-            panel_bg: rgb(0x161B22),
+            panel_bg: rgb(0x111318),
             elevated_bg: rgb(0x1F242C),
             elevated_border: rgb(0x2E3239),
             search_bg: rgb(0x0E1217),

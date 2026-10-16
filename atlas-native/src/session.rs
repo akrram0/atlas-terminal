@@ -68,6 +68,11 @@ pub struct Session {
     pub parser: Processor,
     pub cols: usize,
     pub rows: usize,
+    /// Grid size the pseudo-console most recently accepted. Kept separately
+    /// from `cols`/`rows` so a rejected ConPTY resize is retried instead of
+    /// silently leaving the child on a stale grid.
+    pty_cols: usize,
+    pty_rows: usize,
     /// Shell executable that was actually spawned ("pwsh" or
     /// "powershell.exe"), for the sidebar/status-bar labels.
     pub shell: String,
@@ -105,17 +110,33 @@ impl Session {
             Profile::PowerShell => &["pwsh", "powershell.exe"],
             Profile::Wsl => &["wsl.exe"],
         };
-        let command_args: &[&str] = match profile {
-            Profile::PowerShell => &["-NoLogo"],
-            Profile::Wsl => &[],
-        };
         let mut child: Option<Box<dyn Child + Send + Sync>> = None;
         let mut shell_used = *candidates.last().unwrap_or(&"powershell.exe");
         for shell in candidates {
             let mut cmd = CommandBuilder::new(shell);
-            for arg in command_args {
-                cmd.arg(*arg);
+            match profile {
+                Profile::PowerShell => {
+                    cmd.arg("-NoLogo");
+                    if shell.eq_ignore_ascii_case("powershell.exe") {
+                        // Windows PowerShell 5.1 defaults its console to the
+                        // OEM code page (CP850…): tools like fastfetch then
+                        // report `en_US.CP850` and legacy encodings. Point
+                        // .NET — and through it the console — at UTF-8; the
+                        // shell stays interactive after the one-shot command.
+                        cmd.arg("-NoExit");
+                        cmd.arg("-Command");
+                        cmd.arg("[Console]::OutputEncoding=[System.Text.Encoding]::UTF8");
+                    }
+                }
+                Profile::Wsl => {}
             }
+            // Terminal identity every CLI tool reads for colour, locale and
+            // capability detection. Without these, native tools fall back to
+            // the Windows console defaults.
+            cmd.env("TERM", "xterm-256color");
+            cmd.env("COLORTERM", "truecolor");
+            cmd.env("LANG", "en_US.UTF-8");
+            cmd.env("LC_ALL", "en_US.UTF-8");
             if let Some(dir) = cwd.as_ref() {
                 if dir.is_dir() {
                     cmd.cwd(dir.clone());
@@ -179,6 +200,8 @@ impl Session {
                 parser,
                 cols,
                 rows,
+                pty_cols: cols,
+                pty_rows: rows,
                 shell: shell_used.to_string(),
                 pid,
                 writer: Some(writer),
@@ -203,19 +226,37 @@ impl Session {
     }
 
     /// Resize PTY + terminal grid. No-op when unchanged or degenerate.
+    ///
+    /// The terminal grid always tracks the requested size, but the
+    /// pseudo-console is retried until it accepts the size: ConPTY can
+    /// transiently reject a resize (e.g. while the shell is still starting),
+    /// and a resize dropped here desyncs the child's idea of the grid from
+    /// ours — output then wraps at the stale width while the UI shows the
+    /// new one. `prepaint` calls this every frame, so a failed resize heals
+    /// on the next paint.
     pub fn resize(&mut self, cols: usize, rows: usize) {
-        if cols == 0 || rows == 0 || (self.cols == cols && self.rows == rows) {
+        if cols == 0 || rows == 0 {
             return;
         }
-        self.cols = cols;
-        self.rows = rows;
-        let _ = self.master.resize(PtySize {
-            rows: rows as u16,
-            cols: cols as u16,
-            pixel_width: 0,
-            pixel_height: 0,
-        });
-        self.term.resize(TermSize { cols, rows });
+        if self.cols != cols || self.rows != rows {
+            self.cols = cols;
+            self.rows = rows;
+            self.term.resize(TermSize { cols, rows });
+        }
+        if self.pty_cols != cols || self.pty_rows != rows {
+            let size = PtySize {
+                rows: rows as u16,
+                cols: cols as u16,
+                pixel_width: 0,
+                pixel_height: 0,
+            };
+            if self.master.resize(size).is_ok() {
+                self.pty_cols = cols;
+                self.pty_rows = rows;
+            }
+            // On failure the stale pty size stays recorded so the next
+            // call retries instead of assuming success.
+        }
     }
 
     pub fn kill(&mut self) {
