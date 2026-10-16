@@ -22,7 +22,7 @@ use gpui::{
     FontFallbacks, GlobalElementId, InspectorElementId, IntoElement, KeyDownEvent, Keystroke,
     LayoutId, MouseButton, MouseDownEvent, Pixels, Render, Rgba, ScrollWheelEvent,
     StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas, div, fill, point, px,
-    relative, rgb,
+    relative, rgb, rgba,
 };
 
 use crate::keymap;
@@ -48,24 +48,41 @@ pub struct AtlasView {
     /// Caption-window font: native Segoe caption glyphs when present (`None`
     /// falls back to the bundled Nerd Font window glyphs).
     caption_font: Option<Font>,
-    /// Light/dark switch (settings panel + Ctrl+Shift+D).
+    /// Light/dark switch (settings page + Ctrl+Shift+D).
     dark: bool,
-    /// Settings popover visibility.
+    /// Settings page visibility (replaces the terminal body).
     settings_open: bool,
     /// New-tab profile menu (the ▾ caret) visibility.
     profile_menu: bool,
-    /// Terminal font size in px (settings panel).
+    /// Sidebar visibility; when collapsed a slim rail keeps the controls.
+    sidebar_open: bool,
+    /// Command palette (Ctrl+Shift+P / search pill / pane search icon).
+    palette_open: bool,
+    palette_query: String,
+    palette_index: usize,
+    /// Rename-tab dialog (pane pen icon).
+    rename_open: bool,
+    rename_value: String,
+    /// Pane-header "⋯" menu visibility.
+    menu_open: bool,
+    /// Terminal font size in px (settings page).
     font_size: f32,
     /// Cursor override; `None` follows the shell's DECSCUSR.
     cursor_style: Option<CursorShape>,
-    /// Blink phase of the cursor.
+    /// Blink phase of the cursor (palette/rename carets share it).
     cursor_on: bool,
+    /// Focus handles for the overlay surfaces.
+    settings_focus: FocusHandle,
+    palette_focus: FocusHandle,
+    rename_focus: FocusHandle,
 }
 
 struct Tab {
     id: u64,
     epoch: u64,
     title: String,
+    /// User-set name (Rename dialog / palette); wins over the shell title.
+    custom_title: Option<String>,
     session: Rc<RefCell<Session>>,
     /// Which profile this tab runs (kept so Restart reuses it).
     profile: Profile,
@@ -92,9 +109,19 @@ impl AtlasView {
             dark: true,
             settings_open: false,
             profile_menu: false,
+            sidebar_open: true,
+            palette_open: false,
+            palette_query: String::new(),
+            palette_index: 0,
+            rename_open: false,
+            rename_value: String::new(),
+            menu_open: false,
             font_size: FONT_SIZE,
             cursor_style: None,
             cursor_on: true,
+            settings_focus: cx.focus_handle(),
+            palette_focus: cx.focus_handle(),
+            rename_focus: cx.focus_handle(),
         };
         view.new_tab(Profile::PowerShell, cx);
 
@@ -170,6 +197,9 @@ impl AtlasView {
         self.next_id += 1;
         self.next_epoch += 1;
 
+        // A fresh terminal should be visible, not hidden behind settings.
+        self.settings_open = false;
+
         match Session::spawn(80, 24, home_dir(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
@@ -178,6 +208,7 @@ impl AtlasView {
                     id,
                     epoch,
                     title: profile_title(profile),
+                    custom_title: None,
                     session: session.clone(),
                     profile,
                     cwd,
@@ -355,12 +386,165 @@ impl AtlasView {
         cx.notify();
     }
 
-    fn toggle_settings(&mut self, cx: &mut Context<Self>) {
+    fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = !self.settings_open;
         if self.settings_open {
             self.profile_menu = false;
+            self.palette_open = false;
+            window.focus(&self.settings_focus);
+        } else {
+            window.focus(&self.focus);
         }
         cx.notify();
+    }
+
+    /// Focus whatever is on top: the settings page when it is open, the
+    /// terminal otherwise. Overlay dismissal returns keys here.
+    fn focus_main(&self, window: &mut Window) {
+        if self.settings_open {
+            window.focus(&self.settings_focus);
+        } else {
+            window.focus(&self.focus);
+        }
+    }
+
+    fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.palette_open = true;
+        self.palette_query.clear();
+        self.palette_index = 0;
+        self.profile_menu = false;
+        window.focus(&self.palette_focus);
+        cx.notify();
+    }
+
+    fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.palette_open = false;
+        self.focus_main(window);
+        cx.notify();
+    }
+
+    /// Commands matching the current query, in declaration order.
+    fn palette_matches(&self) -> Vec<(Command, &'static str, &'static str, &'static str)> {
+        let query = self.palette_query.trim().to_ascii_lowercase();
+        COMMANDS
+            .iter()
+            .copied()
+            .filter(|(_, _, label, _)| {
+                query.is_empty() || label.to_ascii_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
+    /// Palette key routing: type to filter, ↑/↓ to move, Enter to run, Esc to
+    /// dismiss. Key events arrive here only while the palette holds focus, so
+    /// nothing leaks into the shell.
+    fn handle_palette_key(
+        &mut self,
+        ks: &Keystroke,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match ks.key.as_str() {
+            "escape" => self.close_palette(window, cx),
+            "enter" => {
+                let matches = self.palette_matches();
+                let index = self.palette_index.min(matches.len().saturating_sub(1));
+                match matches.get(index).copied() {
+                    Some((command, _, _, _)) => self.run_command(command, window, cx),
+                    None => self.close_palette(window, cx),
+                }
+            }
+            "up" => {
+                self.palette_index = self.palette_index.saturating_sub(1);
+                cx.notify();
+            }
+            "down" => {
+                let last = self.palette_matches().len().saturating_sub(1);
+                self.palette_index = (self.palette_index + 1).min(last);
+                cx.notify();
+            }
+            "backspace" => {
+                if self.palette_query.pop().is_some() {
+                    self.palette_index = 0;
+                }
+                cx.notify();
+            }
+            _ => {
+                if let Some(text) = ks.key_char.as_deref() {
+                    if !ks.modifiers.control && !ks.modifiers.alt {
+                        let typed: String =
+                            text.chars().filter(|c| !c.is_control()).collect();
+                        if !typed.is_empty() {
+                            self.palette_query.push_str(&typed);
+                            self.palette_index = 0;
+                            cx.notify();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Run a palette / pane-menu command; both overlays close on the way.
+    fn run_command(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
+        self.palette_open = false;
+        self.menu_open = false;
+        match command {
+            Command::NewTab => {
+                self.new_tab(Profile::PowerShell, cx);
+                window.focus(&self.focus);
+            }
+            Command::NewTabWsl => {
+                self.new_tab(Profile::Wsl, cx);
+                window.focus(&self.focus);
+            }
+            Command::CloseTab => {
+                let index = self.active;
+                self.close_tab(index, cx);
+                self.focus_main(window);
+            }
+            Command::NextTab => {
+                self.cycle(1);
+                window.focus(&self.focus);
+                cx.notify();
+            }
+            Command::PrevTab => {
+                self.cycle(-1);
+                window.focus(&self.focus);
+                cx.notify();
+            }
+            Command::RestartTab => {
+                let index = self.active;
+                self.restart_tab(index, cx);
+                window.focus(&self.focus);
+            }
+            Command::RenameTab => self.open_rename(window, cx),
+            Command::ToggleTheme => {
+                self.toggle_theme(cx);
+                self.focus_main(window);
+            }
+            Command::OpenSettings => {
+                self.settings_open = true;
+                self.profile_menu = false;
+                window.focus(&self.settings_focus);
+                cx.notify();
+            }
+            Command::ToggleSidebar => {
+                self.sidebar_open = !self.sidebar_open;
+                window.focus(&self.focus);
+                cx.notify();
+            }
+            Command::FontInc => {
+                self.font_size = (self.font_size + 1.0).min(24.0);
+                self.focus_main(window);
+                cx.notify();
+            }
+            Command::FontDec => {
+                self.font_size = (self.font_size - 1.0).max(10.0);
+                self.focus_main(window);
+                cx.notify();
+            }
+        }
     }
 
     fn toggle_profile_menu(&mut self, cx: &mut Context<Self>) {
@@ -371,16 +555,539 @@ impl AtlasView {
         cx.notify();
     }
 
-    fn handle_key(&mut self, ks: &Keystroke, cx: &mut Context<Self>) {
+    /// Open the rename dialog prefilled with the tab's current name.
+    fn open_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        self.rename_value = tab
+            .custom_title
+            .clone()
+            .unwrap_or_else(|| tab_name(&tab.title));
+        self.rename_open = true;
+        self.palette_open = false;
+        self.menu_open = false;
+        window.focus(&self.rename_focus);
+        cx.notify();
+    }
+
+    fn close_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.rename_open = false;
+        self.focus_main(window);
+        cx.notify();
+    }
+
+    /// Commit the rename; an empty name falls back to the shell title.
+    fn apply_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            let name = self.rename_value.trim().to_string();
+            tab.custom_title = if name.is_empty() { None } else { Some(name) };
+        }
+        self.close_rename(window, cx);
+    }
+
+    fn handle_rename_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) {
+        match ks.key.as_str() {
+            "escape" => self.close_rename(window, cx),
+            "enter" => self.apply_rename(window, cx),
+            "backspace" => {
+                if self.rename_value.pop().is_some() {
+                    cx.notify();
+                }
+            }
+            _ => {
+                if let Some(text) = ks.key_char.as_deref() {
+                    if !ks.modifiers.control && !ks.modifiers.alt {
+                        let typed: String =
+                            text.chars().filter(|c| !c.is_control()).collect();
+                        if !typed.is_empty() {
+                            self.rename_value.push_str(&typed);
+                            cx.notify();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Command palette overlay, centred under the titlebar.
+    fn palette(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let matches = self.palette_matches();
+
+        let mut text_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(2.0))
+            .flex_1()
+            .text_size(px(13.0));
+        if self.palette_query.is_empty() {
+            if self.cursor_on {
+                text_row = text_row.child(
+                    div().w(px(1.5)).h(px(17.0)).rounded_full().bg(theme.accent),
+                );
+            }
+            text_row = text_row.child(div().text_color(theme.faint_fg).child("Type a command…"));
+        } else {
+            text_row = text_row.child(
+                div()
+                    .text_color(theme.chrome_fg_active)
+                    .child(self.palette_query.clone()),
+            );
+            if self.cursor_on {
+                text_row = text_row.child(
+                    div().w(px(1.5)).h(px(17.0)).rounded_full().bg(theme.accent),
+                );
+            }
+        }
+
+        let input_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(10.0))
+            .h(px(46.0))
+            .px(px(16.0))
+            .text_color(theme.chrome_fg)
+            .child(icon_glyph(ICON_SEARCH, 14.0))
+            .child(text_row);
+
+        let mut list = div().flex().flex_col().p(px(6.0));
+        if matches.is_empty() {
+            list = list.child(
+                div()
+                    .px(px(12.0))
+                    .py(px(10.0))
+                    .text_size(px(12.0))
+                    .text_color(theme.faint_fg)
+                    .child("No matching commands"),
+            );
+        } else {
+            for (index, (command, icon, label, shortcut)) in matches.into_iter().enumerate() {
+                let hover = theme.card_hover;
+                let mut row = div()
+                    .id(ElementId::named_usize("palette-command", index))
+                    .h(px(36.0))
+                    .px(px(12.0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(10.0))
+                    .rounded(px(7.0))
+                    .text_color(theme.chrome_fg)
+                    .hover(move |style| style.bg(hover))
+                    .child(icon_glyph(icon, 13.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(12.5))
+                            .text_color(theme.chrome_fg_active)
+                            .child(label),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(theme.faint_fg)
+                            .child(shortcut),
+                    )
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        view.run_command(command, window, cx);
+                    }));
+                if index == self.palette_index {
+                    row = row.bg(theme.card_active);
+                }
+                list = list.child(row);
+            }
+        }
+
+        div()
+            .absolute()
+            .top(px(54.0))
+            .left(px(0.0))
+            .right(px(0.0))
+            .flex()
+            .flex_row()
+            .justify_center()
+            .child(
+                div()
+                    .id(ElementId::named_usize("palette-panel", 0))
+                    .w(px(560.0))
+                    .flex()
+                    .flex_col()
+                    .rounded(px(12.0))
+                    .bg(theme.elevated_bg)
+                    .border_1()
+                    .border_color(theme.elevated_border)
+                    .shadow_lg()
+                    .track_focus(&self.palette_focus)
+                    .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                        let keystroke = event.keystroke.clone();
+                        view.handle_palette_key(&keystroke, window, cx);
+                    }))
+                    .child(input_row)
+                    .child(div().h(px(1.0)).bg(theme.hairline))
+                    .child(list),
+            )
+            .into_any_element()
+    }
+
+    /// Rename-tab dialog overlay (pane pen icon).
+    fn rename_dialog(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let mut field = div()
+            .h(px(34.0))
+            .px(px(12.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(2.0))
+            .rounded(px(8.0))
+            .bg(theme.card_hover)
+            .border_1()
+            .border_color(theme.elevated_border)
+            .text_size(px(13.0))
+            .text_color(theme.chrome_fg_active)
+            .child(self.rename_value.clone());
+        if self.cursor_on {
+            field = field.child(div().w(px(1.5)).h(px(17.0)).rounded_full().bg(theme.accent));
+        }
+
+        div()
+            .absolute()
+            .top(px(120.0))
+            .left(px(0.0))
+            .right(px(0.0))
+            .flex()
+            .flex_row()
+            .justify_center()
+            .child(
+                div()
+                    .id(ElementId::named_usize("rename-panel", 0))
+                    .w(px(430.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.0))
+                    .p(px(16.0))
+                    .rounded(px(12.0))
+                    .bg(theme.elevated_bg)
+                    .border_1()
+                    .border_color(theme.elevated_border)
+                    .shadow_lg()
+                    .track_focus(&self.rename_focus)
+                    .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                        let keystroke = event.keystroke.clone();
+                        view.handle_rename_key(&keystroke, window, cx);
+                    }))
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .text_color(theme.chrome_fg_active)
+                            .child("Rename tab"),
+                    )
+                    .child(field)
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(theme.faint_fg)
+                            .child("Enter to apply · Esc to cancel · empty restores the shell name"),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// Pane-header "⋯" menu: quick tab actions under the header.
+    fn pane_menu(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let entries: [(Command, &'static str, &'static str, &'static str); 4] = [
+            (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
+            (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
+            (Command::RestartTab, ICON_REFRESH, "Restart tab", ""),
+            (Command::CloseTab, ICON_X, "Close tab", "Ctrl Shift W"),
+        ];
+        let mut menu = div()
+            .absolute()
+            .top(px(84.0))
+            .right(px(12.0))
+            .w(px(230.0))
+            .flex()
+            .flex_col()
+            .p(px(5.0))
+            .rounded(px(10.0))
+            .bg(theme.elevated_bg)
+            .border_1()
+            .border_color(theme.elevated_border)
+            .shadow_lg();
+        for (index, (command, icon, label, shortcut)) in entries.into_iter().enumerate() {
+            let hover = theme.card_hover;
+            menu = menu.child(
+                div()
+                    .id(ElementId::named_usize("pane-menu-item", index))
+                    .h(px(30.0))
+                    .px(px(10.0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(9.0))
+                    .rounded(px(6.0))
+                    .text_size(px(12.0))
+                    .text_color(theme.chrome_fg)
+                    .hover(move |style| style.bg(hover))
+                    .child(icon_glyph(icon, 12.5))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_color(theme.chrome_fg_active)
+                            .child(label),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme.faint_fg)
+                            .child(shortcut),
+                    )
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        view.run_command(command, window, cx);
+                    })),
+            );
+        }
+        menu.into_any_element()
+    }
+
+    /// Full settings page shown in place of the terminal body.
+    fn settings_page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let card = || {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(10.0))
+                .p(px(16.0))
+                .rounded(px(12.0))
+                .bg(theme.elevated_bg)
+                .border_1()
+                .border_color(theme.elevated_border)
+        };
+        let section = |label: &'static str| -> AnyElement {
+            div()
+                .text_size(px(10.5))
+                .text_color(theme.faint_fg)
+                .child(label)
+                .into_any_element()
+        };
+        let row_label = |label: &'static str| -> AnyElement {
+            div()
+                .w(px(96.0))
+                .text_size(px(12.5))
+                .text_color(theme.chrome_fg)
+                .child(label)
+                .into_any_element()
+        };
+
+        let theme_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(row_label("Theme"))
+            .child(pill_button(
+                "Light".to_string(),
+                10,
+                !self.dark,
+                theme,
+                |view, cx| {
+                    if view.dark {
+                        view.toggle_theme(cx);
+                    }
+                },
+                cx,
+            ))
+            .child(pill_button(
+                "Dark".to_string(),
+                11,
+                self.dark,
+                theme,
+                |view, cx| {
+                    if !view.dark {
+                        view.toggle_theme(cx);
+                    }
+                },
+                cx,
+            ));
+
+        let font_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(row_label("Font size"))
+            .child(pill_button(
+                "−".to_string(),
+                20,
+                false,
+                theme,
+                |view, cx| {
+                    view.font_size = (view.font_size - 1.0).max(10.0);
+                    cx.notify();
+                },
+                cx,
+            ))
+            .child(
+                div()
+                    .min_w(px(46.0))
+                    .flex()
+                    .justify_center()
+                    .text_size(px(12.0))
+                    .text_color(theme.chrome_fg_active)
+                    .child(format!("{} px", self.font_size as i32)),
+            )
+            .child(pill_button(
+                "+".to_string(),
+                21,
+                false,
+                theme,
+                |view, cx| {
+                    view.font_size = (view.font_size + 1.0).min(24.0);
+                    cx.notify();
+                },
+                cx,
+            ));
+
+        let cursor_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(row_label("Cursor"))
+            .child(pill_button(
+                "Auto".to_string(),
+                30,
+                self.cursor_style.is_none(),
+                theme,
+                |view, cx| {
+                    view.cursor_style = None;
+                    cx.notify();
+                },
+                cx,
+            ))
+            .child(pill_button(
+                "Block".to_string(),
+                31,
+                self.cursor_style == Some(CursorShape::Block),
+                theme,
+                |view, cx| {
+                    view.cursor_style = Some(CursorShape::Block);
+                    cx.notify();
+                },
+                cx,
+            ))
+            .child(pill_button(
+                "Bar".to_string(),
+                32,
+                self.cursor_style == Some(CursorShape::Beam),
+                theme,
+                |view, cx| {
+                    view.cursor_style = Some(CursorShape::Beam);
+                    cx.notify();
+                },
+                cx,
+            ))
+            .child(pill_button(
+                "Under".to_string(),
+                33,
+                self.cursor_style == Some(CursorShape::Underline),
+                theme,
+                |view, cx| {
+                    view.cursor_style = Some(CursorShape::Underline);
+                    cx.notify();
+                },
+                cx,
+            ));
+
+        let link_hot = theme.chrome_fg_active;
+        let about = card()
+            .child(section("ABOUT"))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(5.0))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(theme.chrome_fg_active)
+                            .child("Atlas Terminal 0.1.0"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .text_color(theme.chrome_fg)
+                            .child("Native GPUI renderer · alacritty_terminal · no webview, no HTML"),
+                    )
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("settings-link", 0))
+                            .text_size(px(11.5))
+                            .text_color(theme.accent)
+                            .hover(move |style| style.text_color(link_hot))
+                            .child("github.com/akrram0/atlas-terminal")
+                            .on_click(cx.listener(|_view, _: &ClickEvent, _window, cx| {
+                                cx.open_url("https://github.com/akrram0/atlas-terminal");
+                            })),
+                    ),
+            );
+
+        div()
+            .id(ElementId::named_usize("settings-page", 0))
+            .flex()
+            .flex_col()
+            .flex_1()
+            .w(relative(1.0))
+            .bg(theme.bg)
+            .track_focus(&self.settings_focus)
+            .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.key == "escape" {
+                    view.settings_open = false;
+                    window.focus(&view.focus);
+                    cx.notify();
+                }
+            }))
+            .child(
+                div()
+                    .id(ElementId::named_usize("settings-scroll", 0))
+                    .flex()
+                    .flex_row()
+                    .justify_center()
+                    .flex_1()
+                    .w(relative(1.0))
+                    .overflow_y_scroll()
+                    .child(
+                        div()
+                            .w(px(620.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(14.0))
+                            .py(px(24.0))
+                            .child(card().child(section("APPEARANCE")).child(theme_row))
+                            .child(
+                                card()
+                                    .child(section("TERMINAL"))
+                                    .child(font_row)
+                                    .child(cursor_row),
+                            )
+                            .child(about),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn handle_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) {
         let modifiers = &ks.modifiers;
         let key = ks.key.as_str();
 
         // Solid cursor while typing; the blink task flips it back on its own.
         self.cursor_on = true;
 
-        if key == "escape" && (self.settings_open || self.profile_menu) {
+        if key == "escape" && (self.settings_open || self.profile_menu || self.menu_open) {
             self.settings_open = false;
             self.profile_menu = false;
+            self.menu_open = false;
             cx.notify();
             return;
         }
@@ -395,6 +1102,7 @@ impl AtlasView {
                 }
                 "v" => self.paste(cx),
                 "d" => self.toggle_theme(cx),
+                "p" => self.open_palette(window, cx),
                 "tab" => {
                     self.cycle(-1);
                     cx.notify();
@@ -490,6 +1198,17 @@ impl Render for AtlasView {
         bar = bar.child(caption_spacer(0));
 
         let search_theme = theme.clone();
+        let pill_hover = search_theme.card_hover;
+        let pill_text = if self.palette_open && !self.palette_query.is_empty() {
+            self.palette_query.clone()
+        } else {
+            "Search commands, tabs and history".to_string()
+        };
+        let pill_fg = if self.palette_open {
+            search_theme.chrome_fg_active
+        } else {
+            search_theme.faint_fg
+        };
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("search-pill", 0))
@@ -504,14 +1223,15 @@ impl Render for AtlasView {
                 .bg(search_theme.search_bg)
                 .border_1()
                 .border_color(search_theme.search_border)
-                .text_color(search_theme.faint_fg)
+                .text_color(pill_fg)
+                .hover(move |style| style.bg(pill_hover))
                 .child(icon_glyph(ICON_SEARCH, 13.0))
                 .child(
                     div()
                         .flex_1()
                         .text_size(px(12.0))
                         .truncate()
-                        .child("Search commands, tabs and history"),
+                        .child(pill_text),
                 )
                 .child(
                     div()
@@ -525,7 +1245,10 @@ impl Render for AtlasView {
                         .text_size(px(10.0))
                         .text_color(search_theme.faint_fg)
                         .child("Ctrl Shift P"),
-                ),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                    view.open_palette(window, cx);
+                })),
         );
 
         bar = bar.child(caption_spacer(1));
@@ -596,7 +1319,9 @@ impl Render for AtlasView {
         }
 
         // ---- Terminal area -------------------------------------------
-        let body: AnyElement = if self.tabs.is_empty() {
+        let body: AnyElement = if self.settings_open {
+            self.settings_page(&theme, cx)
+        } else if self.tabs.is_empty() {
             div().flex_1().into_any_element()
         } else {
             let index = self.active.min(self.tabs.len() - 1);
@@ -611,9 +1336,9 @@ impl Render for AtlasView {
                 .px(px(20.0))
                 .py(px(12.0))
                 .track_focus(&self.focus)
-                .on_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
+                .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                     let keystroke = event.keystroke.clone();
-                    view.handle_key(&keystroke, cx);
+                    view.handle_key(&keystroke, window, cx);
                 }))
                 .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
                     let lines = match event.delta {
@@ -690,7 +1415,7 @@ impl Render for AtlasView {
                         .text_color(theme.chrome_fg_active)
                         .child("Tabs"),
                 )
-                .child(chrome_icon_button(
+                .child(chrome_action_button(
                     ElementId::named_usize("sidebar-action", 0),
                     ICON_COLUMNS,
                     13.0,
@@ -698,8 +1423,13 @@ impl Render for AtlasView {
                     24.0,
                     6.0,
                     &theme,
+                    |view, window, cx| {
+                        view.new_tab(Profile::PowerShell, cx);
+                        window.focus(&view.focus);
+                    },
+                    cx,
                 ))
-                .child(chrome_icon_button(
+                .child(chrome_action_button(
                     ElementId::named_usize("sidebar-action", 1),
                     ICON_PANEL,
                     13.0,
@@ -707,6 +1437,12 @@ impl Render for AtlasView {
                     24.0,
                     6.0,
                     &theme,
+                    |view, window, cx| {
+                        view.sidebar_open = false;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    },
+                    cx,
                 )),
         );
 
@@ -734,7 +1470,10 @@ impl Render for AtlasView {
             // Name from the shell-reported title; subtitle: the live working
             // directory (PEB poll), falling back to the shell label, plus a
             // dead-session note.
-            let name = tab_name(&tab.title);
+            let name = tab
+                .custom_title
+                .clone()
+                .unwrap_or_else(|| tab_name(&tab.title));
             let shell = shell_label(&tab.session.borrow().shell);
             let base = match &tab.cwd {
                 Some(cwd) => display_cwd(cwd),
@@ -827,6 +1566,7 @@ impl Render for AtlasView {
                     .flex_1()
                     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                         view.active = ix;
+                        view.settings_open = false;
                         window.focus(&view.focus);
                         cx.notify();
                     }))
@@ -969,11 +1709,58 @@ impl Render for AtlasView {
                         .hover(move |style| style.bg(gear_hover).text_color(gear_hot))
                         .child(icon_glyph(ICON_GEAR, 14.0))
                         .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.toggle_settings(cx);
-                            window.focus(&view.focus);
+                            view.toggle_settings(window, cx);
                         })),
                 ),
         );
+
+        // Collapsed state: a slim rail keeps expand + new-tab reachable.
+        let sidebar: AnyElement = if self.sidebar_open {
+            sidebar.into_any_element()
+        } else {
+            let rail_theme = theme.clone();
+            let mut rail = div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap(px(4.0))
+                .w(px(46.0))
+                .h(relative(1.0))
+                .pt(px(9.0))
+                .bg(rail_theme.panel_bg)
+                .border_r_1()
+                .border_color(rail_theme.hairline);
+            rail = rail.child(chrome_action_button(
+                ElementId::named_usize("rail-action", 0),
+                ICON_PANEL,
+                13.0,
+                28.0,
+                28.0,
+                7.0,
+                &rail_theme,
+                |view, window, cx| {
+                    view.sidebar_open = true;
+                    window.focus(&view.focus);
+                    cx.notify();
+                },
+                cx,
+            ));
+            rail = rail.child(chrome_action_button(
+                ElementId::named_usize("rail-action", 1),
+                ICON_PLUS,
+                13.0,
+                28.0,
+                28.0,
+                7.0,
+                &rail_theme,
+                |view, window, cx| {
+                    view.new_tab(Profile::PowerShell, cx);
+                    window.focus(&view.focus);
+                },
+                cx,
+            ));
+            rail.into_any_element()
+        };
 
         // ---- Pane header ---------------------------------------------
         // Breadcrumb (folder · parent › leaf) + view actions.
@@ -981,7 +1768,10 @@ impl Render for AtlasView {
             .active_tab()
             .map(|tab| match tab.cwd.as_ref() {
                 Some(cwd) => cwd.to_string_lossy().into_owned(),
-                None => tab_name(&tab.title),
+                None => tab
+                    .custom_title
+                    .clone()
+                    .unwrap_or_else(|| tab_name(&tab.title)),
             })
             .unwrap_or_else(|| "PowerShell".to_string());
         let (crumb_a, crumb_b) = breadcrumbs(&header_source);
@@ -997,37 +1787,100 @@ impl Render for AtlasView {
             .bg(theme.panel_bg)
             .border_b_1()
             .border_color(theme.hairline)
-            .text_color(theme.chrome_fg)
-            .child(icon_glyph(ICON_FOLDER, 13.0));
+            .text_color(theme.chrome_fg);
 
-        if let Some(parent) = crumb_a {
+        if self.settings_open {
+            // Settings header: gear + title + close.
+            let close_hover = theme.card_hover;
+            let close_hot = theme.chrome_fg_active;
             header = header
-                .child(div().text_size(px(13.0)).truncate().child(parent))
+                .child(icon_glyph(ICON_GEAR, 13.0))
                 .child(
                     div()
-                        .text_color(theme.faint_fg)
-                        .child(icon_glyph(ICON_CHEVRON, 10.0)),
+                        .text_size(px(13.0))
+                        .text_color(theme.chrome_fg_active)
+                        .child("Settings"),
+                )
+                .child(div().flex_1())
+                .child(
+                    div()
+                        .id(ElementId::named_usize("settings-close", 0))
+                        .w(px(24.0))
+                        .h(px(24.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .text_color(theme.chrome_fg)
+                        .hover(move |style| style.bg(close_hover).text_color(close_hot))
+                        .child(icon_glyph(ICON_X, 13.0))
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            view.settings_open = false;
+                            window.focus(&view.focus);
+                            cx.notify();
+                        })),
                 );
-        }
-        header = header
-            .child(
-                div()
-                    .text_size(px(13.0))
-                    .text_color(theme.chrome_fg_active)
-                    .truncate()
-                    .child(crumb_b),
-            )
-            .child(div().flex_1());
-        for (index, glyph) in [ICON_SEARCH, ICON_PEN, ICON_ELLIPSIS].into_iter().enumerate() {
-            header = header.child(chrome_icon_button(
-                ElementId::named_usize("pane-action", index),
-                glyph,
-                13.0,
-                24.0,
-                24.0,
-                6.0,
-                &theme,
-            ));
+        } else {
+            header = header.child(icon_glyph(ICON_FOLDER, 13.0));
+            if let Some(parent) = crumb_a {
+                header = header
+                    .child(div().text_size(px(13.0)).truncate().child(parent))
+                    .child(
+                        div()
+                            .text_color(theme.faint_fg)
+                            .child(icon_glyph(ICON_CHEVRON, 10.0)),
+                    );
+            }
+            header = header
+                .child(
+                    div()
+                        .text_size(px(13.0))
+                        .text_color(theme.chrome_fg_active)
+                        .truncate()
+                        .child(crumb_b),
+                )
+                .child(div().flex_1())
+                .child(chrome_action_button(
+                    ElementId::named_usize("pane-action", 0),
+                    ICON_SEARCH,
+                    13.0,
+                    24.0,
+                    24.0,
+                    6.0,
+                    &theme,
+                    |view, window, cx| {
+                        view.open_palette(window, cx);
+                    },
+                    cx,
+                ))
+                .child(chrome_action_button(
+                    ElementId::named_usize("pane-action", 1),
+                    ICON_PEN,
+                    13.0,
+                    24.0,
+                    24.0,
+                    6.0,
+                    &theme,
+                    |view, window, cx| {
+                        view.open_rename(window, cx);
+                    },
+                    cx,
+                ))
+                .child(chrome_action_button(
+                    ElementId::named_usize("pane-action", 2),
+                    ICON_ELLIPSIS,
+                    13.0,
+                    24.0,
+                    24.0,
+                    6.0,
+                    &theme,
+                    |view, window, cx| {
+                        view.menu_open = !view.menu_open;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    },
+                    cx,
+                ));
         }
 
         // ---- Status bar ----------------------------------------------
@@ -1040,7 +1893,10 @@ impl Render for AtlasView {
                 drop(session);
                 let left = match &tab.cwd {
                     Some(cwd) => display_cwd(cwd),
-                    None => tab_name(&tab.title),
+                    None => tab
+                        .custom_title
+                        .clone()
+                        .unwrap_or_else(|| tab_name(&tab.title)),
                 };
                 (cols, rows, shell, tab.exited, tab.branch.clone(), left)
             }
@@ -1121,21 +1977,50 @@ impl Render for AtlasView {
                     .child(main_col),
             );
 
-        // Profile menu floats above the bottom bar; paint it before the
-        // settings popover so the settings panel wins overlap contests.
+        // Overlays paint last: each is a dim click-catcher plus its panel, in
+        // stacking order (profile menu, pane menu, palette, rename dialog).
         if self.profile_menu {
-            root = root.child(profile_menu(&theme, cx));
-        }
-
-        // Settings popover floats above everything; paint it last.
-        if self.settings_open {
-            root = root.child(settings_panel(
-                &theme,
-                self.dark,
-                self.font_size,
-                self.cursor_style,
+            root = root.child(overlay_backdrop(
+                0,
+                |view, window, cx| {
+                    view.profile_menu = false;
+                    window.focus(&view.focus);
+                    cx.notify();
+                },
                 cx,
             ));
+            root = root.child(profile_menu(&theme, cx));
+        }
+        if self.menu_open {
+            root = root.child(overlay_backdrop(
+                1,
+                |view, _window, cx| {
+                    view.menu_open = false;
+                    cx.notify();
+                },
+                cx,
+            ));
+            root = root.child(self.pane_menu(&theme, cx));
+        }
+        if self.palette_open {
+            root = root.child(overlay_backdrop(
+                2,
+                |view, window, cx| {
+                    view.close_palette(window, cx);
+                },
+                cx,
+            ));
+            root = root.child(self.palette(&theme, cx));
+        }
+        if self.rename_open {
+            root = root.child(overlay_backdrop(
+                3,
+                |view, window, cx| {
+                    view.close_rename(window, cx);
+                },
+                cx,
+            ));
+            root = root.child(self.rename_dialog(&theme, cx));
         }
 
         root
@@ -1567,6 +2452,54 @@ const ICON_WINDOW_MAX: &str = "\u{F2D0}"; // nf-fa-window_maximize
 const ICON_WINDOW_RESTORE: &str = "\u{F2D2}"; // nf-fa-window_restore
 const ICON_WINDOW_CLOSE: &str = "\u{F2D3}"; // nf-fa-window_close
 
+const ICON_CHEVRON_LEFT: &str = "\u{EAB5}"; // nf-cod-chevron_left
+const ICON_REFRESH: &str = "\u{EB37}"; // nf-cod-refresh
+const ICON_COLOR_MODE: &str = "\u{EAC6}"; // nf-cod-color_mode
+const ICON_TEXT_SIZE: &str = "\u{EB69}"; // nf-cod-text_size
+
+/// Commands offered by the palette and the pane "⋯" menu.
+#[derive(Clone, Copy)]
+enum Command {
+    NewTab,
+    NewTabWsl,
+    CloseTab,
+    NextTab,
+    PrevTab,
+    RestartTab,
+    RenameTab,
+    ToggleTheme,
+    OpenSettings,
+    ToggleSidebar,
+    FontInc,
+    FontDec,
+}
+
+/// Palette entries: command, icon, label, shortcut hint.
+const COMMANDS: [(Command, &str, &str, &str); 12] = [
+    (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift T"),
+    (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
+    (Command::CloseTab, ICON_X, "Close tab", "Ctrl Shift W"),
+    (Command::NextTab, ICON_CHEVRON, "Next tab", "Ctrl Tab"),
+    (
+        Command::PrevTab,
+        ICON_CHEVRON_LEFT,
+        "Previous tab",
+        "Ctrl Shift Tab",
+    ),
+    (Command::RestartTab, ICON_REFRESH, "Restart tab", ""),
+    (Command::RenameTab, ICON_PEN, "Rename tab", ""),
+    (
+        Command::ToggleTheme,
+        ICON_COLOR_MODE,
+        "Toggle light / dark theme",
+        "Ctrl Shift D",
+    ),
+    (Command::OpenSettings, ICON_GEAR, "Open settings", ""),
+    (Command::ToggleSidebar, ICON_PANEL, "Toggle sidebar", ""),
+    (Command::FontInc, ICON_TEXT_SIZE, "Increase font size", ""),
+    (Command::FontDec, ICON_TEXT_SIZE, "Decrease font size", ""),
+];
+
 /// One Nerd Font glyph, centred in its parent; the parent decides the color.
 fn icon_glyph(glyph: &'static str, size: f32) -> impl IntoElement {
     caption_glyph(None, glyph, size)
@@ -1659,9 +2592,10 @@ fn profile_menu(theme: &Theme, cx: &mut Context<AtlasView>) -> AnyElement {
     menu.into_any_element()
 }
 
-/// Small decorative icon button (sidebar header, pane header): quiet by
-/// default, brightens on hover, never steals focus from the terminal.
-fn chrome_icon_button(
+/// Small icon button (sidebar header, pane header, rail): quiet by default,
+/// brightens on hover, runs `on_click` — which owns focus placement, so
+/// overlays can take focus without the terminal snatching it back.
+fn chrome_action_button(
     id: ElementId,
     glyph: &'static str,
     glyph_size: f32,
@@ -1669,6 +2603,8 @@ fn chrome_icon_button(
     h: f32,
     radius: f32,
     theme: &Theme,
+    on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
+    cx: &mut Context<AtlasView>,
 ) -> AnyElement {
     let hover_bg = theme.card_hover;
     let idle = theme.chrome_fg;
@@ -1684,6 +2620,27 @@ fn chrome_icon_button(
         .text_color(idle)
         .hover(move |style| style.bg(hover_bg).text_color(hot))
         .child(icon_glyph(glyph, glyph_size))
+        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+            on_click(view, window, cx);
+        }))
+        .into_any_element()
+}
+
+/// Full-screen click-catcher painted under an overlay panel; dims the chrome
+/// a touch and dismisses the overlay on any click.
+fn overlay_backdrop(
+    id: usize,
+    on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
+    cx: &mut Context<AtlasView>,
+) -> AnyElement {
+    div()
+        .id(ElementId::named_usize("overlay-backdrop", id))
+        .absolute()
+        .inset_0()
+        .bg(rgba(0x00000059))
+        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+            on_click(view, window, cx);
+        }))
         .into_any_element()
 }
 
@@ -1844,214 +2801,13 @@ fn pill_button(
         .text_color(fg)
         .hover(move |style| style.bg(hover_bg))
         .child(label)
-        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+        .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
             on_click(view, cx);
-            window.focus(&view.focus);
         }));
     if active {
         button = button.bg(active_bg);
     }
     button.into_any_element()
-}
-
-/// Settings popover: appearance, font size, cursor style.
-fn settings_panel(
-    theme: &Theme,
-    dark: bool,
-    font_size: f32,
-    cursor_style: Option<CursorShape>,
-    cx: &mut Context<AtlasView>,
-) -> AnyElement {
-    let section = |label: &'static str| -> AnyElement {
-        div()
-            .pt(px(4.0))
-            .text_size(px(10.5))
-            .text_color(theme.chrome_fg)
-            .child(label)
-            .into_any_element()
-    };
-    let row_label = |label: &'static str| -> AnyElement {
-        div()
-            .w(px(78.0))
-            .text_size(px(12.0))
-            .text_color(theme.chrome_fg)
-            .child(label)
-            .into_any_element()
-    };
-
-    let close_hover = theme.card_active;
-    let close_hot = theme.chrome_fg_active;
-    let close_button = div()
-        .id(ElementId::named_usize("settings-close", 0))
-        .w(px(20.0))
-        .h(px(20.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(4.0))
-        .text_color(theme.chrome_fg)
-        .hover(move |style| style.bg(close_hover).text_color(close_hot))
-        .child(icon_glyph(ICON_X, 12.0))
-        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-            view.settings_open = false;
-            window.focus(&view.focus);
-            cx.notify();
-        }));
-
-    let header_row = div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .child(
-            div()
-                .flex_1()
-                .text_size(px(13.0))
-                .text_color(theme.chrome_fg_active)
-                .child("Settings"),
-        )
-        .child(close_button);
-
-    let theme_row = div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .child(row_label("Theme"))
-        .child(pill_button(
-            "Light".to_string(),
-            10,
-            !dark,
-            theme,
-            |view, cx| {
-                if view.dark {
-                    view.toggle_theme(cx);
-                }
-            },
-            cx,
-        ))
-        .child(pill_button(
-            "Dark".to_string(),
-            11,
-            dark,
-            theme,
-            |view, cx| {
-                if !view.dark {
-                    view.toggle_theme(cx);
-                }
-            },
-            cx,
-        ));
-
-    let font_row = div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .child(row_label("Font size"))
-        .child(pill_button(
-            "−".to_string(),
-            20,
-            false,
-            theme,
-            |view, cx| {
-                view.font_size = (view.font_size - 1.0).max(10.0);
-                cx.notify();
-            },
-            cx,
-        ))
-        .child(
-            div()
-                .min_w(px(46.0))
-                .flex()
-                .justify_center()
-                .text_size(px(12.0))
-                .text_color(theme.chrome_fg_active)
-                .child(format!("{} px", font_size as i32)),
-        )
-        .child(pill_button(
-            "+".to_string(),
-            21,
-            false,
-            theme,
-            |view, cx| {
-                view.font_size = (view.font_size + 1.0).min(24.0);
-                cx.notify();
-            },
-            cx,
-        ));
-
-    let cursor_row = div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(6.0))
-        .child(row_label("Cursor"))
-        .child(pill_button(
-            "Auto".to_string(),
-            30,
-            cursor_style.is_none(),
-            theme,
-            |view, cx| {
-                view.cursor_style = None;
-                cx.notify();
-            },
-            cx,
-        ))
-        .child(pill_button(
-            "Block".to_string(),
-            31,
-            cursor_style == Some(CursorShape::Block),
-            theme,
-            |view, cx| {
-                view.cursor_style = Some(CursorShape::Block);
-                cx.notify();
-            },
-            cx,
-        ))
-        .child(pill_button(
-            "Bar".to_string(),
-            32,
-            cursor_style == Some(CursorShape::Beam),
-            theme,
-            |view, cx| {
-                view.cursor_style = Some(CursorShape::Beam);
-                cx.notify();
-            },
-            cx,
-        ))
-        .child(pill_button(
-            "Under".to_string(),
-            33,
-            cursor_style == Some(CursorShape::Underline),
-            theme,
-            |view, cx| {
-                view.cursor_style = Some(CursorShape::Underline);
-                cx.notify();
-            },
-            cx,
-        ));
-
-    div()
-        .absolute()
-        .left(px(10.0))
-        .bottom(px(52.0))
-        .w(px(300.0))
-        .flex()
-        .flex_col()
-        .gap(px(8.0))
-        .p(px(14.0))
-        .rounded(px(10.0))
-        .bg(theme.elevated_bg)
-        .border_1()
-        .border_color(theme.elevated_border)
-        .shadow_lg()
-        .child(header_row)
-        .child(section("APPEARANCE"))
-        .child(theme_row)
-        .child(section("TERMINAL"))
-        .child(font_row)
-        .child(cursor_row)
-        .into_any_element()
 }
 
 /// Sidebar/pane label for a tab: the shell-reported title when it reads as a
