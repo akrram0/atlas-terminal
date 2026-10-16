@@ -270,6 +270,17 @@ mod rounded_corners {
         }
     }
 
+    /// Maximized state of the main window: the maximize caption button shows
+    /// the restore glyph while this is true.
+    pub fn is_zoomed() -> bool {
+        let raw = MAIN_HWND.load(Ordering::SeqCst);
+        if raw == 0 {
+            return false;
+        }
+        // Safety: `hwnd` is the process's main window, stored once found.
+        unsafe { IsZoomed(raw as Hwnd) != 0 }
+    }
+
     /// Replacement window procedure: the client area covers the entire window
     /// (so DWM can round the real content); WM_NCHITTEST serves the resize
     /// borders and the view-reported drag band; presses on those non-client

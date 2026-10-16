@@ -43,7 +43,11 @@ pub struct AtlasView {
     next_epoch: u64,
     focus: FocusHandle,
     theme: Theme,
+    /// Terminal font for the cell grid.
     font: Font,
+    /// Caption-window font: native Segoe caption glyphs when present (`None`
+    /// falls back to the bundled Nerd Font window glyphs).
+    caption_font: Option<Font>,
     /// Light/dark switch (settings panel + Ctrl+Shift+D).
     dark: bool,
     /// Settings popover visibility.
@@ -84,6 +88,7 @@ impl AtlasView {
             focus,
             theme: Theme::dark(),
             font: terminal_font(window),
+            caption_font: caption_font(window),
             dark: true,
             settings_open: false,
             profile_menu: false,
@@ -525,10 +530,35 @@ impl Render for AtlasView {
 
         bar = bar.child(caption_spacer(1));
 
+        // Window controls: native Segoe caption glyphs when available,
+        // bundled Nerd fallbacks otherwise; the maximize slot is zoomed-aware
+        // and shows the restore mark while the window is maximized.
+        let caption = self.caption_font.as_ref();
+        let zoomed = crate::rounded_corners::is_zoomed();
+        let (min_glyph, max_glyph, close_glyph, glyph_size) = if caption.is_some()
+        {
+            (
+                GLYPH_MIN,
+                if zoomed { GLYPH_RESTORE } else { GLYPH_MAX },
+                GLYPH_CLOSE,
+                10.5,
+            )
+        } else {
+            (
+                ICON_WINDOW_MIN,
+                if zoomed {
+                    ICON_WINDOW_RESTORE
+                } else {
+                    ICON_WINDOW_MAX
+                },
+                ICON_WINDOW_CLOSE,
+                13.0,
+            )
+        };
         for (index, (glyph, is_close)) in [
-            (ICON_MIN, false),
-            (ICON_MAX, false),
-            (ICON_CLOSE, true),
+            (min_glyph, false),
+            (max_glyph, false),
+            (close_glyph, true),
         ]
         .into_iter()
         .enumerate()
@@ -555,9 +585,12 @@ impl Render for AtlasView {
                     .justify_center()
                     .text_color(idle)
                     .hover(move |style| style.bg(hover_bg).text_color(hot))
-                    .child(icon_glyph(glyph, 13.0))
-                    .on_click(cx.listener(move |_view, _: &ClickEvent, _window, _cx| {
+                    .child(caption_glyph(self.caption_font.as_ref(), glyph, glyph_size))
+                    .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
                         crate::rounded_corners::window_button(index);
+                        // Repaint so the maximize/restore glyph tracks the
+                        // window state this click just changed.
+                        cx.notify();
                     })),
             );
         }
@@ -1494,38 +1527,60 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 // ----------------------------------------------------------------------------
-// Chrome icons are Font Awesome glyphs from the bundled Nerd Font (the same
-// icon set terminals use), so no hand-drawn vectors. Colors are inherited:
-// the parent button sets idle text color, its hover style sets the hot one.
+// Chrome icons are stroke-style VS Code codicons from the bundled Symbols
+// Nerd Font, so the whole UI reads thin like the mock. Session tiles use
+// filled Font Awesome marks (terminal prompt, Ubuntu brand, cloud, desktop)
+// because that is what the mock's colored tiles show. Codepoints verified
+// against the Nerd Fonts glyph table and the bundled TTF's cmap. Colors are
+// inherited: the parent button sets idle text color, its hover the hot one.
 // ----------------------------------------------------------------------------
 
-/// Font Awesome codepoints inside the bundled Symbols Nerd Font Mono.
-const ICON_MIN: &str = "\u{F2D1}"; // nf-fa-window_minimize
-const ICON_MAX: &str = "\u{F2D0}"; // nf-fa-window_maximize
-const ICON_CLOSE: &str = "\u{F2D3}"; // nf-fa-window_close
-const ICON_X: &str = "\u{F00D}"; // nf-fa-xmark
-const ICON_PLUS: &str = "\u{F067}"; // nf-fa-plus
-const ICON_GEAR: &str = "\u{F013}"; // nf-fa-gear
+/// Codicon (stroke) chrome icons.
+const ICON_X: &str = "\u{EA76}"; // nf-cod-close
+const ICON_PLUS: &str = "\u{EA60}"; // nf-cod-add
+const ICON_GEAR: &str = "\u{EAF8}"; // nf-cod-gear
 const ICON_SEARCH: &str = "\u{EA6D}"; // nf-cod-search
 const ICON_FOLDER: &str = "\u{EA83}"; // nf-cod-folder
-const ICON_CHEVRON: &str = "\u{F105}"; // nf-fa-angle_right
+const ICON_CHEVRON: &str = "\u{EAB6}"; // nf-cod-chevron_right
 const ICON_PEN: &str = "\u{EA73}"; // nf-cod-edit
 const ICON_ELLIPSIS: &str = "\u{EA7C}"; // nf-cod-ellipsis
+const ICON_BRANCH: &str = "\u{EC6F}"; // nf-cod-git_branch
+const ICON_CHEVRON_DOWN: &str = "\u{EAB4}"; // nf-cod-chevron_down
+const ICON_COLUMNS: &str = "\u{EB56}"; // nf-cod-split_horizontal
+const ICON_PANEL: &str = "\u{EBF3}"; // nf-cod-layout_panel_left
+
+/// Session-tile icons (white mark on a colored tile, as in the mock).
 const ICON_TERMINAL: &str = "\u{F120}"; // nf-fa-terminal
-const ICON_CUBE: &str = "\u{F1B2}"; // nf-fa-cube
+const ICON_UBUNTU: &str = "\u{EF72}"; // nf-fa-ubuntu (brand mark)
 const ICON_CLOUD: &str = "\u{F0C2}"; // nf-fa-cloud
-const ICON_COLUMNS: &str = "\u{F0DB}"; // nf-fa-table_columns
-const ICON_PANEL: &str = "\u{F022}"; // nf-fa-rectangle_list
-const ICON_BRANCH: &str = "\u{F126}"; // nf-fa-code_branch
-const ICON_CHEVRON_DOWN: &str = "\u{F078}"; // nf-fa-chevron_down
+const ICON_SCREEN: &str = "\u{F108}"; // nf-fa-desktop
+
+/// Caption-window glyphs: native Segoe codepoints when the OS caption font is
+/// available, bundled Font Awesome fallbacks otherwise. The maximize slot is
+/// zoomed-aware and shows the restore mark instead.
+const GLYPH_MIN: &str = "\u{E921}"; // Segoe caption minimize
+const GLYPH_MAX: &str = "\u{E922}"; // Segoe caption maximize
+const GLYPH_RESTORE: &str = "\u{E923}"; // Segoe caption restore
+const GLYPH_CLOSE: &str = "\u{E947}"; // Segoe caption close
+const ICON_WINDOW_MIN: &str = "\u{F2D1}"; // nf-fa-window_minimize
+const ICON_WINDOW_MAX: &str = "\u{F2D0}"; // nf-fa-window_maximize
+const ICON_WINDOW_RESTORE: &str = "\u{F2D2}"; // nf-fa-window_restore
+const ICON_WINDOW_CLOSE: &str = "\u{F2D3}"; // nf-fa-window_close
 
 /// One Nerd Font glyph, centred in its parent; the parent decides the color.
 fn icon_glyph(glyph: &'static str, size: f32) -> impl IntoElement {
+    caption_glyph(None, glyph, size)
+}
+
+/// A glyph rendered in an explicit font: `None` means the bundled Nerd
+/// symbols. The font is cloned so the returned element owns everything.
+fn caption_glyph(font: Option<&Font>, glyph: &'static str, size: f32) -> impl IntoElement {
+    let font = font.cloned().unwrap_or_else(icon_font);
     div()
         .flex()
         .items_center()
         .justify_center()
-        .font(icon_font())
+        .font(font)
         .text_size(px(size))
         .child(glyph)
 }
@@ -1657,11 +1712,12 @@ fn breadcrumbs(raw: &str) -> (Option<String>, String) {
 }
 
 /// Icon tile for a session, keyed off its shell-reported title: PowerShell
-/// blue terminal, WSL/Ubuntu orange cube, remote indigo cloud, dev green.
+/// blue terminal, WSL/Ubuntu orange brand mark, remote indigo cloud, dev
+/// green desktop.
 fn session_icon(title: &str) -> (Rgba, &'static str) {
     let lower = title.to_ascii_lowercase();
     if lower.contains("ubuntu") || lower.contains("wsl") {
-        (rgb(0xE95420), ICON_CUBE)
+        (rgb(0xE95420), ICON_UBUNTU)
     } else if lower.contains("ssh") || lower.contains("edge") || lower.contains("remote") {
         (rgb(0x6E5BE8), ICON_CLOUD)
     } else if lower.contains("dev")
@@ -1671,7 +1727,7 @@ fn session_icon(title: &str) -> (Rgba, &'static str) {
         || lower.contains("node")
         || lower.contains("npm")
     {
-        (rgb(0x2EA043), ICON_TERMINAL)
+        (rgb(0x2EA043), ICON_SCREEN)
     } else {
         (rgb(0x2F6FED), ICON_TERMINAL)
     }
@@ -1733,6 +1789,22 @@ fn terminal_font(window: &Window) -> Font {
         "Segoe UI Symbol".to_string(),
     ]));
     font
+}
+
+/// Caption-button glyph font: the native Windows caption fonts when present
+/// (Win11 "Segoe Fluent Icons", Win10 "Segoe MDL2 Assets"), so the
+/// minimize / maximize / close marks match the OS chrome exactly, as in the
+/// mock. `None` falls back to the bundled Nerd Font window glyphs.
+fn caption_font(window: &Window) -> Option<Font> {
+    let available = window.text_system().all_font_names();
+    ["Segoe Fluent Icons", "Segoe MDL2 Assets"]
+        .iter()
+        .find(|family| {
+            available
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(**family))
+        })
+        .map(|family| gpui::font(*family))
 }
 
 /// Bundled Nerd Font symbols (embedded in the exe, registered at startup).
