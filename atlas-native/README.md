@@ -26,6 +26,10 @@ Design rule: there is no stylesheet anywhere. A theme is a Rust struct
   (`WindowControlArea`), `−` `▢` `✕` buttons.
 - Erasable tabs: pill tabs with title (from OSC 0 sent by PowerShell), `+`
   button, close on demand. Each tab owns a real PTY session.
+- Profiles: the New-tab caret opens a picker — PowerShell (`pwsh` falling back
+  to `powershell.exe`) and Ubuntu (WSL via `wsl.exe`). Each tab remembers its
+  profile, so `R` restarts the same shell. The status bar shows the git branch
+  of the shell's working directory when it is inside a repository.
 - Terminal grid rendered as a custom gpui `Element`: cell-accurate background
   quads, per-run text (bold / italic / underline / strikethrough), 256-color
   palette, block/beam/underline cursor, inverse video, wide chars preserved.

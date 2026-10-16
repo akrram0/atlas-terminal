@@ -26,11 +26,14 @@ use gpui::{
 };
 
 use crate::keymap;
-use crate::session::{Session, SessionMsg};
+use crate::session::{Profile, Session, SessionMsg};
 use crate::theme::Theme;
 
-const FONT_FAMILY: &str = "Consolas";
-const FONT_SIZE: f32 = 15.0;
+/// Preferred terminal monos, best first: Cascadia (Windows 11 inbox) then
+/// Consolas. `terminal_font` picks the first family the text system resolves.
+const FONT_CASCADE: &[&str] = &["Cascadia Code", "Cascadia Mono", "Consolas"];
+const FONT_FALLBACK: &str = "Consolas";
+const FONT_SIZE: f32 = 14.0;
 const LINE_SCALE: f32 = 1.3;
 
 pub struct AtlasView {
@@ -45,6 +48,8 @@ pub struct AtlasView {
     dark: bool,
     /// Settings popover visibility.
     settings_open: bool,
+    /// New-tab profile menu (the ▾ caret) visibility.
+    profile_menu: bool,
     /// Terminal font size in px (settings panel).
     font_size: f32,
     /// Cursor override; `None` follows the shell's DECSCUSR.
@@ -58,8 +63,12 @@ struct Tab {
     epoch: u64,
     title: String,
     session: Rc<RefCell<Session>>,
+    /// Which profile this tab runs (kept so Restart reuses it).
+    profile: Profile,
     /// Working directory of the shell, polled from the process (`crate::cwd`).
     cwd: Option<PathBuf>,
+    /// Git branch of the working directory, polled alongside it.
+    branch: Option<String>,
     exited: bool,
 }
 
@@ -74,14 +83,15 @@ impl AtlasView {
             next_epoch: 1,
             focus,
             theme: Theme::dark(),
-            font: terminal_font(),
+            font: terminal_font(window),
             dark: true,
             settings_open: false,
+            profile_menu: false,
             font_size: FONT_SIZE,
             cursor_style: None,
             cursor_on: true,
         };
-        view.new_tab(cx);
+        view.new_tab(Profile::PowerShell, cx);
 
         // Hardware-terminal style blinking cursor: 530 ms phase flip. Typing
         // resets it to solid (see `handle_key`), so it never blinks under the
@@ -125,7 +135,12 @@ impl AtlasView {
                                 continue;
                             };
                             if tab.cwd.as_deref() != Some(cwd.as_path()) {
-                                tab.cwd = Some(cwd);
+                                tab.cwd = Some(cwd.clone());
+                                changed = true;
+                            }
+                            let branch = git_branch(&cwd);
+                            if branch != tab.branch {
+                                tab.branch = branch;
                                 changed = true;
                             }
                         }
@@ -144,22 +159,24 @@ impl AtlasView {
         view
     }
 
-    fn new_tab(&mut self, cx: &mut Context<Self>) {
+    fn new_tab(&mut self, profile: Profile, cx: &mut Context<Self>) {
         let id = self.next_id;
         let epoch = self.next_epoch;
         self.next_id += 1;
         self.next_epoch += 1;
 
-        match Session::spawn(80, 24, home_dir()) {
+        match Session::spawn(80, 24, home_dir(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
                 self.tabs.push(Tab {
                     id,
                     epoch,
-                    title: "PowerShell".to_string(),
+                    title: profile_title(profile),
                     session: session.clone(),
+                    profile,
                     cwd,
+                    branch: None,
                     exited: false,
                 });
                 self.active = self.tabs.len() - 1;
@@ -180,7 +197,7 @@ impl AtlasView {
         }
         self.tabs.remove(index);
         if self.tabs.is_empty() {
-            self.new_tab(cx);
+            self.new_tab(Profile::PowerShell, cx);
             return;
         }
         if index < self.active {
@@ -200,7 +217,7 @@ impl AtlasView {
         let epoch = self.next_epoch;
         self.next_epoch += 1;
 
-        match Session::spawn(80, 24, home_dir()) {
+        match Session::spawn(80, 24, home_dir(), tab.profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
@@ -208,8 +225,9 @@ impl AtlasView {
                     tab.epoch = epoch;
                     tab.session = session.clone();
                     tab.cwd = cwd;
+                    tab.branch = None;
+                    tab.title = profile_title(tab.profile);
                     tab.exited = false;
-                    tab.title = "PowerShell".to_string();
                 }
                 Self::watch(id, epoch, session, rx, cx);
                 crate::log_line(&format!("tab {id}: shell restarted"));
@@ -244,7 +262,11 @@ impl AtlasView {
                     }
                     match msg {
                         SessionMsg::Output(bytes) => tab.session.borrow_mut().feed(&bytes),
-                        SessionMsg::Event(Event::Title(title)) => tab.title = title,
+                        SessionMsg::Event(Event::Title(title)) => {
+                            if !title.trim().is_empty() {
+                                tab.title = title;
+                            }
+                        }
                         SessionMsg::Event(Event::Exit) => tab.exited = true,
                         SessionMsg::Event(_) => {}
                     }
@@ -330,6 +352,17 @@ impl AtlasView {
 
     fn toggle_settings(&mut self, cx: &mut Context<Self>) {
         self.settings_open = !self.settings_open;
+        if self.settings_open {
+            self.profile_menu = false;
+        }
+        cx.notify();
+    }
+
+    fn toggle_profile_menu(&mut self, cx: &mut Context<Self>) {
+        self.profile_menu = !self.profile_menu;
+        if self.profile_menu {
+            self.settings_open = false;
+        }
         cx.notify();
     }
 
@@ -340,8 +373,9 @@ impl AtlasView {
         // Solid cursor while typing; the blink task flips it back on its own.
         self.cursor_on = true;
 
-        if key == "escape" && self.settings_open {
+        if key == "escape" && (self.settings_open || self.profile_menu) {
             self.settings_open = false;
+            self.profile_menu = false;
             cx.notify();
             return;
         }
@@ -349,7 +383,7 @@ impl AtlasView {
         // App-level chords (swallowed so they never leak into the shell).
         if modifiers.control && modifiers.shift {
             match key {
-                "t" => self.new_tab(cx),
+                "t" => self.new_tab(Profile::PowerShell, cx),
                 "w" => {
                     let index = self.active;
                     self.close_tab(index, cx);
@@ -416,7 +450,7 @@ impl Render for AtlasView {
             .flex_row()
             .items_center()
             .w(relative(1.0))
-            .h(px(36.0))
+            .h(px(38.0))
             .pl(px(12.0))
             .bg(tb.panel_bg)
             .border_b_1()
@@ -454,34 +488,35 @@ impl Render for AtlasView {
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("search-pill", 0))
-                .w(px(320.0))
-                .h(px(24.0))
+                .w(px(360.0))
+                .h(px(28.0))
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(7.0))
-                .px(px(9.0))
-                .rounded(px(6.0))
-                .bg(search_theme.elevated_bg)
+                .gap(px(8.0))
+                .px(px(12.0))
+                .rounded(px(14.0))
+                .bg(search_theme.search_bg)
                 .border_1()
-                .border_color(search_theme.elevated_border)
+                .border_color(search_theme.search_border)
                 .text_color(search_theme.faint_fg)
-                .child(icon_glyph(ICON_SEARCH, 12.0))
+                .child(icon_glyph(ICON_SEARCH, 13.0))
                 .child(
                     div()
                         .flex_1()
-                        .text_size(px(11.5))
+                        .text_size(px(12.0))
                         .truncate()
                         .child("Search commands, tabs and history"),
                 )
                 .child(
                     div()
-                        .h(px(16.0))
-                        .px(px(6.0))
+                        .h(px(18.0))
+                        .px(px(7.0))
                         .flex()
                         .items_center()
-                        .rounded(px(4.0))
-                        .bg(search_theme.elevated_border)
+                        .rounded(px(5.0))
+                        .border_1()
+                        .border_color(search_theme.hairline)
                         .text_size(px(10.0))
                         .text_color(search_theme.faint_fg)
                         .child("Ctrl Shift P"),
@@ -514,7 +549,7 @@ impl Render for AtlasView {
                 div()
                     .id(ElementId::named_usize("window-control", index))
                     .w(px(46.0))
-                    .h(px(36.0))
+                    .h(px(38.0))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -540,8 +575,8 @@ impl Render for AtlasView {
                 .flex_1()
                 .w(relative(1.0))
                 .bg(theme.bg)
-                .px(px(12.0))
-                .py(px(10.0))
+                .px(px(20.0))
+                .py(px(12.0))
                 .track_focus(&self.focus)
                 .on_key_down(cx.listener(|view, event: &KeyDownEvent, _window, cx| {
                     let keystroke = event.keystroke.clone();
@@ -600,7 +635,7 @@ impl Render for AtlasView {
         let mut sidebar = div()
             .flex()
             .flex_col()
-            .w(px(222.0))
+            .w(px(254.0))
             .h(relative(1.0))
             .bg(theme.panel_bg)
             .border_r_1()
@@ -611,7 +646,7 @@ impl Render for AtlasView {
                 .flex()
                 .flex_row()
                 .items_center()
-                .h(px(38.0))
+                .h(px(40.0))
                 .pl(px(14.0))
                 .pr(px(8.0))
                 .gap(px(2.0))
@@ -645,9 +680,9 @@ impl Render for AtlasView {
         sidebar = sidebar.child(
             div()
                 .px(px(14.0))
-                .pt(px(6.0))
+                .pt(px(8.0))
                 .pb(px(4.0))
-                .text_size(px(10.0))
+                .text_size(px(10.5))
                 .text_color(theme.faint_fg)
                 .child("LOCAL"),
         );
@@ -688,12 +723,12 @@ impl Render for AtlasView {
                 .flex_row()
                 .items_center()
                 .flex_shrink_0()
-                .mx(px(8.0))
-                .mb(px(4.0))
-                .h(px(44.0))
+                .mx(px(10.0))
+                .mb(px(2.0))
+                .h(px(50.0))
                 .pl(px(12.0))
                 .pr(px(8.0))
-                .rounded(px(8.0));
+                .rounded(px(10.0));
 
             if active {
                 item = item.bg(item_theme.card_active);
@@ -717,25 +752,26 @@ impl Render for AtlasView {
                 );
             }
 
-            // Icon tile with an optional running dot on its top-left corner.
+            // Icon tile with an optional running dot on its top-right corner
+            // (as in the mock).
             let mut tile = div()
                 .relative()
-                .w(px(28.0))
-                .h(px(28.0))
-                .rounded(px(7.0))
+                .w(px(30.0))
+                .h(px(30.0))
+                .rounded(px(9.0))
                 .bg(icon_bg)
                 .flex()
                 .items_center()
                 .justify_center()
                 .text_color(rgb(0xFFFFFF))
-                .child(icon_glyph(icon, 13.0));
+                .child(icon_glyph(icon, 14.0));
             if show_dot {
                 let good = item_theme.good;
                 let ring = item_theme.panel_bg;
                 tile = tile.child(
                     div()
                         .absolute()
-                        .left(px(-3.0))
+                        .right(px(-3.0))
                         .top(px(-3.0))
                         .w(px(8.0))
                         .h(px(8.0))
@@ -770,14 +806,14 @@ impl Render for AtlasView {
                             .gap(px(1.0))
                             .child(
                                 div()
-                                    .text_size(px(12.5))
+                                    .text_size(px(13.0))
                                     .text_color(item_theme.chrome_fg_active)
                                     .truncate()
                                     .child(name),
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.5))
+                                    .text_size(px(11.0))
                                     .text_color(item_theme.chrome_fg)
                                     .truncate()
                                     .child(subtitle),
@@ -792,15 +828,15 @@ impl Render for AtlasView {
                 item = item.child(
                     div()
                         .id(ElementId::named_usize("sidebar-close", ix))
-                        .w(px(18.0))
-                        .h(px(18.0))
+                        .w(px(20.0))
+                        .h(px(20.0))
                         .flex()
                         .items_center()
                         .justify_center()
                         .rounded(px(4.0))
                         .text_color(item_theme.chrome_fg)
                         .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                        .child(icon_glyph(ICON_X, 11.0))
+                        .child(icon_glyph(ICON_X, 12.0))
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                             view.close_tab(ix, cx);
                             window.focus(&view.focus);
@@ -813,9 +849,11 @@ impl Render for AtlasView {
 
         sidebar = sidebar.child(list);
 
-        // Bottom bar: New tab + settings gear (popover anchor).
+        // Bottom bar: New tab (click spawns PowerShell, ▾ opens the profile
+        // menu) + settings gear (popover anchor).
         let new_tab_theme = theme.clone();
         let new_hover = new_tab_theme.card_active;
+        let caret_hover = new_hover;
         let gear_theme = theme.clone();
         let gear_hover = gear_theme.card_hover;
         let gear_idle = gear_theme.chrome_fg;
@@ -828,37 +866,72 @@ impl Render for AtlasView {
                 .gap(px(8.0))
                 .p(px(10.0))
                 .child(
+                    // Visual container only: the click surface and the caret
+                    // are siblings inside it, so opening the menu never also
+                    // spawns a tab.
                     div()
-                        .id(ElementId::named_usize("new-tab", 0))
                         .flex_1()
-                        .h(px(32.0))
+                        .h(px(34.0))
                         .flex()
                         .flex_row()
                         .items_center()
-                        .justify_center()
-                        .gap(px(7.0))
-                        .rounded(px(8.0))
+                        .rounded(px(9.0))
                         .bg(new_tab_theme.card_hover)
                         .border_1()
                         .border_color(new_tab_theme.elevated_border)
-                        .text_color(new_tab_theme.chrome_fg_active)
-                        .hover(move |style| style.bg(new_hover))
-                        .child(icon_glyph(ICON_PLUS, 11.0))
-                        .child(div().text_size(px(12.0)).child("New tab"))
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.new_tab(cx);
-                            window.focus(&view.focus);
-                        })),
+                        .child(
+                            div()
+                                .id(ElementId::named_usize("new-tab", 0))
+                                .flex_1()
+                                .h_full()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(7.0))
+                                .pl(px(12.0))
+                                .rounded(px(9.0))
+                                .text_color(new_tab_theme.chrome_fg_active)
+                                .hover(move |style| style.bg(new_hover))
+                                .child(icon_glyph(ICON_PLUS, 11.5))
+                                .child(div().text_size(px(12.5)).child("New tab"))
+                                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                                    view.new_tab(Profile::PowerShell, cx);
+                                    window.focus(&view.focus);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .w(px(1.0))
+                                .h(px(16.0))
+                                .bg(new_tab_theme.hairline),
+                        )
+                        .child(
+                            div()
+                                .id(ElementId::named_usize("profile-caret", 0))
+                                .w(px(28.0))
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(9.0))
+                                .text_color(new_tab_theme.chrome_fg)
+                                .hover(move |style| style.bg(caret_hover))
+                                .child(icon_glyph(ICON_CHEVRON_DOWN, 10.0))
+                                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                                    view.toggle_profile_menu(cx);
+                                    window.focus(&view.focus);
+                                })),
+                        ),
                 )
                 .child(
                     div()
                         .id(ElementId::named_usize("settings-toggle", 0))
                         .w(px(32.0))
-                        .h(px(32.0))
+                        .h(px(34.0))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(8.0))
+                        .rounded(px(9.0))
                         .text_color(gear_idle)
                         .hover(move |style| style.bg(gear_hover).text_color(gear_hot))
                         .child(icon_glyph(ICON_GEAR, 14.0))
@@ -883,30 +956,30 @@ impl Render for AtlasView {
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(7.0))
+            .gap(px(8.0))
             .w(relative(1.0))
-            .h(px(38.0))
-            .pl(px(14.0))
+            .h(px(40.0))
+            .pl(px(16.0))
             .pr(px(8.0))
             .bg(theme.panel_bg)
             .border_b_1()
             .border_color(theme.hairline)
             .text_color(theme.chrome_fg)
-            .child(icon_glyph(ICON_FOLDER, 12.5));
+            .child(icon_glyph(ICON_FOLDER, 13.0));
 
         if let Some(parent) = crumb_a {
             header = header
-                .child(div().text_size(px(12.5)).truncate().child(parent))
+                .child(div().text_size(px(13.0)).truncate().child(parent))
                 .child(
                     div()
                         .text_color(theme.faint_fg)
-                        .child(icon_glyph(ICON_CHEVRON, 9.0)),
+                        .child(icon_glyph(ICON_CHEVRON, 10.0)),
                 );
         }
         header = header
             .child(
                 div()
-                    .text_size(px(12.5))
+                    .text_size(px(13.0))
                     .text_color(theme.chrome_fg_active)
                     .truncate()
                     .child(crumb_b),
@@ -925,7 +998,7 @@ impl Render for AtlasView {
         }
 
         // ---- Status bar ----------------------------------------------
-        let (cols, rows, shell, exited, status_left) = match self.active_tab() {
+        let (cols, rows, shell, exited, branch, status_left) = match self.active_tab() {
             Some(tab) => {
                 let session = tab.session.borrow();
                 let cols = session.cols;
@@ -936,9 +1009,15 @@ impl Render for AtlasView {
                     Some(cwd) => display_cwd(cwd),
                     None => tab_name(&tab.title),
                 };
-                (cols, rows, shell, tab.exited, left)
+                (cols, rows, shell, tab.exited, tab.branch.clone(), left)
             }
-            None => (0, 0, "PowerShell", false, "PowerShell".to_string()),
+            None => (0, 0, "PowerShell", false, None, "PowerShell".to_string()),
+        };
+        // Mock-style left segment: git branch when the working directory is a
+        // repository, the directory itself otherwise.
+        let (status_icon, status_left) = match branch {
+            Some(branch) => (ICON_BRANCH, branch),
+            None => (ICON_FOLDER, status_left),
         };
         let (state_label, state_color) = if exited {
             ("Exited", theme.ansi[1])
@@ -949,16 +1028,16 @@ impl Render for AtlasView {
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(8.0))
-            .h(px(28.0))
-            .pl(px(14.0))
+            .gap(px(10.0))
+            .h(px(30.0))
+            .pl(px(16.0))
             .pr(px(14.0))
             .bg(theme.panel_bg)
             .border_t_1()
             .border_color(theme.hairline)
-            .text_size(px(11.0))
+            .text_size(px(11.5))
             .text_color(theme.chrome_fg)
-            .child(icon_glyph(ICON_FOLDER, 11.0))
+            .child(icon_glyph(status_icon, 11.0))
             .child(
                 div()
                     .text_color(theme.chrome_fg_active)
@@ -996,6 +1075,7 @@ impl Render for AtlasView {
             .w(relative(1.0))
             .h(relative(1.0))
             .bg(theme.panel_bg)
+            .font_family("Segoe UI")
             .text_color(theme.fg)
             .child(bar)
             .child(
@@ -1007,6 +1087,12 @@ impl Render for AtlasView {
                     .child(sidebar)
                     .child(main_col),
             );
+
+        // Profile menu floats above the bottom bar; paint it before the
+        // settings popover so the settings panel wins overlap contests.
+        if self.profile_menu {
+            root = root.child(profile_menu(&theme, cx));
+        }
 
         // Settings popover floats above everything; paint it last.
         if self.settings_open {
@@ -1430,6 +1516,8 @@ const ICON_CUBE: &str = "\u{F1B2}"; // nf-fa-cube
 const ICON_CLOUD: &str = "\u{F0C2}"; // nf-fa-cloud
 const ICON_COLUMNS: &str = "\u{F0DB}"; // nf-fa-table_columns
 const ICON_PANEL: &str = "\u{F022}"; // nf-fa-rectangle_list
+const ICON_BRANCH: &str = "\u{F126}"; // nf-fa-code_branch
+const ICON_CHEVRON_DOWN: &str = "\u{F078}"; // nf-fa-chevron_down
 
 /// One Nerd Font glyph, centred in its parent; the parent decides the color.
 fn icon_glyph(glyph: &'static str, size: f32) -> impl IntoElement {
@@ -1448,7 +1536,7 @@ fn caption_spacer(slot: usize) -> impl IntoElement {
     div()
         .id(ElementId::named_usize("caption-spacer", slot))
         .flex_1()
-        .h(px(36.0))
+        .h(px(38.0))
         .relative()
         .child(
             canvas(
@@ -1466,6 +1554,54 @@ fn caption_spacer(slot: usize) -> impl IntoElement {
             .absolute()
             .inset_0(),
         )
+}
+
+/// Profile picker behind the New-tab caret, anchored above the bottom bar.
+/// Entries reuse the sidebar's icon table so the new session arrives already
+/// looking like its mock entry.
+fn profile_menu(theme: &Theme, cx: &mut Context<AtlasView>) -> AnyElement {
+    let entries: [(&'static str, Profile); 2] = [
+        ("PowerShell", Profile::PowerShell),
+        ("Ubuntu (WSL)", Profile::Wsl),
+    ];
+    let item_hover = theme.card_hover;
+    let mut menu = div()
+        .absolute()
+        .bottom(px(56.0))
+        .left(px(10.0))
+        .w(px(236.0))
+        .flex()
+        .flex_col()
+        .p(px(6.0))
+        .rounded(px(10.0))
+        .bg(theme.elevated_bg)
+        .border_1()
+        .border_color(theme.elevated_border)
+        .shadow_lg();
+    for (index, (label, profile)) in entries.into_iter().enumerate() {
+        let icon = session_icon(&profile_title(profile)).1;
+        menu = menu.child(
+            div()
+                .id(ElementId::named_usize("profile-item", index))
+                .h(px(30.0))
+                .px(px(10.0))
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .rounded(px(6.0))
+                .text_size(px(12.5))
+                .text_color(theme.chrome_fg_active)
+                .hover(move |style| style.bg(item_hover))
+                .child(icon_glyph(icon, 13.0))
+                .child(label)
+                .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                    view.new_tab(profile, cx);
+                    view.profile_menu = false;
+                    window.focus(&view.focus);
+                })),
+        );
+    }
+    menu.into_any_element()
 }
 
 /// Small decorative icon button (sidebar header, pane header): quiet by
@@ -1545,17 +1681,53 @@ fn session_icon(title: &str) -> (Rgba, &'static str) {
 fn shell_label(shell: &str) -> &'static str {
     if shell.eq_ignore_ascii_case("pwsh") {
         "PowerShell 7"
+    } else if shell.eq_ignore_ascii_case("wsl.exe") {
+        "WSL"
     } else {
         "Windows PowerShell"
     }
 }
 
-/// Terminal font: Consolas for the cell grid; emoji fonts as shaping
-/// fallbacks. Nerd icon cells are drawn with the dedicated bundled font
-/// instead (see `icon_font`), because fallback families are looked up in the
-/// system font collection, where an in-memory font does not appear.
-fn terminal_font() -> Font {
-    let mut font = gpui::font(FONT_FAMILY);
+/// Sidebar/default title for a freshly spawned profile.
+fn profile_title(profile: Profile) -> String {
+    match profile {
+        Profile::PowerShell => "PowerShell".to_string(),
+        Profile::Wsl => "Ubuntu".to_string(),
+    }
+}
+
+/// Branch name for a working directory, read from `<cwd>/.git/HEAD`
+/// (`ref: refs/heads/main` -> `main`). `None` outside a repository and on a
+/// detached HEAD.
+fn git_branch(cwd: &Path) -> Option<String> {
+    let head = cwd.join(".git").join("HEAD");
+    let text = std::fs::read_to_string(head).ok()?;
+    Some(
+        text.trim()
+            .strip_prefix("ref: refs/heads/")?
+            .trim()
+            .to_string(),
+    )
+}
+
+/// Terminal font for the cell grid: the first family from `FONT_CASCADE` the
+/// text system actually resolves (Cascadia on Windows 11, Consolas elsewhere),
+/// with emoji shaping fallbacks. Nerd icon cells are drawn with the dedicated
+/// bundled font instead (see `icon_font`), because fallback families are
+/// looked up in the system font collection, where an in-memory font does not
+/// appear.
+fn terminal_font(window: &Window) -> Font {
+    let available = window.text_system().all_font_names();
+    let family = FONT_CASCADE
+        .iter()
+        .find(|family| {
+            available
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(**family))
+        })
+        .copied()
+        .unwrap_or(FONT_FALLBACK);
+    let mut font = gpui::font(family);
     font.fallbacks = Some(FontFallbacks::from_fonts(vec![
         "Segoe UI Emoji".to_string(),
         "Segoe UI Symbol".to_string(),

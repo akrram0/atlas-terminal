@@ -16,10 +16,14 @@ pub struct Theme {
     pub cursor: Rgba,
     /// Chrome surfaces: titlebar, sidebar, pane header, status bar.
     pub panel_bg: Rgba,
-    /// Floating surfaces: search pill, new-tab button, settings popover.
+    /// Floating surfaces: new-tab button, settings popover.
     pub elevated_bg: Rgba,
     /// Hairline border for floating surfaces.
     pub elevated_border: Rgba,
+    /// The titlebar search pill (darker than the bar, like the mock).
+    pub search_bg: Rgba,
+    /// Border of the search pill and its shortcut chip.
+    pub search_border: Rgba,
     /// Chrome text (inactive).
     pub chrome_fg: Rgba,
     /// Chrome text (active / hovered).
@@ -49,6 +53,8 @@ impl Theme {
             panel_bg: rgb(0xF4ECDD),
             elevated_bg: rgb(0xFBF7EF),
             elevated_border: rgba(0x3E38331F),
+            search_bg: rgb(0xFDF9F1),
+            search_border: rgba(0x3E383324),
             chrome_fg: rgb(0x9A8F80),
             chrome_fg_active: rgb(0x3E3833),
             faint_fg: rgb(0xB3A896),
@@ -78,22 +84,25 @@ impl Theme {
         }
     }
 
-    /// Default palette: black terminal on charcoal chrome, GitHub-dark ANSI.
+    /// Default palette, matched to the reference design: blue-black terminal,
+    /// slate chrome, GitHub-dark ANSI.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x000000),
+            bg: rgb(0x0C0F15),
             fg: rgb(0xC9D1D9),
-            cursor: rgb(0xE6E6E6),
-            panel_bg: rgb(0x16161B),
-            elevated_bg: rgb(0x232329),
-            elevated_border: rgb(0x2E2E36),
-            chrome_fg: rgb(0x8B8B94),
-            chrome_fg_active: rgb(0xE8E8EC),
-            faint_fg: rgb(0x6E6E78),
-            hairline: rgba(0xFFFFFF12),
-            card_hover: rgb(0x1F1F26),
-            card_active: rgb(0x26262D),
-            accent: rgb(0x58A6FF),
+            cursor: rgb(0xD8E1EA),
+            panel_bg: rgb(0x161B22),
+            elevated_bg: rgb(0x1F242C),
+            elevated_border: rgb(0x2E3239),
+            search_bg: rgb(0x0E1217),
+            search_border: rgba(0xFFFFFF14),
+            chrome_fg: rgb(0x9AA3B0),
+            chrome_fg_active: rgb(0xE8EDF4),
+            faint_fg: rgb(0x697380),
+            hairline: rgba(0xFFFFFF0F),
+            card_hover: rgb(0x1D232B),
+            card_active: rgb(0x232A33),
+            accent: rgb(0x4C8DF0),
             good: rgb(0x3FB950),
             ansi: [
                 rgb(0x484F58), // 0 black

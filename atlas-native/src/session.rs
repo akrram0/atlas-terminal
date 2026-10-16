@@ -53,6 +53,16 @@ impl EventListener for EventProxy {
     }
 }
 
+/// Which program a new session runs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Profile {
+    /// PowerShell 7 (`pwsh`), falling back to Windows PowerShell.
+    PowerShell,
+    /// `wsl.exe` — the default distro's login shell via Windows Subsystem for
+    /// Linux. The ConPTY path is identical; wsl.exe maps the Windows cwd.
+    Wsl,
+}
+
 pub struct Session {
     pub term: Term<EventProxy>,
     pub parser: Processor,
@@ -70,7 +80,7 @@ pub struct Session {
 }
 
 impl Session {
-    /// Spawn a shell (pwsh, falling back to Windows PowerShell) in a new PTY.
+    /// Spawn a shell in a new PTY for the given profile.
     ///
     /// Returns the session plus the receiver for its output/event stream. The
     /// receiver must be drained (see `AtlasView::watch`), otherwise the UI
@@ -79,6 +89,7 @@ impl Session {
         cols: usize,
         rows: usize,
         cwd: Option<PathBuf>,
+        profile: Profile,
     ) -> anyhow::Result<(Session, Receiver<SessionMsg>)> {
         let pty_system = native_pty_system();
         let pair = pty_system.openpty(PtySize {
@@ -90,11 +101,21 @@ impl Session {
 
         let PtyPair { master, slave } = pair;
 
+        let candidates: &[&str] = match profile {
+            Profile::PowerShell => &["pwsh", "powershell.exe"],
+            Profile::Wsl => &["wsl.exe"],
+        };
+        let command_args: &[&str] = match profile {
+            Profile::PowerShell => &["-NoLogo"],
+            Profile::Wsl => &[],
+        };
         let mut child: Option<Box<dyn Child + Send + Sync>> = None;
-        let mut shell_used = "powershell.exe";
-        for shell in ["pwsh", "powershell.exe"] {
+        let mut shell_used = *candidates.last().unwrap_or(&"powershell.exe");
+        for shell in candidates {
             let mut cmd = CommandBuilder::new(shell);
-            cmd.arg("-NoLogo");
+            for arg in command_args {
+                cmd.arg(*arg);
+            }
             if let Some(dir) = cwd.as_ref() {
                 if dir.is_dir() {
                     cmd.cwd(dir.clone());
@@ -103,14 +124,14 @@ impl Session {
             match slave.spawn_command(cmd) {
                 Ok(spawned) => {
                     child = Some(spawned);
-                    shell_used = shell;
+                    shell_used = *shell;
                     break;
                 }
                 Err(_) => continue,
             }
         }
         let child =
-            child.ok_or_else(|| anyhow::anyhow!("no shell found (tried pwsh, powershell.exe)"))?;
+            child.ok_or_else(|| anyhow::anyhow!("no shell found (tried {candidates:?})"))?;
         let pid = child.process_id();
         drop(slave);
 
