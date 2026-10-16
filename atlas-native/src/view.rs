@@ -8,7 +8,7 @@
 //! cell backgrounds, text runs and the cursor directly on the GPU canvas.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use alacritty_terminal::event::Event;
@@ -58,6 +58,8 @@ struct Tab {
     epoch: u64,
     title: String,
     session: Rc<RefCell<Session>>,
+    /// Working directory of the shell, polled from the process (`crate::cwd`).
+    cwd: Option<PathBuf>,
     exited: bool,
 }
 
@@ -102,6 +104,43 @@ impl AtlasView {
         });
         blink.detach();
 
+        // Working-directory poll: reads each live shell's PEB every 1.5 s so
+        // the sidebar subtitle and breadcrumb track `cd` like a real
+        // terminal. Repaints only when a path actually changed.
+        let cwd_poll = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(1500))
+                    .await;
+                if this
+                    .update(cx, |view, cx| {
+                        let mut changed = false;
+                        for tab in &mut view.tabs {
+                            if tab.exited {
+                                continue;
+                            }
+                            let Some(cwd) =
+                                tab.session.borrow().pid.and_then(crate::cwd::process_cwd)
+                            else {
+                                continue;
+                            };
+                            if tab.cwd.as_deref() != Some(cwd.as_path()) {
+                                tab.cwd = Some(cwd);
+                                changed = true;
+                            }
+                        }
+                        if changed {
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        cwd_poll.detach();
+
         view
     }
 
@@ -114,11 +153,13 @@ impl AtlasView {
         match Session::spawn(80, 24, home_dir()) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
+                let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
                 self.tabs.push(Tab {
                     id,
                     epoch,
                     title: "PowerShell".to_string(),
                     session: session.clone(),
+                    cwd,
                     exited: false,
                 });
                 self.active = self.tabs.len() - 1;
@@ -162,9 +203,11 @@ impl AtlasView {
         match Session::spawn(80, 24, home_dir()) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
+                let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
                 if let Some(tab) = self.tabs.get_mut(index) {
                     tab.epoch = epoch;
                     tab.session = session.clone();
+                    tab.cwd = cwd;
                     tab.exited = false;
                     tab.title = "PowerShell".to_string();
                 }
@@ -423,7 +466,7 @@ impl Render for AtlasView {
                 .border_1()
                 .border_color(search_theme.elevated_border)
                 .text_color(search_theme.faint_fg)
-                .child(icon_glyph(ICON_SEARCH, 11.0))
+                .child(icon_glyph(ICON_SEARCH, 12.0))
                 .child(
                     div()
                         .flex_1()
@@ -620,14 +663,19 @@ impl Render for AtlasView {
             let active = ix == self.active;
             let tab = &self.tabs[ix];
 
-            // Label: leaf of the shell-reported title; subtitle: the shell
-            // itself, plus a dead-session note.
-            let (_, leaf) = breadcrumbs(&tab.title);
-            let shell = shell_label(&tab.session.borrow().shell).to_string();
+            // Name from the shell-reported title; subtitle: the live working
+            // directory (PEB poll), falling back to the shell label, plus a
+            // dead-session note.
+            let name = tab_name(&tab.title);
+            let shell = shell_label(&tab.session.borrow().shell);
+            let base = match &tab.cwd {
+                Some(cwd) => display_cwd(cwd),
+                None => shell.to_string(),
+            };
             let subtitle = if tab.exited {
-                format!("{shell} · exited")
+                format!("{base} · exited")
             } else {
-                shell
+                base
             };
             let (icon_bg, icon) = session_icon(&tab.title);
             let show_dot = !active && !tab.exited;
@@ -725,7 +773,7 @@ impl Render for AtlasView {
                                     .text_size(px(12.5))
                                     .text_color(item_theme.chrome_fg_active)
                                     .truncate()
-                                    .child(leaf),
+                                    .child(name),
                             )
                             .child(
                                 div()
@@ -823,11 +871,14 @@ impl Render for AtlasView {
 
         // ---- Pane header ---------------------------------------------
         // Breadcrumb (folder · parent › leaf) + view actions.
-        let header_title = self
+        let header_source = self
             .active_tab()
-            .map(|tab| tab.title.clone())
+            .map(|tab| match tab.cwd.as_ref() {
+                Some(cwd) => cwd.to_string_lossy().into_owned(),
+                None => tab_name(&tab.title),
+            })
             .unwrap_or_else(|| "PowerShell".to_string());
-        let (crumb_a, crumb_b) = breadcrumbs(&header_title);
+        let (crumb_a, crumb_b) = breadcrumbs(&header_source);
         let mut header = div()
             .flex()
             .flex_row()
@@ -841,7 +892,7 @@ impl Render for AtlasView {
             .border_b_1()
             .border_color(theme.hairline)
             .text_color(theme.chrome_fg)
-            .child(icon_glyph(ICON_FOLDER, 11.5));
+            .child(icon_glyph(ICON_FOLDER, 12.5));
 
         if let Some(parent) = crumb_a {
             header = header
@@ -865,7 +916,7 @@ impl Render for AtlasView {
             header = header.child(chrome_icon_button(
                 ElementId::named_usize("pane-action", index),
                 glyph,
-                12.5,
+                13.0,
                 24.0,
                 24.0,
                 6.0,
@@ -874,22 +925,21 @@ impl Render for AtlasView {
         }
 
         // ---- Status bar ----------------------------------------------
-        let (cols, rows, shell, exited) = match self.active_tab() {
+        let (cols, rows, shell, exited, status_left) = match self.active_tab() {
             Some(tab) => {
                 let session = tab.session.borrow();
-                (
-                    session.cols,
-                    session.rows,
-                    shell_label(&session.shell),
-                    tab.exited,
-                )
+                let cols = session.cols;
+                let rows = session.rows;
+                let shell = shell_label(&session.shell);
+                drop(session);
+                let left = match &tab.cwd {
+                    Some(cwd) => display_cwd(cwd),
+                    None => tab_name(&tab.title),
+                };
+                (cols, rows, shell, tab.exited, left)
             }
-            None => (0, 0, "PowerShell", false),
+            None => (0, 0, "PowerShell", false, "PowerShell".to_string()),
         };
-        let status_title = self
-            .active_tab()
-            .map(|tab| short_title(&tab.title))
-            .unwrap_or_else(|| "PowerShell".to_string());
         let (state_label, state_color) = if exited {
             ("Exited", theme.ansi[1])
         } else {
@@ -908,11 +958,11 @@ impl Render for AtlasView {
             .border_color(theme.hairline)
             .text_size(px(11.0))
             .text_color(theme.chrome_fg)
-            .child(icon_glyph(ICON_FOLDER, 10.0))
+            .child(icon_glyph(ICON_FOLDER, 11.0))
             .child(
                 div()
                     .text_color(theme.chrome_fg_active)
-                    .child(status_title),
+                    .child(status_left),
             )
             .child(div().w(px(1.0)).h(px(12.0)).bg(theme.hairline))
             .child(div().child(shell))
@@ -1370,11 +1420,11 @@ const ICON_CLOSE: &str = "\u{F2D3}"; // nf-fa-window_close
 const ICON_X: &str = "\u{F00D}"; // nf-fa-xmark
 const ICON_PLUS: &str = "\u{F067}"; // nf-fa-plus
 const ICON_GEAR: &str = "\u{F013}"; // nf-fa-gear
-const ICON_SEARCH: &str = "\u{F002}"; // nf-fa-magnifying_glass
-const ICON_FOLDER: &str = "\u{F07B}"; // nf-fa-folder
+const ICON_SEARCH: &str = "\u{EA6D}"; // nf-cod-search
+const ICON_FOLDER: &str = "\u{EA83}"; // nf-cod-folder
 const ICON_CHEVRON: &str = "\u{F105}"; // nf-fa-angle_right
-const ICON_PEN: &str = "\u{F044}"; // nf-fa-pen
-const ICON_ELLIPSIS: &str = "\u{F141}"; // nf-fa-ellipsis
+const ICON_PEN: &str = "\u{EA73}"; // nf-cod-edit
+const ICON_ELLIPSIS: &str = "\u{EA7C}"; // nf-cod-ellipsis
 const ICON_TERMINAL: &str = "\u{F120}"; // nf-fa-terminal
 const ICON_CUBE: &str = "\u{F1B2}"; // nf-fa-cube
 const ICON_CLOUD: &str = "\u{F0C2}"; // nf-fa-cloud
@@ -1760,20 +1810,62 @@ fn settings_panel(
         .into_any_element()
 }
 
-/// `C:\WINDOWS\System32` -> `System32`; long titles get an ellipsis.
-fn short_title(raw: &str) -> String {
+/// Sidebar/pane label for a tab: the shell-reported title when it reads as a
+/// name (e.g. "vite"), the friendly shell name when it is shell-ish or a
+/// bare path (the path itself is the subtitle/breadcrumb).
+fn tab_name(raw: &str) -> String {
     let trimmed = raw.trim();
-    if trimmed.is_empty() {
+    let lower = trimmed.to_ascii_lowercase();
+    let shellish = matches!(
+        lower.as_str(),
+        "powershell" | "pwsh" | "windows powershell" | "powershell 7"
+    );
+    if trimmed.is_empty() || shellish || trimmed.contains(['\\', '/']) {
         return "PowerShell".to_string();
     }
-    let base = trimmed
-        .rsplit(['\\', '/'])
-        .next()
-        .unwrap_or(trimmed)
-        .trim_end_matches(".exe");
-    let mut short: String = base.chars().take(24).collect();
-    if base.chars().count() > 24 {
-        short.push('…');
+    let mut name: String = trimmed.chars().take(24).collect();
+    if trimmed.chars().count() > 24 {
+        name.push('…');
     }
-    short
+    name
+}
+
+/// Mock-style working-directory label: `C:\Users\me\projects\api` ->
+/// `~\projects\api`; deeper paths keep the root and the last two parts.
+fn display_cwd(cwd: &Path) -> String {
+    let lossy = cwd.to_string_lossy();
+    let trimmed = lossy.trim_end_matches(['\\', '/']);
+    let home = std::env::var_os("USERPROFILE").map(|home| home.to_string_lossy().into_owned());
+    let home = home.as_deref().map(|home| home.trim_end_matches(['\\', '/']));
+
+    let (root, rest) = match home {
+        Some(home) if trimmed.eq_ignore_ascii_case(home) => return "~".to_string(),
+        Some(home)
+            if trimmed.len() > home.len()
+                && trimmed.to_ascii_lowercase().starts_with(&home.to_ascii_lowercase())
+                && matches!(trimmed.as_bytes()[home.len()], b'\\' | b'/') =>
+        {
+            (
+                "~".to_string(),
+                trimmed[home.len()..]
+                    .trim_start_matches(['\\', '/'])
+                    .to_string(),
+            )
+        }
+        _ => match trimmed.split_once(":\\") {
+            Some((drive, rest)) => (format!("{drive}:\\"), rest.to_string()),
+            None => (String::new(), trimmed.to_string()),
+        },
+    };
+
+    let parts: Vec<&str> = rest
+        .split(['\\', '/'])
+        .filter(|part| !part.is_empty())
+        .collect();
+    match parts.len() {
+        0 => root,
+        1 => format!("{root}{}", parts[0]),
+        2 => format!("{root}{}\\{}", parts[0], parts[1]),
+        n => format!("{root}…\\{}", parts[n - 2..].join("\\")),
+    }
 }

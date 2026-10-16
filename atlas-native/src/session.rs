@@ -61,6 +61,9 @@ pub struct Session {
     /// Shell executable that was actually spawned ("pwsh" or
     /// "powershell.exe"), for the sidebar/status-bar labels.
     pub shell: String,
+    /// PID of the shell process; lets the UI poll its working directory
+    /// (see `crate::cwd`).
+    pub pid: Option<u32>,
     writer: Option<Box<dyn Write + Send>>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
@@ -108,6 +111,7 @@ impl Session {
         }
         let child =
             child.ok_or_else(|| anyhow::anyhow!("no shell found (tried pwsh, powershell.exe)"))?;
+        let pid = child.process_id();
         drop(slave);
 
         let mut reader = master.try_clone_reader()?;
@@ -155,6 +159,7 @@ impl Session {
                 cols,
                 rows,
                 shell: shell_used.to_string(),
+                pid,
                 writer: Some(writer),
                 master,
                 child,
