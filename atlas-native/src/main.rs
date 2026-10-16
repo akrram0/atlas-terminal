@@ -33,16 +33,17 @@ pub(crate) fn log_line(msg: &str) {
 // touches the window edge. Chromium solves this for custom-titlebar windows
 // (VS Code etc.) by removing WS_CAPTION, giving the client the whole window,
 // then asking DWM to round - this module applies the same recipe: a helper
-// thread waits for the window to appear, subclasses its wndproc (WM_NCCALCSIZE
-// -> full-window client, frame insets kept only while maximized; WM_NCHITTEST
-// -> our own resize borders), strips WS_CAPTION, forces a frame change and
-// sets DWMWA_WINDOW_CORNER_PREFERENCE. Dragging, resizing and double-click-to-
-// maximize keep working. No-ops harmlessly on older Windows; the result is
-// logged for the CI smoke test.
+// thread waits for the window to appear, subclasses its wndproc, strips
+// WS_CAPTION, forces a frame change and sets DWMWA_WINDOW_CORNER_PREFERENCE.
+// The subclass also owns the window skeleton: WM_NCCALCSIZE gives the client
+// the whole window (frame insets kept only while maximized), WM_NCHITTEST
+// serves resize borders plus the titlebar drag band the view reports, and
+// presses on those run DefWindowProc's native move/size loops. No-ops
+// harmlessly on older Windows; the result is logged for the CI smoke test.
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
 mod rounded_corners {
-    use std::sync::atomic::{AtomicIsize, Ordering};
+    use std::sync::atomic::{AtomicI32, AtomicIsize, Ordering};
 
     type Hwnd = *mut core::ffi::c_void;
     type Lparam = isize;
@@ -61,6 +62,15 @@ mod rounded_corners {
     // Window messages, hit-test codes and metrics.
     const WM_NCCALCSIZE: u32 = 0x0083;
     const WM_NCHITTEST: u32 = 0x0084;
+    const WM_NCLBUTTONDOWN: u32 = 0x00A1;
+    const WM_NCLBUTTONDBLCLK: u32 = 0x00A3;
+    const WM_CLOSE: u32 = 0x0010;
+    const HTCLIENT: Lresult = 1;
+    const HTCAPTION: Lresult = 2;
+    // ShowWindow commands.
+    const SW_MAXIMIZE: i32 = 3;
+    const SW_MINIMIZE: i32 = 6;
+    const SW_RESTORE: i32 = 9;
     const HTLEFT: Lresult = 10;
     const HTRIGHT: Lresult = 11;
     const HTTOP: Lresult = 12;
@@ -92,6 +102,16 @@ mod rounded_corners {
     /// gpui's original window procedure, called for every message we do not
     /// replace ourselves.
     static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
+
+    /// Top-level window handle, published once `apply` finds it.
+    static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
+
+    /// Titlebar caption band reported by the view on every paint, in logical
+    /// client pixels; stored as two f32 bit patterns (top-left, bottom-right).
+    static CAPTION_X0: AtomicI32 = AtomicI32::new(0);
+    static CAPTION_Y0: AtomicI32 = AtomicI32::new(0);
+    static CAPTION_X1: AtomicI32 = AtomicI32::new(0);
+    static CAPTION_Y1: AtomicI32 = AtomicI32::new(0);
 
     #[link(name = "user32")]
     unsafe extern "system" {
@@ -125,6 +145,8 @@ mod rounded_corners {
         fn IsZoomed(hwnd: Hwnd) -> i32;
         fn GetDpiForWindow(hwnd: Hwnd) -> u32;
         fn GetSystemMetricsForDpi(index: i32, dpi: u32) -> i32;
+        fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
+        fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
     }
 
     #[link(name = "dwmapi")]
@@ -137,9 +159,8 @@ mod rounded_corners {
         ) -> i32;
     }
 
-    /// Resize-border hit test for the frameless window. `None` lets gpui's own
-    /// hit testing take the message, so tabs, buttons and drag zones are
-    /// unaffected.
+    /// Resize-border hit test for the frameless window (physical screen
+    /// coords). `None` means the point is not on a resize edge.
     fn resize_hit_test(hwnd: Hwnd, x: i32, y: i32) -> Option<Lresult> {
         let mut rect = Rect::default();
         // Safety: `hwnd` is alive for the duration of the call.
@@ -178,9 +199,67 @@ mod rounded_corners {
         })
     }
 
+    /// The view reports the titlebar drag band here on every paint (logical
+    /// client pixels). The hit test converts to physical pixels via the DPI.
+    pub fn set_caption_rect(x: f32, y: f32, w: f32, h: f32) {
+        CAPTION_X0.store(x.to_bits() as i32, Ordering::Relaxed);
+        CAPTION_Y0.store(y.to_bits() as i32, Ordering::Relaxed);
+        CAPTION_X1.store((x + w).to_bits() as i32, Ordering::Relaxed);
+        CAPTION_Y1.store((y + h).to_bits() as i32, Ordering::Relaxed);
+    }
+
+    /// True when a physical client point lies inside the reported drag band.
+    fn caption_hit(hwnd: Hwnd, client_x: f32, client_y: f32) -> bool {
+        let x0 = f32::from_bits(CAPTION_X0.load(Ordering::Relaxed) as u32);
+        let y0 = f32::from_bits(CAPTION_Y0.load(Ordering::Relaxed) as u32);
+        let x1 = f32::from_bits(CAPTION_X1.load(Ordering::Relaxed) as u32);
+        let y1 = f32::from_bits(CAPTION_Y1.load(Ordering::Relaxed) as u32);
+        if x1 <= x0 || y1 <= y0 {
+            return false;
+        }
+        // Safety: `hwnd` is a live top-level window.
+        let scale = unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0;
+        client_x >= x0 * scale
+            && client_x < x1 * scale
+            && client_y >= y0 * scale
+            && client_y < y1 * scale
+    }
+
+    /// Window controls from the titlebar buttons: 0 minimize, 1 toggle
+    /// maximize, 2 close. The buttons are ordinary client clicks (the OS
+    /// non-client path is reserved for the drag band and resize borders), so
+    /// the view wires them here.
+    pub fn window_button(index: usize) {
+        let raw = MAIN_HWND.load(Ordering::SeqCst);
+        if raw == 0 {
+            return;
+        }
+        let hwnd = raw as Hwnd;
+        // Safety: `hwnd` is the process's main window, checked non-null above.
+        unsafe {
+            match index {
+                0 => {
+                    ShowWindowAsync(hwnd, SW_MINIMIZE);
+                }
+                1 => {
+                    if IsZoomed(hwnd) != 0 {
+                        ShowWindowAsync(hwnd, SW_RESTORE);
+                    } else {
+                        ShowWindowAsync(hwnd, SW_MAXIMIZE);
+                    }
+                }
+                _ => {
+                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                }
+            }
+        }
+    }
+
     /// Replacement window procedure: the client area covers the entire window
-    /// (so DWM can round the real content), resize borders are handled here,
-    /// everything else goes back to gpui's original procedure.
+    /// (so DWM can round the real content); WM_NCHITTEST serves the resize
+    /// borders and the view-reported drag band; presses on those non-client
+    /// codes bypass gpui and run DefWindowProc's native move/size loops (snap,
+    /// double-click maximize). Every other message goes to gpui's procedure.
     ///
     /// # Safety
     /// Installed with `SetWindowLongPtrW`; called by USER32 on the window
@@ -213,17 +292,64 @@ mod rounded_corners {
                 }
                 0
             }
-            WM_NCHITTEST if unsafe { IsZoomed(hwnd) } == 0 => {
+            WM_NCHITTEST => {
                 let x = (lparam as usize & 0xFFFF) as u16 as i16 as i32;
                 let y = ((lparam as usize >> 16) & 0xFFFF) as u16 as i16 as i32;
-                if let Some(hit) = resize_hit_test(hwnd, x, y) {
-                    return hit;
+                let mut rect = Rect::default();
+                // Safety: `hwnd` is live for the duration of the call.
+                if unsafe { GetWindowRect(hwnd, &mut rect) } != 0 {
+                    let zoomed = unsafe { IsZoomed(hwnd) } != 0;
+                    if !zoomed {
+                        if let Some(hit) = resize_hit_test(hwnd, x, y) {
+                            return hit;
+                        }
+                    }
+                    // While maximized the client is inset by the frame the
+                    // WM_NCCALCSIZE arm above keeps.
+                    let frame = if zoomed {
+                        // Safety: pure metrics lookups on a live hwnd.
+                        unsafe {
+                            let dpi = GetDpiForWindow(hwnd);
+                            GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi)
+                                + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi)
+                        }
+                    } else {
+                        0
+                    };
+                    let client_x = (x - rect.left - frame) as f32;
+                    let client_y = (y - rect.top - frame) as f32;
+                    if caption_hit(hwnd, client_x, client_y) {
+                        return HTCAPTION;
+                    }
                 }
-                let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
-                if prev == 0 {
+                HTCLIENT
+            }
+            // Presses on the drag band or a resize border run USER32's native
+            // move/size loop. Sending them straight to DefWindowProc (never
+            // through gpui) keeps the two event paths from fighting and gets
+            // Win11 snap and double-click-to-maximize for free.
+            WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK => {
+                let code = wparam as Lresult;
+                if matches!(
+                    code,
+                    HTCAPTION
+                        | HTLEFT
+                        | HTRIGHT
+                        | HTTOP
+                        | HTTOPLEFT
+                        | HTTOPRIGHT
+                        | HTBOTTOM
+                        | HTBOTTOMLEFT
+                        | HTBOTTOMRIGHT
+                ) {
                     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
                 } else {
-                    unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+                    let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
+                    if prev == 0 {
+                        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                    } else {
+                        unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+                    }
                 }
             }
             _ => {
@@ -274,6 +400,7 @@ mod rounded_corners {
         std::thread::spawn(|| {
             for _ in 0..400 {
                 if let Some(hwnd) = find_main_window() {
+                    MAIN_HWND.store(hwnd as isize, Ordering::SeqCst);
                     // Safety: `hwnd` is a live top-level window of this process.
                     unsafe {
                         // 1. Subclass first so the frame change below runs
