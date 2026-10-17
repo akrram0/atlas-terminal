@@ -9,7 +9,10 @@ mod session;
 mod theme;
 mod view;
 
-use gpui::{App, AppContext as _, Application, Bounds, WindowBounds, WindowOptions, px, size};
+use gpui::{
+    App, AppContext as _, Application, Bounds, WindowBackgroundAppearance, WindowBounds,
+    WindowDecorations, WindowOptions, px, size,
+};
 
 fn debug_log_path() -> std::path::PathBuf {
     std::env::temp_dir().join("atlas-native-debug.log")
@@ -636,6 +639,8 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
+                window_background: WindowBackgroundAppearance::Transparent,
+                window_decorations: Some(WindowDecorations::Client),
                 window_min_size: Some(size(px(640.0), px(420.0))),
                 is_resizable: true,
                 is_movable: true,

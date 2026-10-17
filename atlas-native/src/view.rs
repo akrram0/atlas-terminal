@@ -1523,6 +1523,9 @@ impl Render for AtlasView {
             self.profile_closing = false;
         }
         let theme = self.theme.clone();
+        let zoomed = crate::rounded_corners::is_zoomed();
+        let outer_radius = if zoomed { 0.0 } else { 14.0 };
+        let inner_radius = if zoomed { 0.0 } else { 13.0 };
 
         // ---- Pill top bar --------------------------------------------
         // Workspace pill · horizontal pill tabs · drag gap · settings /
@@ -1540,6 +1543,9 @@ impl Render for AtlasView {
             .bg(tb.panel_bg)
             .border_b_1()
             .border_color(tb.hairline);
+        if !zoomed {
+            bar = bar.rounded_t(px(inner_radius));
+        }
 
         // Workspace pill (26×20): a 6%-ink translucent fill with the quiet
         // sidebar mark from the reference chrome. Opens the new-tab profile
@@ -1716,7 +1722,6 @@ impl Render for AtlasView {
         bar = bar.child(caption_spacer(0));
 
         // Window controls: clean 44px wide native vector controls filling top bar height
-        let zoomed = crate::rounded_corners::is_zoomed();
         let controls = [
             (icons::WINDOW_MINIMIZE, false),
             (
@@ -1747,28 +1752,30 @@ impl Render for AtlasView {
             } else {
                 button_theme.chrome_fg
             };
-            bar = bar.child(
-                div()
-                    .id(ElementId::named_usize("window-control", index))
-                    .w(px(46.0))
-                    .h(relative(1.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .hover(move |style| style.bg(hover_bg))
-                    .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                        set_hover_mark(view, hover_id, *hovered, cx);
-                    }))
-                    .child(
-                        icons::icon(icon_path)
-                            .size(px(15.0))
-                            .text_color(ink),
-                    )
-                    .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
-                        crate::rounded_corners::window_button(index);
-                        cx.notify();
-                    })),
-            );
+            let mut btn = div()
+                .id(ElementId::named_usize("window-control", index))
+                .w(px(46.0))
+                .h(relative(1.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .hover(move |style| style.bg(hover_bg))
+                .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                    set_hover_mark(view, hover_id, *hovered, cx);
+                }))
+                .child(
+                    icons::icon(icon_path)
+                        .size(px(15.0))
+                        .text_color(ink),
+                )
+                .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
+                    crate::rounded_corners::window_button(index);
+                    cx.notify();
+                }));
+            if is_close && !zoomed {
+                btn = btn.rounded_tr(px(inner_radius));
+            }
+            bar = bar.child(btn);
         }
 
         // Active terminal color overrides (OSC 11 etc.) define the sheet surface.
@@ -1866,7 +1873,7 @@ impl Render for AtlasView {
                     .opacity(pane.pane_expansion)
                     .overflow_hidden()
                     .bg(sheet_bg)
-                    .px(px(14.0))
+                    .px(px(10.0))
                     .py(px(10.0))
                     .on_mouse_down(
                         MouseButton::Left,
@@ -1880,6 +1887,9 @@ impl Render for AtlasView {
                             window.focus(&view.focus);
                         }),
                     );
+                if !zoomed {
+                    cell = cell.rounded_b(px(inner_radius));
+                }
                 cell = match axis {
                     SplitAxis::Columns => cell.h(relative(1.0)),
                     SplitAxis::Rows => cell.w(relative(1.0)),
@@ -1992,7 +2002,6 @@ impl Render for AtlasView {
                 None => icons::TERMINAL,
             }
         };
-        let zoomed = crate::rounded_corners::is_zoomed();
         let mut head = div()
             .flex()
             .flex_row()
@@ -2004,7 +2013,6 @@ impl Render for AtlasView {
             .bg(sheet_bg)
             .border_b_1()
             .border_color(theme.hairline)
-            .rounded_t(px(10.0))
             .text_color(header_theme.chrome_fg)
             .child(
                 div()
@@ -2082,28 +2090,43 @@ impl Render for AtlasView {
                 ));
         }
 
-        let sheet = div()
+        let mut sheet = div()
             .id(ElementId::named_usize("terminal-sheet", 0))
             .flex()
             .flex_col()
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
-            .rounded(px(10.0))
-            .border_1()
-            .border_color(theme.sheet_border)
             .bg(sheet_bg)
             .overflow_hidden()
             .child(head)
             .child(body);
 
-        let sheet_wrapper = div()
+        if !zoomed {
+            sheet = sheet.rounded_b(px(inner_radius));
+        }
+
+        let mut container = div()
+            .id(ElementId::named_usize("terminal-container", 0))
+            .relative()
             .flex()
             .flex_col()
             .flex_1()
             .w(relative(1.0))
-            .px(px(8.0))
-            .pb(px(8.0))
+            .h(relative(1.0))
+            .bg(theme.panel_bg)
+            .overflow_hidden()
+            .shadow_lg();
+
+        if !zoomed {
+            container = container
+                .rounded(px(outer_radius))
+                .border_1()
+                .border_color(rgba(0xFFFFFF1A));
+        }
+
+        container = container
+            .child(bar)
             .child(sheet);
 
         let mut root = div()
@@ -2112,19 +2135,9 @@ impl Render for AtlasView {
             .flex_col()
             .w(relative(1.0))
             .h(relative(1.0))
-            .bg(theme.panel_bg)
             .font_family("Segoe UI")
-            .text_color(theme.fg);
-
-        if !zoomed {
-            root = root
-                .border_1()
-                .border_color(theme.hairline);
-        }
-
-        root = root
-            .child(bar)
-            .child(sheet_wrapper);
+            .text_color(theme.fg)
+            .child(container);
         // Overlays paint last: each is a dim click-catcher plus its panel, in
         // stacking order (profile menu, palette, rename dialog). The
         // `*_closing` flags drive fade-outs; dismissal tasks unmount them.
