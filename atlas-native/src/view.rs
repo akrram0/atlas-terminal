@@ -27,11 +27,13 @@ use gpui::{
     Rgba, ScrollWheelEvent, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas,
     div, fill, point, px, relative, rgb, rgba,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::icons;
 use crate::keymap;
 use crate::session::{Profile, Session, SessionMsg};
 use crate::theme::{Theme, ThemeRegistry};
+use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 
 /// Preferred terminal monos, best first: Cascadia (Windows 11 inbox) then
 /// Consolas. `terminal_font` picks the first family the text system resolves.
@@ -44,6 +46,73 @@ const LINE_SCALE: f32 = 1.333;
 const OVERLAY_IN_MS: u64 = 135;
 const OVERLAY_OUT_MS: u64 = 85;
 const BODY_IN_MS: u64 = 110;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppSettingsFile {
+    #[serde(default = "default_theme_name")]
+    pub theme: String,
+    #[serde(default = "default_font_size")]
+    pub font_size: f32,
+    #[serde(default = "default_cursor_shape")]
+    pub cursor_shape: String,
+    #[serde(default = "default_auto_check")]
+    pub auto_check_updates: bool,
+    #[serde(default = "default_interval_mins")]
+    pub update_check_interval_mins: u32,
+    #[serde(default)]
+    pub last_check_time: Option<u64>,
+    #[serde(default)]
+    pub etag: Option<String>,
+    #[serde(default)]
+    pub last_seen_version: Option<String>,
+    #[serde(default)]
+    pub skipped_version: Option<String>,
+}
+
+fn default_theme_name() -> String {
+    "dark".to_string()
+}
+fn default_font_size() -> f32 {
+    13.0
+}
+fn default_cursor_shape() -> String {
+    "block".to_string()
+}
+fn default_auto_check() -> bool {
+    true
+}
+fn default_interval_mins() -> u32 {
+    60
+}
+
+fn load_app_settings() -> AppSettingsFile {
+    let settings_path = crate::user_data_dir().join("settings.json");
+    if let Ok(content) = std::fs::read_to_string(&settings_path) {
+        if let Ok(s) = serde_json::from_str::<AppSettingsFile>(&content) {
+            return s;
+        }
+    }
+    AppSettingsFile {
+        theme: default_theme_name(),
+        font_size: default_font_size(),
+        cursor_shape: default_cursor_shape(),
+        auto_check_updates: default_auto_check(),
+        update_check_interval_mins: default_interval_mins(),
+        last_check_time: None,
+        etag: None,
+        last_seen_version: None,
+        skipped_version: None,
+    }
+}
+
+fn save_app_settings(s: &AppSettingsFile) {
+    let base = crate::user_data_dir();
+    let _ = std::fs::create_dir_all(&base);
+    let settings_path = base.join("settings.json");
+    if let Ok(json) = serde_json::to_string_pretty(s) {
+        let _ = std::fs::write(&settings_path, json);
+    }
+}
 
 pub struct AtlasView {
     tabs: Vec<Tab>,
@@ -97,6 +166,17 @@ pub struct AtlasView {
     /// Geometric chrome mark under the pointer (new-tab plus, pane actions).
     /// Painted quads can't inherit hover text colour, so the view tracks it.
     hover_mark: Option<u64>,
+    /// Updater settings and runtime state.
+    updater_settings: UpdaterSettings,
+    is_checking_updates: bool,
+    manual_status_message: Option<String>,
+    last_manual_check: Option<std::time::Instant>,
+    current_backoff_secs: u64,
+    rate_limit_reset: Option<u64>,
+    available_update: Option<ReleaseInfo>,
+    update_panel_open: bool,
+    update_panel_closing: bool,
+    window_was_active: bool,
 }
 
 struct Tab {
@@ -150,15 +230,27 @@ impl AtlasView {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let registry = ThemeRegistry::standard();
+        let app_settings = load_app_settings();
+        let theme_id = (0..registry.len())
+            .find(|&i| registry.preset(i).name.eq_ignore_ascii_case(&app_settings.theme))
+            .unwrap_or(0);
+        let cursor_style = match app_settings.cursor_shape.as_str() {
+            "block" => Some(CursorShape::Block),
+            "bar" => Some(CursorShape::Beam),
+            "underline" => Some(CursorShape::Underline),
+            _ => None,
+        };
+        let font_size = app_settings.font_size.clamp(10.0, 24.0);
+
         let mut view = Self {
             tabs: Vec::new(),
             active: 0,
             next_id: 1,
             next_epoch: 1,
             focus,
-            theme: registry.preset(0).theme.clone(),
+            theme: registry.preset(theme_id).theme.clone(),
             font: terminal_font(window),
-            theme_id: 0,
+            theme_id,
             registry,
             settings_open: false,
             profile_menu: false,
@@ -167,8 +259,8 @@ impl AtlasView {
             palette_index: 0,
             rename_open: false,
             rename_value: String::new(),
-            font_size: FONT_SIZE,
-            cursor_style: None,
+            font_size,
+            cursor_style,
             cursor_on: true,
             cursor_breath_phase: 0.0,
             cursor_last_typing: std::time::Instant::now(),
@@ -181,7 +273,25 @@ impl AtlasView {
             scroll_task: false,
             hover_tab: None,
             hover_mark: None,
+            updater_settings: UpdaterSettings {
+                auto_check_updates: app_settings.auto_check_updates,
+                update_check_interval_mins: app_settings.update_check_interval_mins,
+                last_check_time: app_settings.last_check_time,
+                etag: app_settings.etag,
+                last_seen_version: app_settings.last_seen_version,
+                skipped_version: app_settings.skipped_version,
+            },
+            is_checking_updates: false,
+            manual_status_message: None,
+            last_manual_check: None,
+            current_backoff_secs: 3600,
+            rate_limit_reset: None,
+            available_update: None,
+            update_panel_open: false,
+            update_panel_closing: false,
+            window_was_active: true,
         };
+        crate::rounded_corners::set_dark_mode(theme_id == 0);
         view.new_tab_with_cwd(Profile::PowerShell, initial_dir, cx);
 
         // Motion & breathing ticker: drives continuous kinetic cursor gliding,
@@ -297,6 +407,32 @@ impl AtlasView {
             }
         });
         cwd_poll.detach();
+
+        // Background updater scheduler: runs an initial check 4s after startup,
+        // and checks periodically every 60s against configured interval and backoff.
+        let update_scheduler = cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_secs(4))
+                .await;
+
+            let _ = this.update(cx, |view, cx| {
+                view.maybe_auto_check(false, cx);
+            });
+
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_secs(60))
+                    .await;
+
+                let alive = this.update(cx, |view, cx| {
+                    view.maybe_auto_check(false, cx);
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        });
+        update_scheduler.detach();
 
         view
     }
@@ -720,8 +856,271 @@ impl AtlasView {
     fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
         self.theme_id = index.min(self.registry.len() - 1);
         self.theme = self.registry.preset(self.theme_id).theme.clone();
-        crate::rounded_corners::set_dark_mode(self.theme_id == 1);
+        crate::rounded_corners::set_dark_mode(self.theme_id == 0);
+        self.sync_and_save_settings();
         cx.notify();
+    }
+
+    /// Persist active appearance and updater state to %APPDATA%/atlas-terminal/settings.json.
+    fn sync_and_save_settings(&self) {
+        let cursor_shape = match self.cursor_style {
+            None => "auto".to_string(),
+            Some(CursorShape::Block) => "block".to_string(),
+            Some(CursorShape::Beam) => "bar".to_string(),
+            Some(CursorShape::Underline) => "underline".to_string(),
+            Some(CursorShape::HollowBlock) => "hollow".to_string(),
+            Some(CursorShape::Hidden) => "hidden".to_string(),
+        };
+        let file = AppSettingsFile {
+            theme: self.registry.preset(self.theme_id).name.to_string(),
+            font_size: self.font_size,
+            cursor_shape,
+            auto_check_updates: self.updater_settings.auto_check_updates,
+            update_check_interval_mins: self.updater_settings.update_check_interval_mins,
+            last_check_time: self.updater_settings.last_check_time,
+            etag: self.updater_settings.etag.clone(),
+            last_seen_version: self.updater_settings.last_seen_version.clone(),
+            skipped_version: self.updater_settings.skipped_version.clone(),
+        };
+        save_app_settings(&file);
+    }
+
+    /// Periodic / focus-based automatic update check. Silently skips offline/errors.
+    fn maybe_auto_check(&mut self, is_focus_event: bool, cx: &mut Context<Self>) {
+        if !self.updater_settings.auto_check_updates || self.is_checking_updates {
+            return;
+        }
+
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Rate limit pause: wait until GitHub quota resets
+        if let Some(reset) = self.rate_limit_reset {
+            if now_epoch < reset {
+                return;
+            }
+        }
+
+        if is_focus_event {
+            // Window focus regain: only check if last check was > 1 hour ago
+            if let Some(last) = self.updater_settings.last_check_time {
+                if now_epoch.saturating_sub(last) < 3600 {
+                    return;
+                }
+            }
+        } else {
+            // Background periodic check: check against configured interval or exponential backoff
+            let interval_secs = (self.updater_settings.update_check_interval_mins as u64 * 60)
+                .max(self.current_backoff_secs);
+            if let Some(last) = self.updater_settings.last_check_time {
+                if now_epoch.saturating_sub(last) < interval_secs {
+                    return;
+                }
+            }
+        }
+
+        self.trigger_update_check(false, cx);
+    }
+
+    /// Manual update check triggered by button in top bar or Settings.
+    fn check_updates_manual(&mut self, cx: &mut Context<Self>) {
+        if self.is_checking_updates {
+            return;
+        }
+
+        // 10 second cooldown on manual checks to prevent spam
+        if let Some(last) = self.last_manual_check {
+            if last.elapsed() < Duration::from_secs(10) {
+                self.manual_status_message =
+                    Some("Please wait a few seconds before checking again.".to_string());
+                cx.notify();
+                return;
+            }
+        }
+
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        if let Some(reset) = self.rate_limit_reset {
+            if now_epoch < reset {
+                let time_str = updater::format_epoch_time(reset);
+                self.manual_status_message =
+                    Some(format!("Rate limited, try again at {time_str}"));
+                cx.notify();
+                return;
+            }
+        }
+
+        self.last_manual_check = Some(std::time::Instant::now());
+        self.trigger_update_check(true, cx);
+    }
+
+    /// Spawn unblocked thread to run WinHTTP check against GitHub API.
+    fn trigger_update_check(&mut self, is_manual: bool, cx: &mut Context<Self>) {
+        if self.is_checking_updates {
+            return;
+        }
+        self.is_checking_updates = true;
+        if is_manual {
+            self.manual_status_message = Some("Checking for updates...".to_string());
+        }
+        cx.notify();
+
+        let current_version = env!("CARGO_PKG_VERSION").to_string();
+        let etag = self.updater_settings.etag.clone();
+
+        cx.spawn(async move |this, cx| {
+            let result = smol::unblock(move || {
+                updater::check_for_updates(&current_version, etag.as_deref())
+            })
+            .await;
+
+            let _ = this.update(cx, |view, cx| {
+                view.handle_update_result(result, is_manual, cx);
+            });
+        })
+        .detach();
+    }
+
+    /// Process the result of an update check (auto or manual).
+    fn handle_update_result(
+        &mut self,
+        result: updater::UpdateCheckResult,
+        is_manual: bool,
+        cx: &mut Context<Self>,
+    ) {
+        self.is_checking_updates = false;
+        let now_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        match result {
+            updater::UpdateCheckResult::UpdateAvailable(info) => {
+                self.current_backoff_secs = 3600;
+                self.rate_limit_reset = info.reset_epoch;
+                self.updater_settings.last_check_time = Some(now_epoch);
+                if let Some(ref e) = info.etag {
+                    self.updater_settings.etag = Some(e.clone());
+                }
+
+                let is_skipped = self
+                    .updater_settings
+                    .skipped_version
+                    .as_deref()
+                    == Some(&info.version);
+
+                if is_skipped {
+                    if is_manual {
+                        self.manual_status_message =
+                            Some(format!("v{} is available (skipped)", info.version));
+                    }
+                } else {
+                    self.available_update = Some(info.clone());
+                    self.updater_settings.last_seen_version = Some(info.version.clone());
+                    if is_manual {
+                        self.manual_status_message =
+                            Some(format!("v{} is available!", info.version));
+                        self.update_panel_open = true;
+                        self.update_panel_closing = false;
+                    }
+                }
+                self.sync_and_save_settings();
+            }
+            updater::UpdateCheckResult::NotModified { etag, reset_epoch } => {
+                self.current_backoff_secs = 3600;
+                self.rate_limit_reset = reset_epoch;
+                self.updater_settings.last_check_time = Some(now_epoch);
+                if let Some(e) = etag {
+                    self.updater_settings.etag = Some(e);
+                }
+                if is_manual {
+                    self.manual_status_message = Some("You're up to date".to_string());
+                }
+                self.sync_and_save_settings();
+            }
+            updater::UpdateCheckResult::UpToDate { etag, reset_epoch } => {
+                self.current_backoff_secs = 3600;
+                self.rate_limit_reset = reset_epoch;
+                self.updater_settings.last_check_time = Some(now_epoch);
+                if let Some(e) = etag {
+                    self.updater_settings.etag = Some(e);
+                }
+                if is_manual {
+                    self.manual_status_message = Some("You're up to date".to_string());
+                }
+                self.sync_and_save_settings();
+            }
+            updater::UpdateCheckResult::RateLimited { reset_epoch } => {
+                self.rate_limit_reset = Some(reset_epoch);
+                // Back off exponentially: 1h -> 2h -> 4h max
+                self.current_backoff_secs = (self.current_backoff_secs * 2).min(14400);
+                if is_manual {
+                    let time_str = updater::format_epoch_time(reset_epoch);
+                    self.manual_status_message =
+                        Some(format!("Rate limited, try again at {time_str}"));
+                }
+            }
+            updater::UpdateCheckResult::Offline => {
+                // Silently skip when offline; manual check reports status
+                if is_manual {
+                    self.manual_status_message = Some("No internet connection".to_string());
+                }
+            }
+            updater::UpdateCheckResult::Error(msg) => {
+                // Auto check silently ignores errors; only manual check reports
+                if is_manual {
+                    self.manual_status_message = Some(format!("Check failed: {msg}"));
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    fn toggle_update_panel(&mut self, cx: &mut Context<Self>) {
+        if self.update_panel_closing {
+            self.update_panel_closing = false;
+        } else {
+            self.update_panel_open = !self.update_panel_open;
+            if self.update_panel_open {
+                self.palette_open = false;
+                self.profile_menu = false;
+            }
+        }
+        cx.notify();
+    }
+
+    fn dismiss_update_panel(&mut self, cx: &mut Context<Self>) {
+        if self.update_panel_closing || !self.update_panel_open {
+            return;
+        }
+        self.update_panel_closing = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(OVERLAY_OUT_MS))
+                .await;
+            let _ = this.update(cx, |view, cx| {
+                if view.update_panel_closing {
+                    view.update_panel_closing = false;
+                    view.update_panel_open = false;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn skip_current_update(&mut self, cx: &mut Context<Self>) {
+        if let Some(update) = self.available_update.take() {
+            self.updater_settings.skipped_version = Some(update.version);
+            self.sync_and_save_settings();
+        }
+        self.dismiss_update_panel(cx);
     }
 
     /// Focus whatever is on top: the settings page when it is open, the
@@ -910,6 +1309,9 @@ impl AtlasView {
                 self.font_size = (self.font_size - 1.0).max(10.0);
                 self.focus_main(window);
                 cx.notify();
+            }
+            Command::CheckUpdates => {
+                self.check_updates_manual(cx);
             }
         }
     }
@@ -1277,6 +1679,7 @@ impl AtlasView {
                 theme,
                 |view, cx| {
                     view.font_size = (view.font_size - 1.0).max(10.0);
+                    view.sync_and_save_settings();
                     cx.notify();
                 },
                 cx,
@@ -1297,6 +1700,7 @@ impl AtlasView {
                 theme,
                 |view, cx| {
                     view.font_size = (view.font_size + 1.0).min(24.0);
+                    view.sync_and_save_settings();
                     cx.notify();
                 },
                 cx,
@@ -1315,6 +1719,7 @@ impl AtlasView {
                 theme,
                 |view, cx| {
                     view.cursor_style = None;
+                    view.sync_and_save_settings();
                     cx.notify();
                 },
                 cx,
@@ -1326,6 +1731,7 @@ impl AtlasView {
                 theme,
                 |view, cx| {
                     view.cursor_style = Some(CursorShape::Block);
+                    view.sync_and_save_settings();
                     cx.notify();
                 },
                 cx,
@@ -1337,6 +1743,7 @@ impl AtlasView {
                 theme,
                 |view, cx| {
                     view.cursor_style = Some(CursorShape::Beam);
+                    view.sync_and_save_settings();
                     cx.notify();
                 },
                 cx,
@@ -1348,12 +1755,126 @@ impl AtlasView {
                 theme,
                 |view, cx| {
                     view.cursor_style = Some(CursorShape::Underline);
+                    view.sync_and_save_settings();
                     cx.notify();
                 },
                 cx,
             ));
 
+        let is_auto_check = self.updater_settings.auto_check_updates;
+        let auto_check_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(theme.chrome_fg_active)
+                            .child("Check for updates automatically"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.faint_fg)
+                            .child("Background check every interval and on focus; silent when offline"),
+                    ),
+            )
+            .child(pill_button(
+                if is_auto_check {
+                    "Enabled".to_string()
+                } else {
+                    "Disabled".to_string()
+                },
+                40,
+                is_auto_check,
+                theme,
+                |view, cx| {
+                    view.updater_settings.auto_check_updates =
+                        !view.updater_settings.auto_check_updates;
+                    view.sync_and_save_settings();
+                    cx.notify();
+                },
+                cx,
+            ));
+
+        let mut interval_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(row_label("Interval"));
+        for (idx, &(mins, label)) in updater::INTERVAL_OPTIONS.iter().enumerate() {
+            let is_sel = self.updater_settings.update_check_interval_mins == mins;
+            interval_row = interval_row.child(pill_button(
+                label.to_string(),
+                50 + idx,
+                is_sel,
+                theme,
+                move |view, cx| {
+                    view.updater_settings.update_check_interval_mins = mins;
+                    view.sync_and_save_settings();
+                    cx.notify();
+                },
+                cx,
+            ));
+        }
+
+        let last_checked_text = self
+            .updater_settings
+            .last_check_time
+            .map(updater::format_time_ago)
+            .unwrap_or_else(|| "Never".to_string());
+
+        let is_checking = self.is_checking_updates;
+        let status_line = if is_checking {
+            "Checking for updates…".to_string()
+        } else if let Some(ref msg) = self.manual_status_message {
+            format!("{msg} · Last checked: {last_checked_text}")
+        } else {
+            format!("Last checked: {last_checked_text}")
+        };
+
+        let check_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .pt(px(2.0))
+            .child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(theme.chrome_fg)
+                    .child(status_line),
+            )
+            .child(pill_button(
+                if is_checking {
+                    "Checking…".to_string()
+                } else {
+                    "Check now".to_string()
+                },
+                60,
+                false,
+                theme,
+                |view, cx| {
+                    view.check_updates_manual(cx);
+                },
+                cx,
+            ));
+
+        let updates_card = card()
+            .child(section("UPDATES & GENERAL"))
+            .child(auto_check_row)
+            .child(interval_row)
+            .child(check_row);
+
         let link_hot = theme.chrome_fg_active;
+        let pkg_version = env!("CARGO_PKG_VERSION");
         let about = card()
             .child(section("ABOUT"))
             .child(
@@ -1376,7 +1897,7 @@ impl AtlasView {
                                 div()
                                     .text_size(px(13.0))
                                     .text_color(theme.chrome_fg_active)
-                                    .child("Atlas Terminal 0.1.0"),
+                                    .child(format!("Atlas Terminal {pkg_version}")),
                             ),
                     )
                     .child(
@@ -1490,6 +2011,7 @@ impl AtlasView {
                                     .child(font_row)
                                     .child(cursor_row),
                             )
+                            .child(updates_card)
                             .child(about),
                     ),
             )
@@ -1504,10 +2026,13 @@ impl AtlasView {
         self.cursor_on = true;
         self.cursor_last_typing = std::time::Instant::now();
 
-        if key == "escape" && (self.settings_open || self.profile_menu) {
+        if key == "escape" && (self.settings_open || self.profile_menu || self.update_panel_open) {
             self.settings_open = false;
             if self.profile_menu {
                 self.dismiss_profile(cx);
+            }
+            if self.update_panel_open {
+                self.dismiss_update_panel(cx);
             }
             cx.notify();
             return;
@@ -1593,13 +2118,22 @@ impl AtlasView {
 }
 
 impl Render for AtlasView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_active = window.is_active();
+        if is_active && !self.window_was_active {
+            self.maybe_auto_check(true, cx);
+        }
+        self.window_was_active = is_active;
+
         // A dismissal that raced another state change must not stay armed.
         if !self.palette_open {
             self.palette_closing = false;
         }
         if !self.profile_menu {
             self.profile_closing = false;
+        }
+        if !self.update_panel_open {
+            self.update_panel_closing = false;
         }
         let theme = self.theme.clone();
         let zoomed = crate::rounded_corners::is_zoomed();
@@ -1799,6 +2333,100 @@ impl Render for AtlasView {
         );
 
         bar = bar.child(caption_spacer(0));
+
+        let top_btn_hover = tb.card_hover;
+
+        if let Some(ref update) = self.available_update {
+            let badge_ink = tb.accent;
+            let badge_bg = Rgba {
+                a: 0.16,
+                ..tb.accent
+            };
+            let badge_border = Rgba {
+                a: 0.28,
+                ..tb.accent
+            };
+            let ver = update.version.clone();
+            bar = bar.child(
+                div()
+                    .id(ElementId::named_usize("topbar-update-badge", 0))
+                    .h(px(22.0))
+                    .px(px(8.0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(5.0))
+                    .rounded(px(5.0))
+                    .bg(badge_bg)
+                    .border_1()
+                    .border_color(badge_border)
+                    .text_color(badge_ink)
+                    .hover(move |s| s.opacity(0.85))
+                    .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(badge_ink))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child(format!("v{ver}")),
+                    )
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.toggle_update_panel(cx);
+                    })),
+            );
+        } else if self.is_checking_updates {
+            bar = bar.child(
+                div()
+                    .h(px(22.0))
+                    .px(px(6.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .rounded(px(5.0))
+                    .text_color(tb.faint_fg)
+                    .child(icons::icon(icons::REFRESH).size(px(11.0)).text_color(tb.faint_fg))
+                    .child(div().text_size(px(11.0)).child("Checking…")),
+            );
+        } else {
+            bar = bar.child(
+                div()
+                    .id(ElementId::named_usize("topbar-update-btn", 0))
+                    .w(px(24.0))
+                    .h(px(24.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(5.0))
+                    .hover(move |s| s.bg(top_btn_hover))
+                    .child(icons::icon(icons::REFRESH).size(px(12.0)).text_color(tb.chrome_fg))
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.toggle_update_panel(cx);
+                    })),
+            );
+        }
+
+        bar = bar.child(
+            div()
+                .id(ElementId::named_usize("topbar-settings-btn", 0))
+                .w(px(24.0))
+                .h(px(24.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.0))
+                .hover(move |s| s.bg(top_btn_hover))
+                .child(icons::icon(icons::SETTINGS).size(px(12.0)).text_color(tb.chrome_fg))
+                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                    view.settings_open = !view.settings_open;
+                    if view.settings_open {
+                        window.focus(&view.settings_focus);
+                    } else {
+                        window.focus(&view.focus);
+                    }
+                    cx.notify();
+                })),
+        );
+
+        bar = bar.child(div().w(px(4.0)));
 
         // Window controls: clean 44px wide native vector controls filling top bar height
         let controls = [
@@ -2130,6 +2758,19 @@ impl Render for AtlasView {
                 cx,
             ));
             root = root.child(self.rename_dialog(&theme, cx));
+        }
+        if self.update_panel_open {
+            let closing = self.update_panel_closing;
+            root = root.child(overlay_backdrop(
+                4,
+                closing,
+                |view, window, cx| {
+                    window.focus(&view.focus);
+                    view.dismiss_update_panel(cx);
+                },
+                cx,
+            ));
+            root = root.child(self.render_update_panel(&theme, closing, cx));
         }
 
         root
@@ -2913,10 +3554,11 @@ enum Command {
     OpenSettings,
     FontInc,
     FontDec,
+    CheckUpdates,
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-const COMMANDS: [(Command, &str, &str, &str); 15] = [
+const COMMANDS: [(Command, &str, &str, &str); 16] = [
     (Command::NewTab, icons::PLUS, "New tab", "Ctrl Shift N"),
     (Command::NewTabWsl, icons::TERMINAL, "New Ubuntu (WSL) tab", ""),
     (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right", "Ctrl Shift D"),
@@ -2947,6 +3589,7 @@ const COMMANDS: [(Command, &str, &str, &str); 15] = [
     (Command::OpenSettings, icons::SETTINGS, "Open settings", ""),
     (Command::FontInc, icons::SETTINGS, "Increase font size", ""),
     (Command::FontDec, icons::SETTINGS, "Decrease font size", ""),
+    (Command::CheckUpdates, icons::REFRESH, "Check for updates", ""),
 ];
 
 /// A flexible spacer in the titlebar that reports its painted bounds to the
@@ -3032,6 +3675,266 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
         },
     )
     .into_any_element()
+}
+
+/// Software update popover anchored under the top bar on the right side.
+impl AtlasView {
+    fn render_update_panel(&self, theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
+        let item_hover = theme.card_hover;
+        let mut panel = div()
+            .id(ElementId::named_usize("update-panel", 0))
+            .absolute()
+            .top(px(40.0))
+            .right(px(14.0))
+            .w(px(330.0))
+            .flex()
+            .flex_col()
+            .gap(px(10.0))
+            .p(px(14.0))
+            .rounded(px(10.0))
+            .bg(theme.elevated_bg)
+            .border_1()
+            .border_color(theme.elevated_border)
+            .shadow_lg();
+
+        let header = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        icons::icon(icons::ATLAS_MARK)
+                            .size(px(14.0))
+                            .text_color(theme.accent),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.chrome_fg_active)
+                            .child("Software Update"),
+                    ),
+            )
+            .child(
+                div()
+                    .id(ElementId::named_usize("update-close-btn", 0))
+                    .w(px(22.0))
+                    .h(px(22.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(5.0))
+                    .text_color(theme.faint_fg)
+                    .hover(move |s| s.bg(item_hover).text_color(theme.chrome_fg_active))
+                    .child(icons::icon(icons::CLOSE).size(px(11.0)).text_color(theme.faint_fg))
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.dismiss_update_panel(cx);
+                    })),
+            );
+
+        panel = panel.child(header);
+
+        if let Some(ref update) = self.available_update {
+            let ver_row = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .text_size(px(13.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(theme.fg)
+                        .child(format!("v{}", update.version)),
+                )
+                .child(
+                    div()
+                        .px(px(6.0))
+                        .py(px(1.5))
+                        .rounded(px(4.0))
+                        .bg(Rgba { a: 0.16, ..theme.accent })
+                        .text_size(px(10.5))
+                        .text_color(theme.accent)
+                        .child("Available"),
+                );
+
+            let title_line = div()
+                .text_size(px(12.0))
+                .text_color(theme.chrome_fg)
+                .child(update.title.clone());
+
+            let mut body = div()
+                .flex()
+                .flex_col()
+                .gap(px(6.0))
+                .child(ver_row)
+                .child(title_line);
+
+            if !update.notes.trim().is_empty() {
+                body = body.child(
+                    div()
+                        .max_h(px(100.0))
+                        .overflow_y_scroll()
+                        .p(px(8.0))
+                        .rounded(px(6.0))
+                        .bg(theme.panel_bg)
+                        .border_1()
+                        .border_color(theme.hairline)
+                        .text_size(px(11.0))
+                        .text_color(theme.chrome_fg)
+                        .child(update.notes.trim().to_string()),
+                );
+            }
+
+            let download_target = update
+                .installer_url
+                .clone()
+                .unwrap_or_else(|| update.html_url.clone());
+
+            let actions = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .pt(px(4.0))
+                .child(
+                    div()
+                        .id(ElementId::named_usize("update-skip-action", 0))
+                        .h(px(26.0))
+                        .px(px(8.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(5.0))
+                        .hover(move |s| s.bg(item_hover))
+                        .text_size(px(11.5))
+                        .text_color(theme.faint_fg)
+                        .child("Skip this version")
+                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                            view.skip_current_update(cx);
+                        })),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .id(ElementId::named_usize("update-later-action", 0))
+                                .h(px(26.0))
+                                .px(px(10.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(5.0))
+                                .hover(move |s| s.bg(item_hover))
+                                .text_size(px(11.5))
+                                .text_color(theme.chrome_fg)
+                                .child("Later")
+                                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                                    view.dismiss_update_panel(cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .id(ElementId::named_usize("update-install-action", 0))
+                                .h(px(26.0))
+                                .px(px(12.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(5.0))
+                                .bg(theme.accent)
+                                .hover(move |s| s.opacity(0.88))
+                                .text_size(px(12.0))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(rgb(0xFFFFFF))
+                                .child("Install update")
+                                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                                    cx.open_url(&download_target);
+                                    view.dismiss_update_panel(cx);
+                                })),
+                        ),
+                );
+
+            panel = panel.child(body).child(actions);
+        } else {
+            let last_checked_text = self
+                .updater_settings
+                .last_check_time
+                .map(updater::format_time_ago)
+                .unwrap_or_else(|| "Never".to_string());
+
+            let is_checking = self.is_checking_updates;
+            let status_line = if is_checking {
+                "Checking for updates…".to_string()
+            } else if let Some(ref msg) = self.manual_status_message {
+                format!("{msg} · Last checked: {last_checked_text}")
+            } else {
+                format!(
+                    "Atlas Terminal is up to date (v{}) · Last checked: {last_checked_text}",
+                    env!("CARGO_PKG_VERSION")
+                )
+            };
+
+            let body = div()
+                .flex()
+                .flex_col()
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(theme.chrome_fg)
+                        .child(status_line),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .justify_end()
+                        .pt(px(2.0))
+                        .child(pill_button(
+                            if is_checking {
+                                "Checking…".to_string()
+                            } else {
+                                "Check now".to_string()
+                            },
+                            70,
+                            false,
+                            theme,
+                            |view, cx| {
+                                view.check_updates_manual(cx);
+                            },
+                            cx,
+                        )),
+                );
+
+            panel = panel.child(body);
+        }
+
+        panel.with_animation(
+            ElementId::named_usize("update-anim", closing as usize),
+            Animation::new(Duration::from_millis(if closing {
+                OVERLAY_OUT_MS
+            } else {
+                OVERLAY_IN_MS
+            }))
+            .with_easing(ease_apple_snappy),
+            move |el, delta| {
+                let t = if closing { 1.0 - delta } else { delta };
+                el.opacity(t).top(px(40.0 - 6.0 * (1.0 - t)))
+            },
+        )
+        .into_any_element()
+    }
 }
 
 /// Hover-state ids for chrome marks.

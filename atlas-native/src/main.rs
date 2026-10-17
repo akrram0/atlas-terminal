@@ -7,6 +7,7 @@ mod icons;
 mod keymap;
 mod session;
 mod theme;
+pub mod updater;
 mod view;
 
 use gpui::{
@@ -37,7 +38,9 @@ pub(crate) fn init_user_data() {
         let default_settings = r#"{
   "theme": "dark",
   "font_size": 13.0,
-  "cursor_shape": "block"
+  "cursor_shape": "block",
+  "auto_check_updates": true,
+  "update_check_interval_mins": 60
 }
 "#;
         let _ = std::fs::write(&settings_file, default_settings);
