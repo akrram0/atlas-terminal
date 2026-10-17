@@ -29,3 +29,5 @@ Desktop.ini
 # Design System documentation
 design-system/
 
+
+scripts/ci_check.ps1
