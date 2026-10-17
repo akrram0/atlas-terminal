@@ -359,6 +359,7 @@ pub struct AtlasView {
     rate_limit_reset: Option<u64>,
     available_update: Option<ReleaseInfo>,
     update_panel_open: bool,
+    update_panel_closing: bool,
     pub app_settings: AppSettingsFile,
     pub settings_tab: SettingsTab,
     pub recording_shortcut: Option<String>,
@@ -2885,7 +2886,7 @@ impl AtlasView {
                 card()
                     .child(section("SESSION & BEHAVIOR"))
                     .child(startup_row)
-                    .child(confirm_close_process_row)
+                    .child(confirm_close_row)
                     .child(copy_on_select_row),
             )
             .child(
@@ -4666,9 +4667,11 @@ fn caption_spacer(slot: usize) -> impl IntoElement {
 
 /// Profile picker behind the workspace pill, anchored under the top bar.
 fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
-    let entries: [(&'static str, Profile); 2] = [
+    let entries: [(&'static str, Profile); 4] = [
         ("PowerShell", Profile::PowerShell),
+        ("Command Prompt", Profile::Cmd),
         ("Ubuntu (WSL)", Profile::Wsl),
+        ("Git Bash", Profile::GitBash),
     ];
     let item_hover = theme.card_hover;
     let mut menu = div()
@@ -5122,7 +5125,9 @@ fn session_icon(title: &str, profile: Profile) -> &'static str {
 fn profile_title(profile: Profile) -> String {
     match profile {
         Profile::PowerShell => "PowerShell".to_string(),
+        Profile::Cmd => "Command Prompt".to_string(),
         Profile::Wsl => "Ubuntu".to_string(),
+        Profile::GitBash => "Git Bash".to_string(),
     }
 }
 

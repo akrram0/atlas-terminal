@@ -25,3 +25,7 @@ Desktop.ini
 # Debug
 *.pdb
 *.log
+
+# Design System documentation
+design-system/
+

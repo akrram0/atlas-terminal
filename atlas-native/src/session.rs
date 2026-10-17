@@ -58,9 +58,13 @@ impl EventListener for EventProxy {
 pub enum Profile {
     /// PowerShell 7 (`pwsh`), falling back to Windows PowerShell.
     PowerShell,
+    /// Command Prompt (`cmd.exe`).
+    Cmd,
     /// `wsl.exe` — the default distro's login shell via Windows Subsystem for
     /// Linux. The ConPTY path is identical; wsl.exe maps the Windows cwd.
     Wsl,
+    /// Git for Windows bash.
+    GitBash,
 }
 
 pub struct Session {
@@ -108,7 +112,9 @@ impl Session {
 
         let candidates: &[&str] = match profile {
             Profile::PowerShell => &["pwsh", "powershell.exe"],
+            Profile::Cmd => &["cmd.exe"],
             Profile::Wsl => &["wsl.exe"],
+            Profile::GitBash => &["bash.exe", "C:\\Program Files\\Git\\bin\\bash.exe"],
         };
         let mut child: Option<Box<dyn Child + Send + Sync>> = None;
         let mut shell_used = *candidates.last().unwrap_or(&"powershell.exe");
@@ -128,7 +134,12 @@ impl Session {
                         cmd.arg("[Console]::OutputEncoding=[System.Text.Encoding]::UTF8");
                     }
                 }
+                Profile::Cmd => {}
                 Profile::Wsl => {}
+                Profile::GitBash => {
+                    cmd.arg("--login");
+                    cmd.arg("-i");
+                }
             }
             // Terminal identity every CLI tool reads for colour, locale and
             // capability detection. Without these, native tools fall back to
