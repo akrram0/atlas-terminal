@@ -563,14 +563,12 @@ fn parse_github_release(
         }
     }
 
-    // If version is still non-semver (e.g. tag is "native-latest"), inspect release name
+    // If version is still non-semver (e.g. tag is "native-latest"), inspect release title
     if parse_version(&detected_version).is_none() {
-        if let Some(name) = &release.name {
-            for word in name.split_whitespace() {
-                if parse_version(word).is_some() {
-                    detected_version = word.to_string();
-                    break;
-                }
+        for word in title.split_whitespace() {
+            if parse_version(word).is_some() {
+                detected_version = word.to_string();
+                break;
             }
         }
     }

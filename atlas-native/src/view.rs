@@ -1192,14 +1192,8 @@ impl AtlasView {
             cx.notify();
         } else {
             // Paste from clipboard
-            if let Some(item) = window.read_from_clipboard() {
-                if let Some(text) = item.text() {
-                    if let Some(pane) = self.active_pane() {
-                        pane.session.borrow_mut().write(text.as_bytes());
-                        cx.notify();
-                    }
-                }
-            }
+            self.paste(cx);
+            cx.notify();
         }
     }
 
@@ -4440,7 +4434,7 @@ impl Element for TerminalElement {
         let test_run = TextRun {
             len: 10,
             font: self.font.clone(),
-            color: rgba(0xFFFFFFFF),
+            color: rgba(0xFFFFFFFF).into(),
             background_color: None,
             underline: None,
             strikethrough: None,
