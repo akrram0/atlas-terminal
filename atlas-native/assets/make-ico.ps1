@@ -5,7 +5,11 @@
 #   powershell -ExecutionPolicy Bypass -File assets/make-ico.ps1
 #
 param(
-  [string]$Source = (Join-Path $PSScriptRoot "..\..\app-icon.png"),
+  [string]$Source = $(
+    $pAssets = Join-Path $PSScriptRoot "..\..\assets\app-icon.png"
+    $pRoot   = Join-Path $PSScriptRoot "..\..\app-icon.png"
+    if (Test-Path $pAssets) { $pAssets } else { $pRoot }
+  ),
   [string]$Dest   = (Join-Path $PSScriptRoot "atlas.ico")
 )
 $ErrorActionPreference = "Stop"
@@ -84,4 +88,11 @@ $dir = Split-Path -Parent $Dest
 if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
 [System.IO.File]::WriteAllBytes($Dest, $msOut.ToArray())
 $bwOut.Dispose()
-"wrote $Dest ($([math]::Round((Get-Item $Dest).Length / 1KB)) KB, sizes $($sizes -join ','))"
+
+# Mirror to root assets/atlas.ico if it exists or if in default path
+$rootAssetsIco = Join-Path $PSScriptRoot "..\..\assets\atlas.ico"
+if (Test-Path (Split-Path -Parent $rootAssetsIco)) {
+    Copy-Item $Dest $rootAssetsIco -Force
+}
+
+"wrote $Dest and mirrored to assets/atlas.ico ($([math]::Round((Get-Item $Dest).Length / 1KB)) KB, sizes $($sizes -join ','))"
