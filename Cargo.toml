@@ -1,3 +1,10 @@
 [workspace]
 members = ["atlas-native"]
 resolver = "2"
+
+[profile.release]
+opt-level = 3
+codegen-units = 16
+lto = "thin"
+debug = false
+strip = true

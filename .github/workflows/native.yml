@@ -22,10 +22,17 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Generate Cargo.lock
+        shell: pwsh
+        working-directory: .
+        run: |
+          cargo generate-lockfile
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: atlas-native
+          workspaces: .
+          save-if: true
 
       - name: Locate fxc.exe (DirectX shader compiler for gpui release)
         shell: pwsh
@@ -66,7 +73,7 @@ jobs:
       - name: cargo build (release — final exe)
         shell: pwsh
         run: |
-          cargo build --release 2>&1 | Tee-Object -FilePath build-output.log
+          cargo build --release --bin atlas-terminal 2>&1 | Tee-Object -FilePath build-output.log
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             "## cargo build failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
@@ -101,30 +108,30 @@ jobs:
           }
           "## atlas-native compiled (release)" >> $env:GITHUB_STEP_SUMMARY
 
-          # Normalize exe locations so both workspace root and subcrate paths find them
-          $rootExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"
-          $subExe = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
-          if ((Test-Path $rootExe) -and -not (Test-Path $subExe)) {
-            New-Item -ItemType Directory -Force (Split-Path $subExe) | Out-Null
-            Copy-Item $rootExe $subExe -Force
-            Write-Output "Mirrored $rootExe -> $subExe"
-          } elseif ((Test-Path $subExe) -and -not (Test-Path $rootExe)) {
-            New-Item -ItemType Directory -Force (Split-Path $rootExe) | Out-Null
-            Copy-Item $subExe $rootExe -Force
-            Write-Output "Mirrored $subExe -> $rootExe"
+          # Locate built binary (workspace root target or subcrate target)
+          $builtTerm = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
+          if (-not (Test-Path $builtTerm)) {
+            $builtTerm = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-terminal.exe"
+          }
+          if (-not (Test-Path $builtTerm)) {
+            throw "Built binary not found at $builtTerm"
           }
 
-          $rootTerm = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
-          $subTerm = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-terminal.exe"
-          if ((Test-Path $rootTerm) -and -not (Test-Path $subTerm)) {
-            New-Item -ItemType Directory -Force (Split-Path $subTerm) | Out-Null
-            Copy-Item $rootTerm $subTerm -Force
-            Write-Output "Mirrored $rootTerm -> $subTerm"
-          } elseif ((Test-Path $subTerm) -and -not (Test-Path $rootTerm)) {
-            New-Item -ItemType Directory -Force (Split-Path $rootTerm) | Out-Null
-            Copy-Item $subTerm $rootTerm -Force
-            Write-Output "Mirrored $subTerm -> $rootTerm"
+          # Mirror to both filenames across root target and subcrate target for compatibility
+          $destPaths = @(
+            (Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"),
+            (Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"),
+            (Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-terminal.exe"),
+            (Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe")
+          )
+          foreach ($dst in $destPaths) {
+            $dir = Split-Path $dst
+            if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
+            if ($dst -ne $builtTerm) {
+              Copy-Item $builtTerm $dst -Force
+            }
           }
+          Write-Output "Mirrored single release binary to all target destinations"
 
       - name: Smoke test (launch release exe, wait for window)
         shell: pwsh
