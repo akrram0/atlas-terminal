@@ -536,15 +536,40 @@ fn parse_github_release(
     let mut detected_version = raw_tag.clone();
 
     if let Some(assets) = release.assets {
-        for asset in assets {
-            if let Some(name) = asset.name {
-                if name.ends_with(".exe") {
-                    installer_url = asset.browser_download_url;
+        // First pass: specifically look for the Inno Setup installer
+        for asset in &assets {
+            if let Some(name) = &asset.name {
+                if name.starts_with("AtlasTerminal-Setup-") && name.ends_with(".exe") {
+                    installer_url = asset.browser_download_url.clone();
                     if let Some(stripped) = name.strip_prefix("AtlasTerminal-Setup-") {
                         if let Some(v) = stripped.strip_suffix(".exe") {
                             detected_version = v.to_string();
                         }
                     }
+                    break;
+                }
+            }
+        }
+        // Second pass fallback: any .exe if setup exe not found
+        if installer_url.is_none() {
+            for asset in &assets {
+                if let Some(name) = &asset.name {
+                    if name.ends_with(".exe") {
+                        installer_url = asset.browser_download_url.clone();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // If version is still non-semver (e.g. tag is "native-latest"), inspect release name
+    if parse_version(&detected_version).is_none() {
+        if let Some(name) = &release.name {
+            for word in name.split_whitespace() {
+                if parse_version(word).is_some() {
+                    detected_version = word.to_string();
+                    break;
                 }
             }
         }

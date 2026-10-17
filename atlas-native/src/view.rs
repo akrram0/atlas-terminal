@@ -17,6 +17,8 @@ use std::time::Duration;
 
 use alacritty_terminal::event::Event;
 use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Line, Point, Side};
+use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::CursorShape;
@@ -24,9 +26,9 @@ use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Context, Corners, Element,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, GlobalElementId, InspectorElementId,
-    IntoElement, KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, Pixels, Render,
-    Rgba, ScrollWheelEvent, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas,
-    div, fill, point, px, relative, rgb, rgba,
+    IntoElement, KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    Pixels, Render, Rgba, ScrollWheelEvent, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle,
+    Window, canvas, div, fill, point, px, relative, rgb, rgba,
 };
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +60,11 @@ pub const ACTION_PASTE: &str = "paste";
 pub const ACTION_OPEN_SETTINGS: &str = "open_settings";
 pub const ACTION_ZOOM_IN: &str = "zoom_in";
 pub const ACTION_ZOOM_OUT: &str = "zoom_out";
+pub const ACTION_PALETTE: &str = "palette";
+pub const ACTION_FULLSCREEN: &str = "fullscreen";
+pub const ACTION_CLEAR_SCROLLBACK: &str = "clear_scrollback";
+pub const ACTION_FOCUS_NEXT_PANE: &str = "focus_next_pane";
+pub const ACTION_FOCUS_PREV_PANE: &str = "focus_prev_pane";
 
 pub fn action_display_name(action: &str) -> &'static str {
     match action {
@@ -72,6 +79,11 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_OPEN_SETTINGS => "Open Settings",
         ACTION_ZOOM_IN => "Zoom In (Font Size)",
         ACTION_ZOOM_OUT => "Zoom Out (Font Size)",
+        ACTION_PALETTE => "Command Palette",
+        ACTION_FULLSCREEN => "Toggle Fullscreen / Maximize",
+        ACTION_CLEAR_SCROLLBACK => "Clear Scrollback Buffer",
+        ACTION_FOCUS_NEXT_PANE => "Focus Next Split Pane",
+        ACTION_FOCUS_PREV_PANE => "Focus Previous Split Pane",
         _ => "Custom Action",
     }
 }
@@ -89,6 +101,11 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_OPEN_SETTINGS.to_string(), "ctrl+,".to_string());
     m.insert(ACTION_ZOOM_IN.to_string(), "ctrl+=".to_string());
     m.insert(ACTION_ZOOM_OUT.to_string(), "ctrl+-".to_string());
+    m.insert(ACTION_PALETTE.to_string(), "ctrl+shift+p".to_string());
+    m.insert(ACTION_FULLSCREEN.to_string(), "f11".to_string());
+    m.insert(ACTION_CLEAR_SCROLLBACK.to_string(), "ctrl+shift+k".to_string());
+    m.insert(ACTION_FOCUS_NEXT_PANE.to_string(), "alt+right".to_string());
+    m.insert(ACTION_FOCUS_PREV_PANE.to_string(), "alt+left".to_string());
     m
 }
 
@@ -244,7 +261,7 @@ fn default_confirm_close() -> bool {
     true
 }
 fn default_copy_on_select() -> bool {
-    false
+    true
 }
 fn default_startup_mode() -> String {
     "restore_session".to_string()
@@ -1142,6 +1159,50 @@ impl AtlasView {
         }
     }
 
+    pub fn point_from_mouse(&self, mouse_pos: gpui::Point<Pixels>, pane_ix: usize) -> Option<Point> {
+        let tab = self.tabs.get(self.active)?;
+        let pane = tab.panes.get(pane_ix)?;
+        let session = pane.session.borrow();
+        let (left, top, cell_width, cell_height) = session.grid_bounds?;
+        let mx = f32::from(mouse_pos.x);
+        let my = f32::from(mouse_pos.y);
+        if mx < left || my < top {
+            return None;
+        }
+        let col = ((mx - left) / cell_width).floor().max(0.0) as usize;
+        let screen_row = ((my - top) / cell_height).floor().max(0.0) as i32;
+        let offset = session.term.renderable_content().display_offset as i32;
+        let line = Line(screen_row - offset);
+        Some(Point::new(line, Column(col)))
+    }
+
+    pub fn handle_terminal_right_click(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let copy_text = if let Some(pane) = self.active_pane() {
+            let session = pane.session.borrow();
+            session.term.selection_to_string()
+        } else {
+            None
+        };
+
+        if let Some(text) = copy_text.filter(|t| !t.is_empty()) {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            if let Some(pane) = self.active_pane() {
+                pane.session.borrow_mut().term.selection = None;
+            }
+            cx.notify();
+        } else {
+            // Paste from clipboard
+            if let Some(item) = window.read_from_clipboard() {
+                if let Some(text) = item.text() {
+                    if let Some(pane) = self.active_pane() {
+                        pane.session.borrow_mut().write(text.as_bytes());
+                        cx.notify();
+                    }
+                }
+            }
+        }
+    }
+
     pub fn set_font_family(&mut self, family: &str, cx: &mut Context<Self>) {
         self.font_family = family.to_string();
         let mut font = gpui::font(SharedString::from(self.font_family.clone()));
@@ -1204,21 +1265,6 @@ impl AtlasView {
             if last.elapsed() < Duration::from_secs(10) {
                 self.manual_status_message =
                     Some("Please wait a few seconds before checking again.".to_string());
-                cx.notify();
-                return;
-            }
-        }
-
-        let now_epoch = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        if let Some(reset) = self.rate_limit_reset {
-            if now_epoch < reset {
-                let time_str = updater::format_epoch_time(reset);
-                self.manual_status_message =
-                    Some(format!("Rate limited, try again at {time_str}"));
                 cx.notify();
                 return;
             }
@@ -1930,6 +1976,8 @@ impl AtlasView {
             .w(px(220.0))
             .flex_shrink_0()
             .h(relative(1.0))
+            .min_h(px(0.0))
+            .overflow_hidden()
             .flex()
             .flex_col()
             .border_r_1()
@@ -2007,17 +2055,23 @@ impl AtlasView {
         sidebar = sidebar.child(
             div()
                 .id(ElementId::named_usize("settings-back-btn", 0))
-                .h(px(32.0))
+                .flex_shrink_0()
+                .h(px(34.0))
                 .px(px(10.0))
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(8.0))
                 .rounded(px(6.0))
-                .text_color(theme.faint_fg)
+                .text_color(theme.chrome_fg)
                 .hover(move |s| s.bg(back_hover).text_color(theme.chrome_fg_active))
-                .child(icons::icon(icons::CHEVRON_LEFT).size(px(13.0)))
-                .child(div().text_size(px(12.5)).child("Back to Terminal"))
+                .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child("Back to Terminal"),
+                )
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = false;
                     window.focus(&view.focus);
@@ -2347,10 +2401,15 @@ impl AtlasView {
             ACTION_CLOSE_TAB,
             ACTION_SPLIT_HORIZONTAL,
             ACTION_SPLIT_VERTICAL,
+            ACTION_FOCUS_NEXT_PANE,
+            ACTION_FOCUS_PREV_PANE,
             ACTION_NEXT_TAB,
             ACTION_PREV_TAB,
             ACTION_COPY,
             ACTION_PASTE,
+            ACTION_PALETTE,
+            ACTION_FULLSCREEN,
+            ACTION_CLEAR_SCROLLBACK,
             ACTION_OPEN_SETTINGS,
             ACTION_ZOOM_IN,
             ACTION_ZOOM_OUT,
@@ -2904,16 +2963,62 @@ impl AtlasView {
             SettingsTab::General => general_view.into_any_element(),
         };
 
+        let content_header = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .mb(px(18.0))
+            .child(
+                div()
+                    .text_size(px(18.0))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(theme.chrome_fg_active)
+                    .child(match self.settings_tab {
+                        SettingsTab::Appearance => "Appearance",
+                        SettingsTab::Shortcuts => "Keyboard Shortcuts",
+                        SettingsTab::General => "General",
+                    }),
+            )
+            .child(
+                div()
+                    .id(ElementId::named_usize("settings-top-back-btn", 0))
+                    .h(px(28.0))
+                    .px(px(10.0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .rounded(px(6.0))
+                    .bg(Rgba { a: 0.08, ..theme.chrome_fg })
+                    .hover(move |s| s.bg(theme.card_hover))
+                    .text_color(theme.chrome_fg)
+                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(13.0)))
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child("Back to Terminal (Esc)"),
+                    )
+                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                        view.settings_open = false;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    })),
+            );
+
         let right_pane = div()
             .id(ElementId::named_usize("settings-content-scroll", 0))
             .flex_1()
             .h(relative(1.0))
+            .min_h(px(0.0))
             .overflow_y_scroll()
             .p(px(24.0))
             .child(
                 div()
                     .w(relative(1.0))
                     .max_w(px(720.0))
+                    .child(content_header)
                     .child(content_body),
             );
 
@@ -2924,6 +3029,8 @@ impl AtlasView {
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
+            .min_h(px(0.0))
+            .overflow_hidden()
             .track_focus(&self.settings_focus)
             .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                 if let Some(ref action) = view.recording_shortcut.clone() {
@@ -3037,6 +3144,42 @@ impl AtlasView {
                     cx.notify();
                     return;
                 }
+                if chord == self.get_shortcut(ACTION_FOCUS_NEXT_PANE) {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                if chord == self.get_shortcut(ACTION_FOCUS_PREV_PANE) {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.active_pane = if tab.active_pane == 0 {
+                                tab.panes.len() - 1
+                            } else {
+                                tab.active_pane - 1
+                            };
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                if chord == self.get_shortcut(ACTION_PALETTE) {
+                    self.open_palette(window, cx);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_FULLSCREEN) {
+                    crate::rounded_corners::window_button(1);
+                    cx.notify();
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_CLEAR_SCROLLBACK) {
+                    self.write_to_shell(b"\x1b[3J\x1b[H\x1b[2J");
+                    cx.notify();
+                    return;
+                }
                 if chord == self.get_shortcut(ACTION_COPY) {
                     self.copy_selection(cx);
                     return;
@@ -3055,6 +3198,80 @@ impl AtlasView {
                 if chord == self.get_shortcut(ACTION_ZOOM_OUT) {
                     self.font_size = (self.font_size - 1.0).max(10.0);
                     self.sync_and_save_settings();
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+
+        // Mouseless shortcut: Ctrl+1 through Ctrl+9 to switch tabs directly
+        if modifiers.control && !modifiers.shift && !modifiers.alt {
+            if let Ok(num) = key.parse::<usize>() {
+                if (1..=9).contains(&num) {
+                    let target = num - 1;
+                    if target < self.tabs.len() {
+                        self.active = target;
+                        self.settings_open = false;
+                        self.focus_main(window);
+                        cx.notify();
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Mouseless shortcut: Alt+Arrows to cycle focus between split panes
+        if modifiers.alt && !modifiers.control && !modifiers.shift {
+            match key {
+                "arrowright" | "arrowdown" => {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                "arrowleft" | "arrowup" => {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.active_pane = if tab.active_pane == 0 {
+                                tab.panes.len() - 1
+                            } else {
+                                tab.active_pane - 1
+                            };
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Standard terminal behavior: Ctrl+C copies if there is an active text selection,
+        // otherwise sends \x03 (SIGINT) to running process.
+        if modifiers.control && !modifiers.shift && !modifiers.alt && key == "c" {
+            let has_selection = self.active_pane().map(|p| {
+                let s = p.session.borrow();
+                s.term.selection.is_some()
+                    && s.term.selection_to_string().map(|t| !t.is_empty()).unwrap_or(false)
+            }).unwrap_or(false);
+            if has_selection {
+                self.copy_selection(cx);
+                if let Some(p) = self.active_pane() {
+                    p.session.borrow_mut().term.selection = None;
+                }
+                cx.notify();
+                return;
+            }
+        }
+
+        // Escape: deselect text if active
+        if key == "escape" && !modifiers.control && !modifiers.alt && !modifiers.shift {
+            if let Some(pane) = self.active_pane() {
+                if pane.session.borrow().term.selection.is_some() {
+                    pane.session.borrow_mut().term.selection = None;
                     cx.notify();
                     return;
                 }
@@ -3234,7 +3451,7 @@ impl Render for AtlasView {
                 .child(
                     div()
                         .text_color(pill_icon)
-                        .child(icons::icon(icon).size(px(12.0)).text_color(pill_icon)),
+                        .child(icons::icon(icon).size(px(14.0)).text_color(pill_icon)),
                 )
                 .child(
                     div()
@@ -3274,15 +3491,15 @@ impl Render for AtlasView {
                 pill = pill.child(
                     div()
                         .id(ElementId::named_usize("tab-close", ix))
-                        .w(px(14.0))
-                        .h(px(14.0))
+                        .w(px(16.0))
+                        .h(px(16.0))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(3.0))
+                        .rounded(px(4.0))
                         .text_color(tb.faint_fg)
                         .hover(move |style| style.text_color(close_hot).bg(tb.card_hover))
-                        .child(icons::icon(icons::CLOSE).size(px(9.0)).text_color(tb.faint_fg))
+                        .child(icons::icon(icons::CLOSE).size(px(10.5)).text_color(tb.faint_fg))
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                             view.close_tab(ix, cx);
                             window.focus(&view.focus);
@@ -3306,17 +3523,17 @@ impl Render for AtlasView {
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("topbar-new", 0))
-                .w(px(24.0))
-                .h(px(24.0))
+                .w(px(26.0))
+                .h(px(26.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.0))
+                .rounded(px(6.0))
                 .hover(move |style| style.bg(plus_hover))
                 .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
                     set_hover_mark(view, HOVER_MARK_NEW_TAB, *hovered, cx);
                 }))
-                .child(icons::icon(icons::PLUS).size(px(12.0)).text_color(plus_ink))
+                .child(icons::icon(icons::PLUS).size(px(14.0)).text_color(plus_ink))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.new_tab(Profile::PowerShell, cx);
                     window.focus(&view.focus);
@@ -3341,22 +3558,22 @@ impl Render for AtlasView {
             bar = bar.child(
                 div()
                     .id(ElementId::named_usize("topbar-update-badge", 0))
-                    .h(px(22.0))
-                    .px(px(8.0))
+                    .h(px(24.0))
+                    .px(px(9.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(5.0))
-                    .rounded(px(5.0))
+                    .gap(px(6.0))
+                    .rounded(px(6.0))
                     .bg(badge_bg)
                     .border_1()
                     .border_color(badge_border)
                     .text_color(badge_ink)
                     .hover(move |s| s.opacity(0.85))
-                    .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(badge_ink))
+                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(badge_ink))
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(11.5))
                             .font_weight(FontWeight::MEDIUM)
                             .child(format!("v{ver}")),
                     )
@@ -3367,28 +3584,28 @@ impl Render for AtlasView {
         } else if self.is_checking_updates {
             bar = bar.child(
                 div()
-                    .h(px(22.0))
-                    .px(px(6.0))
+                    .h(px(26.0))
+                    .px(px(8.0))
                     .flex()
                     .items_center()
-                    .gap(px(4.0))
-                    .rounded(px(5.0))
+                    .gap(px(5.0))
+                    .rounded(px(6.0))
                     .text_color(tb.faint_fg)
-                    .child(icons::icon(icons::REFRESH).size(px(11.0)).text_color(tb.faint_fg))
-                    .child(div().text_size(px(11.0)).child("Checking…")),
+                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb.faint_fg))
+                    .child(div().text_size(px(11.5)).child("Checking…")),
             );
         } else {
             bar = bar.child(
                 div()
                     .id(ElementId::named_usize("topbar-update-btn", 0))
-                    .w(px(24.0))
-                    .h(px(24.0))
+                    .w(px(28.0))
+                    .h(px(28.0))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(5.0))
+                    .rounded(px(6.0))
                     .hover(move |s| s.bg(top_btn_hover))
-                    .child(icons::icon(icons::REFRESH).size(px(12.0)).text_color(tb.chrome_fg))
+                    .child(icons::icon(icons::REFRESH).size(px(15.0)).text_color(tb.chrome_fg))
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                         view.toggle_update_panel(cx);
                     })),
@@ -3397,51 +3614,15 @@ impl Render for AtlasView {
 
         bar = bar.child(
             div()
-                .id(ElementId::named_usize("topbar-split-horiz", 0))
-                .w(px(24.0))
-                .h(px(24.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(5.0))
-                .hover(move |s| s.bg(top_btn_hover))
-                .child(icons::icon(icons::SPLIT_ROWS).size(px(12.0)).text_color(tb.chrome_fg))
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.settings_open = false;
-                    view.split_active(SplitAxis::Rows, cx);
-                    view.focus_main(window);
-                })),
-        );
-
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("topbar-split-vert", 0))
-                .w(px(24.0))
-                .h(px(24.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(5.0))
-                .hover(move |s| s.bg(top_btn_hover))
-                .child(icons::icon(icons::SPLIT_COLUMNS).size(px(12.0)).text_color(tb.chrome_fg))
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.settings_open = false;
-                    view.split_active(SplitAxis::Columns, cx);
-                    view.focus_main(window);
-                })),
-        );
-
-        bar = bar.child(
-            div()
                 .id(ElementId::named_usize("topbar-settings-btn", 0))
-                .w(px(24.0))
-                .h(px(24.0))
+                .w(px(28.0))
+                .h(px(28.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.0))
+                .rounded(px(6.0))
                 .hover(move |s| s.bg(top_btn_hover))
-                .child(icons::icon(icons::SETTINGS).size(px(12.0)).text_color(tb.chrome_fg))
+                .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(tb.chrome_fg))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = !view.settings_open;
                     if view.settings_open {
@@ -3607,6 +3788,11 @@ impl Render for AtlasView {
                     theme.panel_bg
                 };
 
+                let pane_down = pane_ix;
+                let pane_move = pane_ix;
+                let pane_up = pane_ix;
+                let pane_rc = pane_ix;
+
                 let mut cell = div()
                     .id(ElementId::named_usize("pane-cell", pane_ix))
                     .flex()
@@ -3619,14 +3805,68 @@ impl Render for AtlasView {
                     .py(px(10.0))
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(move |view, _: &MouseDownEvent, window, cx| {
+                        cx.listener(move |view, event: &MouseDownEvent, window, cx| {
                             if let Some(tab) = view.tabs.get_mut(view.active) {
-                                if tab.active_pane != pane_ix {
-                                    tab.active_pane = pane_ix;
+                                if tab.active_pane != pane_down {
+                                    tab.active_pane = pane_down;
                                     cx.notify();
                                 }
                             }
                             window.focus(&view.focus);
+                            if let Some(pt) = view.point_from_mouse(event.position, pane_down) {
+                                if let Some(tab) = view.tabs.get_mut(view.active) {
+                                    if let Some(p) = tab.panes.get_mut(pane_down) {
+                                        p.session.borrow_mut().term.selection =
+                                            Some(Selection::new(SelectionType::Simple, pt, Side::Left));
+                                        cx.notify();
+                                    }
+                                }
+                            }
+                        }),
+                    )
+                    .on_mouse_move(cx.listener(move |view, event: &MouseMoveEvent, _window, cx| {
+                        if event.dragging() {
+                            if let Some(pt) = view.point_from_mouse(event.position, pane_move) {
+                                if let Some(tab) = view.tabs.get_mut(view.active) {
+                                    if let Some(p) = tab.panes.get_mut(pane_move) {
+                                        let mut sess = p.session.borrow_mut();
+                                        if let Some(ref mut sel) = sess.term.selection {
+                                            sel.update(pt, Side::Right);
+                                            cx.notify();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }))
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |view, _event: &MouseUpEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(p) = tab.panes.get(pane_up) {
+                                    let selected_text = {
+                                        let sess = p.session.borrow();
+                                        sess.term.selection_to_string()
+                                    };
+                                    if let Some(text) = selected_text {
+                                        if !text.is_empty() && view.app_settings.copy_on_select {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                        }
+                                    }
+                                }
+                            }
+                            window.focus(&view.focus);
+                            cx.notify();
+                        }),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |view, _event: &MouseDownEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                tab.active_pane = pane_rc;
+                            }
+                            window.focus(&view.focus);
+                            view.handle_terminal_right_click(window, cx);
                         }),
                     );
                 if !zoomed {
@@ -4197,14 +4437,26 @@ impl Element for TerminalElement {
         let text_system = window.text_system().clone();
         let font_id = text_system.resolve_font(&self.font);
         let font_size = px(self.font_size);
-        // Integer cell metrics: block/box quads and merged background strips
-        // must land on whole pixels or hairline seams appear between cells.
-        let cell_width = (text_system
-            .em_advance(font_id, font_size)
-            .map(f32::from)
-            .unwrap_or(7.8)
-            .max(1.0))
-        .round();
+        let test_run = TextRun {
+            len: 10,
+            font: self.font.clone(),
+            color: rgba(0xFFFFFFFF),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let test_line = text_system.shape_line("0123456789".into(), font_size, &[test_run], None);
+        let measured_advance = f32::from(test_line.width) / 10.0;
+        let cell_width = if measured_advance > 2.0 {
+            measured_advance.round()
+        } else {
+            (text_system
+                .em_advance(font_id, font_size)
+                .map(f32::from)
+                .unwrap_or(7.8)
+                .max(1.0))
+            .round()
+        };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
 
         let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;
@@ -4233,12 +4485,26 @@ impl Element for TerminalElement {
         let text_system = window.text_system().clone();
         let font_size = px(self.font_size);
         let font_id = text_system.resolve_font(&self.font);
-        let cell_width = (text_system
-            .em_advance(font_id, font_size)
-            .map(f32::from)
-            .unwrap_or(7.8)
-            .max(1.0))
-        .round();
+        let test_run = TextRun {
+            len: 10,
+            font: self.font.clone(),
+            color: default_bg.into(),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        let test_line = text_system.shape_line("0123456789".into(), font_size, &[test_run], None);
+        let measured_advance = f32::from(test_line.width) / 10.0;
+        let cell_width = if measured_advance > 2.0 {
+            measured_advance.round()
+        } else {
+            (text_system
+                .em_advance(font_id, font_size)
+                .map(f32::from)
+                .unwrap_or(7.8)
+                .max(1.0))
+            .round()
+        };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
         let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;
 
@@ -4246,6 +4512,9 @@ impl Element for TerminalElement {
         // keep every quad boundary crisp.
         let left = f32::from(bounds.left()).round();
         let top = f32::from(bounds.top()).round();
+
+        // Store active grid dimensions for mouse selection hit testing
+        self.session.borrow_mut().grid_bounds = Some((left, top, cell_width, cell_height));
 
         // Snapshot the grid into paint-ready rows (no borrows outlive this block).
         let (rows, cursor_cell, cursor_shape) = {

@@ -184,7 +184,7 @@ jobs:
         run: |
           # 1. Determine version from atlas-native/Cargo.toml
           $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
-          $version = "0.1.0"
+          $version = "0.1.1"
           if (Test-Path $cargoFile) {
             $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
             if ($match) {
@@ -292,10 +292,19 @@ jobs:
           } else {
             "$env:GITHUB_WORKSPACE\atlas-native\target\release\atlas-native.exe"
           }
+          $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
+          $version = "0.1.1"
+          if (Test-Path $cargoFile) {
+            $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
+            if ($match) {
+              $version = $match.Matches[0].Groups[1].Value
+            }
+          }
           gh release view native-latest *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create native-latest --title "atlas-native (rolling POC build)" --notes "Rolling Windows build of the native POC (GPUI + alacritty_terminal). The exe is replaced on every push to main."
+            gh release create native-latest --title "Atlas Terminal v$version" --notes "Rolling Windows build of Atlas Terminal (GPUI + alacritty_terminal). The installer and exe are updated on every push to main."
           }
           $files = @($releaseExe)
           Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $files += $_.FullName }
           gh release upload native-latest $files --clobber
+          gh release edit native-latest --title "Atlas Terminal v$version" --latest

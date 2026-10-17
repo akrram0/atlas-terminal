@@ -83,6 +83,8 @@ pub struct Session {
     /// PID of the shell process; lets the UI poll its working directory
     /// (see `crate::cwd`).
     pub pid: Option<u32>,
+    /// Last painted grid layout: (left, top, cell_width, cell_height).
+    pub grid_bounds: Option<(f32, f32, f32, f32)>,
     writer: Option<Box<dyn Write + Send>>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
@@ -215,6 +217,7 @@ impl Session {
                 pty_rows: rows,
                 shell: shell_used.to_string(),
                 pid,
+                grid_bounds: None,
                 writer: Some(writer),
                 master,
                 child,

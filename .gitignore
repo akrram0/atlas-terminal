@@ -31,3 +31,4 @@ design-system/
 
 
 scripts/ci_check.ps1
+scripts/get_releases.ps1
