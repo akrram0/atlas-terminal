@@ -25,7 +25,7 @@ use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Context, Corners, Element,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, GlobalElementId, InspectorElementId,
     IntoElement, KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, Pixels, Render,
-    Rgba, ScrollWheelEvent, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas,
+    Rgba, ScrollWheelEvent, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas,
     div, fill, point, px, relative, rgb, rgba,
 };
 use serde::{Deserialize, Serialize};
