@@ -78,6 +78,19 @@ jobs:
           }
           "## atlas-native compiled (release)" >> $env:GITHUB_STEP_SUMMARY
 
+          # Normalize exe location so both workspace root and subcrate paths find it
+          $rootExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"
+          $subExe = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
+          if ((Test-Path $rootExe) -and -not (Test-Path $subExe)) {
+            New-Item -ItemType Directory -Force (Split-Path $subExe) | Out-Null
+            Copy-Item $rootExe $subExe -Force
+            Write-Output "Mirrored $rootExe -> $subExe"
+          } elseif ((Test-Path $subExe) -and -not (Test-Path $rootExe)) {
+            New-Item -ItemType Directory -Force (Split-Path $rootExe) | Out-Null
+            Copy-Item $subExe $rootExe -Force
+            Write-Output "Mirrored $subExe -> $rootExe"
+          }
+
       - name: Smoke test (launch release exe, wait for window)
         shell: pwsh
         # Informational: the runner has no real GPU. Never blocks the artifact.
@@ -85,7 +98,9 @@ jobs:
         # or died (PANIC in the log). Results are mirrored as public annotations.
         continue-on-error: true
         run: |
-          $exe = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
+          $candidate1 = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"
+          $candidate2 = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
+          $exe = if (Test-Path $candidate1) { $candidate1 } else { $candidate2 }
           $log = Join-Path $env:TEMP "atlas-native-debug.log"
           Remove-Item $log -ErrorAction SilentlyContinue
           $proc = Start-Process -FilePath $exe -PassThru
@@ -140,7 +155,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: atlas-native-poc
-          path: atlas-native/target/release/atlas-native.exe
+          path: |
+            target/release/atlas-native.exe
+            atlas-native/target/release/atlas-native.exe
           if-no-files-found: error
 
       - name: Publish rolling release (direct exe download, no login)
@@ -152,8 +169,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $releaseExe = if (Test-Path "$env:GITHUB_WORKSPACE\target\release\atlas-native.exe") {
+            "$env:GITHUB_WORKSPACE\target\release\atlas-native.exe"
+          } else {
+            "$env:GITHUB_WORKSPACE\atlas-native\target\release\atlas-native.exe"
+          }
           gh release view native-latest *> $null
           if ($LASTEXITCODE -ne 0) {
             gh release create native-latest --title "atlas-native (rolling POC build)" --notes "Rolling Windows build of the native POC (GPUI + alacritty_terminal). The exe is replaced on every push to main."
           }
-          gh release upload native-latest "target\release\atlas-native.exe" --clobber
+          gh release upload native-latest $releaseExe --clobber
