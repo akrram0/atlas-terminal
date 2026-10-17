@@ -441,7 +441,7 @@ impl AtlasView {
         let blur_enabled = app_settings.blur_enabled;
         let cursor_blink = app_settings.cursor_blink;
 
-        let mut font = gpui::font(&font_family);
+        let mut font = gpui::font(SharedString::from(font_family.clone()));
         font.fallbacks = Some(FontFallbacks::from_fonts(vec![
             "Segoe UI Emoji".to_string(),
             "Segoe UI Symbol".to_string(),
@@ -482,9 +482,9 @@ impl AtlasView {
                 auto_check_updates: app_settings.auto_check_updates,
                 update_check_interval_mins: app_settings.update_check_interval_mins,
                 last_check_time: app_settings.last_check_time,
-                etag: app_settings.etag,
-                last_seen_version: app_settings.last_seen_version,
-                skipped_version: app_settings.skipped_version,
+                etag: app_settings.etag.clone(),
+                last_seen_version: app_settings.last_seen_version.clone(),
+                skipped_version: app_settings.skipped_version.clone(),
             },
             is_checking_updates: false,
             manual_status_message: None,
@@ -1144,7 +1144,7 @@ impl AtlasView {
 
     pub fn set_font_family(&mut self, family: &str, cx: &mut Context<Self>) {
         self.font_family = family.to_string();
-        let mut font = gpui::font(family);
+        let mut font = gpui::font(SharedString::from(self.font_family.clone()));
         font.fallbacks = Some(FontFallbacks::from_fonts(vec![
             "Segoe UI Emoji".to_string(),
             "Segoe UI Symbol".to_string(),
@@ -1967,7 +1967,7 @@ impl AtlasView {
                     ..theme.chrome_fg_active
                 }
             } else {
-                gpui::transparent_black()
+                rgba(0x00000000)
             };
             let hover_bg = theme.card_hover;
             sidebar = sidebar.child(
@@ -3109,7 +3109,7 @@ impl AtlasView {
 }
 
 impl Render for AtlasView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_active = crate::rounded_corners::is_active();
         if is_active && !self.window_was_active {
             self.maybe_auto_check(true, cx);
