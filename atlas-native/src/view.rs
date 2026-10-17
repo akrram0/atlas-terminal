@@ -1679,13 +1679,6 @@ impl Render for AtlasView {
                         })),
                 );
             }
-            if active {
-                pill = pill.with_animation(
-                    ElementId::named_usize("tab-active-pill", tab.id as usize),
-                    Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
-                    |el, delta| el.opacity(0.70 + 0.30 * delta),
-                );
-            }
             bar = bar.child(pill.with_animation(
                 ElementId::named_usize("tab-pill-in", tab.id as usize),
                 Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
