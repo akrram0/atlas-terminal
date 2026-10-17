@@ -1757,7 +1757,7 @@ impl Render for AtlasView {
             bar = bar.child(
                 div()
                     .id(ElementId::named_usize("window-control", index))
-                    .w(px(44.0))
+                    .w(px(46.0))
                     .h(relative(1.0))
                     .flex()
                     .items_center()
@@ -1768,7 +1768,7 @@ impl Render for AtlasView {
                     }))
                     .child(
                         icons::icon(icon_path)
-                            .size(px(12.5))
+                            .size(px(15.0))
                             .text_color(ink),
                     )
                     .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
@@ -2011,7 +2011,7 @@ impl Render for AtlasView {
             .bg(sheet_bg)
             .border_b_1()
             .border_color(theme.hairline)
-            .rounded_t(if zoomed { px(0.0) } else { px(10.0) })
+            .rounded_t(px(10.0))
             .text_color(header_theme.chrome_fg)
             .child(
                 div()
@@ -2095,14 +2095,23 @@ impl Render for AtlasView {
             .flex_col()
             .flex_1()
             .w(relative(1.0))
-            .mx(if zoomed { px(0.0) } else { px(8.0) })
-            .mb(if zoomed { px(0.0) } else { px(8.0) })
-            .rounded(if zoomed { px(0.0) } else { px(10.0) })
+            .h(relative(1.0))
+            .rounded(px(10.0))
             .border_1()
-            .border_color(if zoomed { rgba(0x00000000) } else { theme.sheet_border })
+            .border_color(theme.sheet_border)
             .bg(sheet_bg)
+            .overflow_hidden()
             .child(head)
             .child(body);
+
+        let sheet_wrapper = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .w(relative(1.0))
+            .px(px(8.0))
+            .pb(px(8.0))
+            .child(sheet);
 
         let mut root = div()
             .relative()
@@ -2122,7 +2131,7 @@ impl Render for AtlasView {
 
         root = root
             .child(bar)
-            .child(sheet);
+            .child(sheet_wrapper);
         // Overlays paint last: each is a dim click-catcher plus its panel, in
         // stacking order (profile menu, palette, rename dialog). The
         // `*_closing` flags drive fade-outs; dismissal tasks unmount them.
