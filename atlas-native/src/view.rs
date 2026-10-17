@@ -322,6 +322,8 @@ pub struct AtlasView {
     next_epoch: u64,
     focus: FocusHandle,
     theme: Theme,
+    /// Smooth crossfade interpolation (from_theme, to_theme, progress 0.0..1.0).
+    theme_transition: Option<(Theme, Theme, f32)>,
     /// Terminal font for the cell grid.
     font: Font,
     /// Active preset index into `registry` (settings pills + Ctrl+Shift+T).
@@ -336,6 +338,8 @@ pub struct AtlasView {
     palette_open: bool,
     palette_query: String,
     palette_index: usize,
+    /// Smoothly gliding floating pill index in the command palette.
+    palette_anim_index: f32,
     /// Rename-tab dialog (palette).
     rename_open: bool,
     rename_value: String,
@@ -362,6 +366,9 @@ pub struct AtlasView {
     scroll_anim: Option<(Rc<RefCell<Session>>, f32, f32)>,
     /// One easing task per wheel gesture burst; stops when the anim settles.
     scroll_task: bool,
+    /// Floating auto-hiding scrollbar opacity and activity timer.
+    scrollbar_opacity: f32,
+    last_scroll_time: std::time::Instant,
     /// Tab pill currently under the pointer: its hover-only close mark.
     hover_tab: Option<usize>,
     /// Geometric chrome mark under the pointer (new-tab plus, pane actions).
@@ -402,6 +409,9 @@ struct Tab {
     axis: SplitAxis,
     /// While true only the active pane is shown (header maximize action).
     maximized: bool,
+    /// Smooth width collapse on close.
+    closing: bool,
+    close_progress: f32,
 }
 
 /// How a tab's panes tile the sheet.
@@ -434,6 +444,8 @@ struct Pane {
     cursor_target: (f32, f32),
     /// Smooth split expansion progress (0.0 .. 1.0).
     pane_expansion: f32,
+    /// Smooth pane collapse on close.
+    closing: bool,
 }
 
 impl AtlasView {
@@ -472,6 +484,7 @@ impl AtlasView {
             next_epoch: 1,
             focus,
             theme: registry.preset(theme_id).theme.clone(),
+            theme_transition: None,
             font,
             theme_id,
             registry,
@@ -480,6 +493,7 @@ impl AtlasView {
             palette_open: false,
             palette_query: String::new(),
             palette_index: 0,
+            palette_anim_index: 0.0,
             rename_open: false,
             rename_value: String::new(),
             font_size,
@@ -494,6 +508,8 @@ impl AtlasView {
             profile_closing: false,
             scroll_anim: None,
             scroll_task: false,
+            scrollbar_opacity: 0.0,
+            last_scroll_time: std::time::Instant::now(),
             hover_tab: None,
             hover_mark: None,
             updater_settings: UpdaterSettings {
@@ -530,7 +546,8 @@ impl AtlasView {
         view.new_tab_with_cwd(default_shell_prof, initial_dir, cx);
 
         // Motion & breathing ticker: drives continuous kinetic cursor gliding,
-        // organic sinusoidal breathing, and smooth split-pane expansions.
+        // organic sinusoidal breathing, theme crossfading, palette gliding,
+        // auto-hiding scrollbar transitions, and smooth tab/pane collapses.
         let motion_ticker = cx.spawn(async move |this, cx| {
             let mut last_tick = std::time::Instant::now();
             loop {
@@ -555,9 +572,67 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
-                    // 2. Spatial cursor gliding and split pane expansion
+                    // 2. Theme crossfade interpolation (zero-flash smooth transition)
+                    if let Some((from, to, ref mut t)) = view.theme_transition {
+                        *t = (*t + dt * 6.5).min(1.0);
+                        view.theme = Theme::interpolate(&from, &to, *t);
+                        needs_paint = true;
+                        if *t >= 1.0 {
+                            view.theme = to;
+                            view.theme_transition = None;
+                        }
+                    }
+
+                    // 3. Command palette floating sliding selection pill
+                    if view.palette_open {
+                        let target = view.palette_index as f32;
+                        let diff = target - view.palette_anim_index;
+                        if diff.abs() > 0.005 {
+                            let factor = (1.0 - (-26.0 * dt).exp()).clamp(0.0, 1.0);
+                            view.palette_anim_index += diff * factor;
+                            needs_paint = true;
+                        } else {
+                            view.palette_anim_index = target;
+                        }
+                    }
+
+                    // 4. Floating auto-hiding scrollbar fade
+                    let scroll_idle = view.last_scroll_time.elapsed().as_millis();
+                    if scroll_idle < 650 {
+                        if view.scrollbar_opacity < 1.0 {
+                            view.scrollbar_opacity = (view.scrollbar_opacity + dt * 10.0).min(1.0);
+                            needs_paint = true;
+                        }
+                    } else if view.scrollbar_opacity > 0.0 {
+                        view.scrollbar_opacity = (view.scrollbar_opacity - dt * 3.5).max(0.0);
+                        needs_paint = true;
+                    }
+
+                    // 5. Smooth tab collapse on close
+                    let mut tabs_to_remove = Vec::new();
+                    for (i, tab) in view.tabs.iter_mut().enumerate() {
+                        if tab.closing {
+                            tab.close_progress = (tab.close_progress + dt * 9.0).min(1.0);
+                            needs_paint = true;
+                            if tab.close_progress >= 1.0 {
+                                tabs_to_remove.push(i);
+                            }
+                        }
+                    }
+                    for &i in tabs_to_remove.iter().rev() {
+                        view.tabs.remove(i);
+                        if i < view.active {
+                            view.active = view.active.saturating_sub(1);
+                        }
+                        if view.active >= view.tabs.len() && !view.tabs.is_empty() {
+                            view.active = view.tabs.len() - 1;
+                        }
+                    }
+
+                    // 6. Spatial cursor gliding, split pane expansion and pane collapse
                     for tab in &mut view.tabs {
-                        for pane in &mut tab.panes {
+                        let mut panes_to_remove = Vec::new();
+                        for (p_ix, pane) in tab.panes.iter_mut().enumerate() {
                             if let Some((cur_col, cur_row)) = pane.cursor_pos {
                                 let (tgt_col, tgt_row) = pane.cursor_target;
                                 let d_col = tgt_col - cur_col;
@@ -581,9 +656,27 @@ impl AtlasView {
                                     pane.cursor_pos = Some((tgt_col, tgt_row));
                                 }
                             }
-                            if pane.pane_expansion < 1.0 {
+                            if pane.closing {
+                                pane.pane_expansion = (pane.pane_expansion - dt * 10.0).max(0.0);
+                                needs_paint = true;
+                                if pane.pane_expansion <= 0.0 {
+                                    panes_to_remove.push(p_ix);
+                                }
+                            } else if pane.pane_expansion < 1.0 {
                                 pane.pane_expansion = (pane.pane_expansion + dt * 10.0).min(1.0);
                                 needs_paint = true;
+                            }
+                        }
+                        for &p_ix in panes_to_remove.iter().rev() {
+                            tab.panes.remove(p_ix);
+                            if p_ix < tab.active_pane {
+                                tab.active_pane = tab.active_pane.saturating_sub(1);
+                            }
+                            if tab.active_pane >= tab.panes.len() && !tab.panes.is_empty() {
+                                tab.active_pane = tab.panes.len() - 1;
+                            }
+                            if tab.panes.len() == 1 {
+                                tab.maximized = false;
                             }
                         }
                     }
@@ -723,10 +816,13 @@ impl AtlasView {
                         cursor_pos: None,
                         cursor_target: (0.0, 0.0),
                         pane_expansion: 1.0,
+                        closing: false,
                     }],
                     active_pane: 0,
                     axis: SplitAxis::Columns,
                     maximized: false,
+                    closing: false,
+                    close_progress: 0.0,
                 });
                 self.active = self.tabs.len() - 1;
                 Self::watch(epoch, session, rx, cx);
@@ -744,17 +840,33 @@ impl AtlasView {
         if index >= self.tabs.len() {
             return;
         }
-        self.tabs.remove(index);
-        self.hover_tab = None;
-        if self.tabs.is_empty() {
-            self.new_tab(Profile::PowerShell, cx);
+        let open_count = self.tabs.iter().filter(|t| !t.closing).count();
+        if open_count <= 1 {
+            self.tabs.remove(index);
+            self.hover_tab = None;
+            if self.tabs.is_empty() {
+                self.new_tab(Profile::PowerShell, cx);
+                return;
+            }
+            if index < self.active {
+                self.active = self.active.saturating_sub(1);
+            }
+            if self.active >= self.tabs.len() {
+                self.active = self.tabs.len() - 1;
+            }
+            cx.notify();
             return;
         }
-        if index < self.active {
-            self.active -= 1;
+
+        // Animate smooth width and opacity collapse
+        if let Some(tab) = self.tabs.get_mut(index) {
+            tab.closing = true;
+            self.hover_tab = None;
         }
-        if self.active >= self.tabs.len() {
-            self.active = self.tabs.len() - 1;
+        if index == self.active {
+            if let Some(next_active) = self.tabs.iter().enumerate().position(|(i, t)| i != index && !t.closing) {
+                self.active = next_active;
+            }
         }
         cx.notify();
     }
@@ -827,6 +939,7 @@ impl AtlasView {
                         cursor_pos: None,
                         cursor_target: (0.0, 0.0),
                         pane_expansion: 0.05,
+                        closing: false,
                     });
                     tab.active_pane = tab.panes.len() - 1;
                     tab.axis = axis;
@@ -848,17 +961,17 @@ impl AtlasView {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
         };
-        if tab.panes.len() <= 1 {
+        let open_panes = tab.panes.iter().filter(|p| !p.closing).count();
+        if open_panes <= 1 {
             let index = self.active;
             self.close_tab(index, cx);
             return;
         }
-        tab.panes.remove(tab.active_pane);
-        if tab.active_pane >= tab.panes.len() {
-            tab.active_pane = tab.panes.len() - 1;
+        if let Some(pane) = tab.panes.get_mut(tab.active_pane) {
+            pane.closing = true;
         }
-        if tab.panes.len() == 1 {
-            tab.maximized = false;
+        if let Some(next_active) = tab.panes.iter().enumerate().position(|(i, p)| i != tab.active_pane && !p.closing) {
+            tab.active_pane = next_active;
         }
         cx.notify();
     }
@@ -977,6 +1090,8 @@ impl AtlasView {
         if lines == 0.0 {
             return;
         }
+        self.last_scroll_time = std::time::Instant::now();
+        self.scrollbar_opacity = 1.0;
         let Some(pane) = self.active_pane() else {
             return;
         };
@@ -1010,6 +1125,7 @@ impl AtlasView {
                         view.scroll_task = false;
                         return true;
                     };
+                    view.last_scroll_time = std::time::Instant::now();
                     // Exponential approach: quick at first, gentle at the end.
                     let next = if (target - pos).abs() < 0.04 {
                         target
@@ -1090,7 +1206,8 @@ impl AtlasView {
     /// and the keyboard shortcut both land here).
     fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
         self.theme_id = index.min(self.registry.len() - 1);
-        self.theme = self.registry.preset(self.theme_id).theme.clone();
+        let target = self.registry.preset(self.theme_id).theme.clone();
+        self.theme_transition = Some((self.theme.clone(), target, 0.0));
         crate::rounded_corners::set_dark_mode(self.theme_id == 0);
         self.sync_and_save_settings();
         cx.notify();
@@ -1454,6 +1571,7 @@ impl AtlasView {
         self.palette_closing = false;
         self.palette_query.clear();
         self.palette_index = 0;
+        self.palette_anim_index = 0.0;
         self.profile_menu = false;
         window.focus(&self.palette_focus);
         cx.notify();
@@ -1776,7 +1894,7 @@ impl AtlasView {
             .child(icons::icon(icons::SEARCH).size(px(14.0)).text_color(theme.chrome_fg))
             .child(text_row);
 
-        let mut list = div().flex().flex_col().p(px(6.0));
+        let mut list = div().flex().flex_col().p(px(6.0)).relative();
         if matches.is_empty() {
             list = list.child(
                 div()
@@ -1787,9 +1905,22 @@ impl AtlasView {
                     .child("No matching commands"),
             );
         } else {
+            // Floating sliding selection pill (Raycast/Spotlight smooth glide)
+            let pill_top = 6.0 + self.palette_anim_index * 36.0;
+            list = list.child(
+                div()
+                    .absolute()
+                    .left(px(6.0))
+                    .right(px(6.0))
+                    .top(px(pill_top))
+                    .h(px(36.0))
+                    .rounded(px(7.0))
+                    .bg(theme.card_active),
+            );
+
             for (index, (command, icon, label, shortcut)) in matches.into_iter().enumerate() {
                 let hover = theme.card_hover;
-                let mut row = div()
+                let row = div()
                     .id(ElementId::named_usize("palette-command", index))
                     .h(px(36.0))
                     .px(px(12.0))
@@ -1817,9 +1948,6 @@ impl AtlasView {
                     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                         view.run_command(command, window, cx);
                     }));
-                if index == self.palette_index {
-                    row = row.bg(theme.card_active);
-                }
                 list = list.child(row);
             }
         }
@@ -2934,11 +3062,20 @@ impl AtlasView {
             )
             .child(about);
 
-        let content_body = match self.settings_tab {
-            SettingsTab::Appearance => appearance_view.into_any_element(),
-            SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
-            SettingsTab::General => general_view.into_any_element(),
-        };
+        let content_body = div()
+            .flex()
+            .flex_col()
+            .child(match self.settings_tab {
+                SettingsTab::Appearance => appearance_view.into_any_element(),
+                SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
+                SettingsTab::General => general_view.into_any_element(),
+            })
+            .with_animation(
+                ElementId::named_usize("settings-tab-pane", self.settings_tab as usize),
+                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
+                |el, delta| el.opacity(delta),
+            )
+            .into_any_element();
 
         let content_header = div()
             .flex()
@@ -3407,7 +3544,15 @@ impl Render for AtlasView {
             };
             let pill_hover = tb.card_hover;
             let pill_hot = tb.chrome_fg_active;
-            let pill_close = active && self.hover_tab == Some(ix);
+            let pill_close = active && self.hover_tab == Some(ix) && !tab.closing;
+
+            let (max_w, min_w, px_pad, opacity) = if tab.closing {
+                let scale = (1.0 - tab.close_progress).max(0.0);
+                (220.0 * scale, 0.0, 8.0 * scale, scale)
+            } else {
+                (220.0, 40.0, 8.0, 1.0)
+            };
+
             let mut pill = div()
                 .id(ElementId::named_usize("tab-pill", ix))
                 .h(px(24.0))
@@ -3415,16 +3560,46 @@ impl Render for AtlasView {
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
-                .px(px(8.0))
-                .max_w(px(220.0))
-                .min_w(px(40.0))
+                .px(px(px_pad))
+                .max_w(px(max_w))
+                .min_w(px(min_w))
+                .opacity(opacity)
+                .overflow_hidden()
                 .flex_shrink()
                 .rounded(px(6.0))
                 .bg(pill_bg)
                 .border_1()
                 .border_color(pill_border)
-                .text_color(pill_fg)
-                .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
+                .text_color(pill_fg);
+
+            if !tab.closing {
+                pill = pill
+                    .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
+                    .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                        if !*hovered && view.hover_tab == Some(ix) {
+                            view.hover_tab = None;
+                            cx.notify();
+                        } else if *hovered && view.hover_tab != Some(ix) {
+                            view.hover_tab = Some(ix);
+                            cx.notify();
+                        }
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Middle,
+                        cx.listener(move |view, _: &MouseDownEvent, window, cx| {
+                            view.close_tab(ix, cx);
+                            window.focus(&view.focus);
+                        }),
+                    )
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        view.active = ix;
+                        view.settings_open = false;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    }));
+            }
+
+            pill = pill
                 .child(
                     div()
                         .text_color(pill_icon)
@@ -3440,29 +3615,7 @@ impl Render for AtlasView {
                         })
                         .truncate()
                         .child(label),
-                )
-                .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                    if !*hovered && view.hover_tab == Some(ix) {
-                        view.hover_tab = None;
-                        cx.notify();
-                    } else if *hovered && view.hover_tab != Some(ix) {
-                        view.hover_tab = Some(ix);
-                        cx.notify();
-                    }
-                }))
-                .on_mouse_down(
-                    MouseButton::Middle,
-                    cx.listener(move |view, _: &MouseDownEvent, window, cx| {
-                        view.close_tab(ix, cx);
-                        window.focus(&view.focus);
-                    }),
-                )
-                .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                    view.active = ix;
-                    view.settings_open = false;
-                    window.focus(&view.focus);
-                    cx.notify();
-                }));
+                );
             if pill_close {
                 let close_hot = tb.chrome_fg_active;
                 pill = pill.child(
@@ -3770,6 +3923,7 @@ impl Render for AtlasView {
                 let pane_up = pane_ix;
                 let pane_rc = pane_ix;
 
+                let is_focused_pane = pane_ix == tab.active_pane && tab.panes.len() > 1;
                 let mut cell = div()
                     .id(ElementId::named_usize("pane-cell", pane_ix))
                     .flex()
@@ -3781,7 +3935,17 @@ impl Render for AtlasView {
                     .overflow_hidden()
                     .bg(container_bg)
                     .px(px(10.0))
-                    .py(px(10.0))
+                    .py(px(10.0));
+                if tab.panes.len() > 1 {
+                    cell = cell
+                        .border_1()
+                        .border_color(if is_focused_pane {
+                            Rgba { a: 0.28, ..theme.accent }
+                        } else {
+                            rgba(0x00000000)
+                        });
+                }
+                cell = cell
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |view, event: &MouseDownEvent, window, cx| {
@@ -3904,6 +4068,7 @@ impl Render for AtlasView {
                         cursor_pos: pane.cursor_pos,
                         cursor_alpha,
                         subpixel_y,
+                        scrollbar_opacity: self.scrollbar_opacity,
                     });
                 }
                 area = area.child(cell.with_animation(
@@ -4079,6 +4244,7 @@ struct TerminalElement {
     cursor_pos: Option<(f32, f32)>,
     cursor_alpha: f32,
     subpixel_y: f32,
+    scrollbar_opacity: f32,
 }
 
 /// How a cell's glyph is drawn: shaped with the terminal font, isolated from
@@ -4861,6 +5027,49 @@ impl Element for TerminalElement {
                     window,
                     cx,
                 );
+            }
+        }
+
+        // --------------------------------------------------------------------
+        // Floating auto-hiding scrollbar indicator (Apple/macOS style)
+        // --------------------------------------------------------------------
+        if self.scrollbar_opacity > 0.01 {
+            let (history, offset) = {
+                let session = self.session.borrow();
+                (session.term.history_size(), session.term.renderable_content().display_offset)
+            };
+            if history > 0 {
+                let display_rows = rows.len().max(1);
+                let total_lines = history + display_rows;
+                let view_height = f32::from(bounds.size.height);
+                let thumb_height = ((display_rows as f32 / total_lines as f32) * view_height)
+                    .max(24.0)
+                    .min(view_height - 8.0);
+                let scroll_ratio = (history.saturating_sub(offset)) as f32 / history.max(1) as f32;
+                let travel_space = (view_height - thumb_height - 8.0).max(0.0);
+                let thumb_top = top + 4.0 + travel_space * scroll_ratio;
+                let thumb_right = left + f32::from(bounds.size.width) - 4.0;
+                let thumb_left = thumb_right - 4.0;
+
+                let mut thumb_quad = fill(
+                    Bounds::from_corners(
+                        point(px(thumb_left), px(thumb_top)),
+                        point(px(thumb_right), px(thumb_top + thumb_height)),
+                    ),
+                    Rgba {
+                        r: theme.chrome_fg.r,
+                        g: theme.chrome_fg.g,
+                        b: theme.chrome_fg.b,
+                        a: (theme.chrome_fg.a * 0.45 * self.scrollbar_opacity).clamp(0.0, 1.0),
+                    },
+                );
+                thumb_quad.corner_radii = Corners {
+                    top_left: px(2.0),
+                    top_right: px(2.0),
+                    bottom_left: px(2.0),
+                    bottom_right: px(2.0),
+                };
+                window.paint_quad(thumb_quad);
             }
         }
     }

@@ -52,7 +52,49 @@ pub struct Theme {
     pub ansi: [Rgba; 16],
 }
 
+fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+pub fn lerp_color(a: Rgba, b: Rgba, t: f32) -> Rgba {
+    let t = t.clamp(0.0, 1.0);
+    Rgba {
+        r: lerp_f32(a.r, b.r, t),
+        g: lerp_f32(a.g, b.g, t),
+        b: lerp_f32(a.b, b.b, t),
+        a: lerp_f32(a.a, b.a, t),
+    }
+}
+
 impl Theme {
+    /// Smoothly interpolate between two themes across all tokens for zero-flash crossfade.
+    pub fn interpolate(from: &Self, to: &Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let mut ansi = [from.ansi[0]; 16];
+        for i in 0..16 {
+            ansi[i] = lerp_color(from.ansi[i], to.ansi[i], t);
+        }
+        Self {
+            bg: lerp_color(from.bg, to.bg, t),
+            fg: lerp_color(from.fg, to.fg, t),
+            cursor: lerp_color(from.cursor, to.cursor, t),
+            panel_bg: lerp_color(from.panel_bg, to.panel_bg, t),
+            elevated_bg: lerp_color(from.elevated_bg, to.elevated_bg, t),
+            elevated_border: lerp_color(from.elevated_border, to.elevated_border, t),
+            chrome_fg: lerp_color(from.chrome_fg, to.chrome_fg, t),
+            chrome_fg_active: lerp_color(from.chrome_fg_active, to.chrome_fg_active, t),
+            faint_fg: lerp_color(from.faint_fg, to.faint_fg, t),
+            hairline: lerp_color(from.hairline, to.hairline, t),
+            card_hover: lerp_color(from.card_hover, to.card_hover, t),
+            card_active: lerp_color(from.card_active, to.card_active, t),
+            accent: lerp_color(from.accent, to.accent, t),
+            good: lerp_color(from.good, to.good, t),
+            sheet_border: lerp_color(from.sheet_border, to.sheet_border, t),
+            soft_bg: lerp_color(from.soft_bg, to.soft_bg, t),
+            ansi,
+        }
+    }
+
     /// Paper: warm cream sheet (#EDE8DC) over sand chrome (#E5E0D4), warm
     /// deep-charcoal ink (#1C1A16), terracotta rust accent (#C05A28). Zed aesthetic.
     pub fn cream() -> Self {
