@@ -387,6 +387,7 @@ pub struct AtlasView {
     pub blur_enabled: bool,
     pub cursor_blink: bool,
     window_was_active: bool,
+    pub mouse_down_pane: Option<usize>,
 }
 
 struct Tab {
@@ -521,6 +522,7 @@ impl AtlasView {
             blur_enabled,
             cursor_blink,
             window_was_active: true,
+            mouse_down_pane: None,
         };
         crate::rounded_corners::set_dark_mode(theme_id == 0);
         crate::rounded_corners::set_blur(blur_enabled);
@@ -1166,11 +1168,16 @@ impl AtlasView {
         let (left, top, cell_width, cell_height) = session.grid_bounds?;
         let mx = f32::from(mouse_pos.x);
         let my = f32::from(mouse_pos.y);
-        if mx < left || my < top {
-            return None;
-        }
-        let col = ((mx - left) / cell_width).floor().max(0.0) as usize;
-        let screen_row = ((my - top) / cell_height).floor().max(0.0) as i32;
+        let col = if mx < left {
+            0
+        } else {
+            ((mx - left) / cell_width).floor().max(0.0) as usize
+        };
+        let screen_row = if my < top {
+            0
+        } else {
+            ((my - top) / cell_height).floor().max(0.0) as i32
+        };
         let offset = session.term.renderable_content().display_offset as i32;
         let line = Line(screen_row - offset);
         Some(Point::new(line, Column(col)))
@@ -1941,6 +1948,8 @@ impl AtlasView {
                 .bg(theme.elevated_bg)
                 .border_1()
                 .border_color(theme.elevated_border)
+                .w(relative(1.0))
+                .min_w(px(0.0))
         };
         let section = |label: &'static str| -> AnyElement {
             div()
@@ -2043,35 +2052,6 @@ impl AtlasView {
             );
         }
 
-        sidebar = sidebar.child(div().flex_1());
-
-        let back_hover = theme.card_hover;
-        sidebar = sidebar.child(
-            div()
-                .id(ElementId::named_usize("settings-back-btn", 0))
-                .flex_shrink_0()
-                .h(px(34.0))
-                .px(px(10.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(8.0))
-                .rounded(px(6.0))
-                .text_color(theme.chrome_fg)
-                .hover(move |s| s.bg(back_hover).text_color(theme.chrome_fg_active))
-                .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
-                .child(
-                    div()
-                        .text_size(px(12.5))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child("Back to Terminal"),
-                )
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.settings_open = false;
-                    window.focus(&view.focus);
-                    cx.notify();
-                })),
-        );
 
         // --- Appearance Tab ---
         let fonts = [
@@ -2083,6 +2063,7 @@ impl AtlasView {
         let mut font_family_row = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .items_center()
             .gap(px(6.0))
             .child(row_label("Font family"));
@@ -2239,6 +2220,7 @@ impl AtlasView {
         let mut theme_row = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .items_center()
             .gap(px(6.0))
             .child(row_label("Theme preset"));
@@ -2257,6 +2239,7 @@ impl AtlasView {
         let cursor_row = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .items_center()
             .gap(px(6.0))
             .child(row_label("Cursor style"))
@@ -3004,6 +2987,7 @@ impl AtlasView {
         let right_pane = div()
             .id(ElementId::named_usize("settings-content-scroll", 0))
             .flex_1()
+            .min_w(px(0.0))
             .h(relative(1.0))
             .min_h(px(0.0))
             .overflow_y_scroll()
@@ -3012,6 +2996,7 @@ impl AtlasView {
                 div()
                     .w(relative(1.0))
                     .max_w(px(720.0))
+                    .min_w(px(0.0))
                     .child(content_header)
                     .child(content_body),
             );
@@ -3023,6 +3008,7 @@ impl AtlasView {
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
+            .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_hidden()
             .track_focus(&self.settings_focus)
@@ -3396,18 +3382,13 @@ impl Render for AtlasView {
             let pane = tab.panes.get(tab.active_pane);
             let label = match pane {
                 Some(pane) => tab.custom_title.clone().unwrap_or_else(|| {
-                    if active {
-                        tab_name(&pane.title, &profile_title(pane.profile))
-                    } else {
-                        dir_label(pane)
-                            .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)))
-                    }
+                    format_tab_title(pane)
                 }),
                 None => "Terminal".to_string(),
             };
             let icon = match pane {
-                Some(pane) if active => session_icon(&pane.title, pane.profile),
-                _ => icons::FOLDER,
+                Some(pane) => session_icon(&pane.title, pane.profile),
+                None => icons::TERMINAL,
             };
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
                 (
@@ -3435,7 +3416,9 @@ impl Render for AtlasView {
                 .items_center()
                 .gap(px(6.0))
                 .px(px(8.0))
-                .flex_shrink_0()
+                .max_w(px(220.0))
+                .min_w(px(40.0))
+                .flex_shrink()
                 .rounded(px(6.0))
                 .bg(pill_bg)
                 .border_1()
@@ -3792,6 +3775,8 @@ impl Render for AtlasView {
                     .flex()
                     .flex_col()
                     .flex_1()
+                    .min_w(px(0.0))
+                    .min_h(px(0.0))
                     .opacity(pane.pane_expansion)
                     .overflow_hidden()
                     .bg(container_bg)
@@ -3800,6 +3785,7 @@ impl Render for AtlasView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+                            view.mouse_down_pane = Some(pane_down);
                             if let Some(tab) = view.tabs.get_mut(view.active) {
                                 if tab.active_pane != pane_down {
                                     tab.active_pane = pane_down;
@@ -3819,7 +3805,7 @@ impl Render for AtlasView {
                         }),
                     )
                     .on_mouse_move(cx.listener(move |view, event: &MouseMoveEvent, _window, cx| {
-                        if event.dragging() {
+                        if view.mouse_down_pane == Some(pane_move) {
                             if let Some(pt) = view.point_from_mouse(event.position, pane_move) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_move) {
@@ -3836,6 +3822,7 @@ impl Render for AtlasView {
                     .on_mouse_up(
                         MouseButton::Left,
                         cx.listener(move |view, _event: &MouseUpEvent, window, cx| {
+                            view.mouse_down_pane = None;
                             if let Some(tab) = view.tabs.get(view.active) {
                                 if let Some(p) = tab.panes.get(pane_up) {
                                     let selected_text = {
@@ -3961,6 +3948,8 @@ impl Render for AtlasView {
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
+            .min_w(px(0.0))
+            .min_h(px(0.0))
             .bg(container_bg)
             .overflow_hidden()
             .child(body);
@@ -3977,6 +3966,8 @@ impl Render for AtlasView {
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
+            .min_w(px(0.0))
+            .min_h(px(0.0))
             .bg(container_bg)
             .overflow_hidden()
             .shadow_lg();
@@ -4528,6 +4519,7 @@ impl Element for TerminalElement {
                 CursorShape::Block | CursorShape::HollowBlock
             );
 
+            let selection_range = session.term.selection.as_ref().and_then(|s| s.to_range(&session.term));
             let mut rows: Vec<Row> = Vec::new();
             for indexed in content.display_iter {
                 let point = indexed.point;
@@ -4557,10 +4549,54 @@ impl Element for TerminalElement {
                     continue;
                 }
 
+                let is_selected = if let Some(ref range) = selection_range {
+                    if range.is_block {
+                        let (min_col, max_col) = if range.start.column <= range.end.column {
+                            (range.start.column.0, range.end.column.0)
+                        } else {
+                            (range.end.column.0, range.start.column.0)
+                        };
+                        let (min_line, max_line) = if range.start.line <= range.end.line {
+                            (range.start.line.0, range.end.line.0)
+                        } else {
+                            (range.end.line.0, range.start.line.0)
+                        };
+                        point.line.0 >= min_line && point.line.0 <= max_line && col >= min_col && col <= max_col
+                    } else {
+                        let (start, end) = if range.start <= range.end {
+                            (range.start, range.end)
+                        } else {
+                            (range.end, range.start)
+                        };
+                        if point.line < start.line || point.line > end.line {
+                            false
+                        } else if point.line == start.line && point.line == end.line {
+                            point.column >= start.column && point.column <= end.column
+                        } else if point.line == start.line {
+                            point.column >= start.column
+                        } else if point.line == end.line {
+                            point.column <= end.column
+                        } else {
+                            true
+                        }
+                    }
+                } else {
+                    false
+                };
+
                 let mut fg = theme.resolve(cell.fg, flags.contains(Flags::DIM), &over);
                 let mut bg = theme.resolve(cell.bg, false, &over);
                 if flags.contains(Flags::INVERSE) {
                     std::mem::swap(&mut fg, &mut bg);
+                }
+                if is_selected {
+                    bg = Rgba {
+                        r: theme.accent.r,
+                        g: theme.accent.g,
+                        b: theme.accent.b,
+                        a: 0.38,
+                    };
+                    fg = theme.chrome_fg_active;
                 }
                 if cursor_inverts && self.cursor_on && cursor_cell == Some((row_index, col)) {
                     std::mem::swap(&mut fg, &mut bg);
@@ -4582,11 +4618,12 @@ impl Element for TerminalElement {
                     }
                 }
 
+                let is_icon = char_class(ch) == CharClass::Icon;
                 let style = CellStyle {
                     fg,
                     bg,
-                    bold: flags.contains(Flags::BOLD),
-                    italic: flags.contains(Flags::ITALIC),
+                    bold: flags.contains(Flags::BOLD) && !is_icon,
+                    italic: flags.contains(Flags::ITALIC) && !is_icon,
                     underline: flags.intersects(Flags::ALL_UNDERLINES),
                     strike: flags.contains(Flags::STRIKEOUT),
                     class: char_class(ch),
@@ -4721,10 +4758,10 @@ impl Element for TerminalElement {
                     CharClass::Icon => icon_font(),
                     _ => self.font.clone(),
                 };
-                if run.style.bold {
+                if run.style.bold && run.style.class != CharClass::Icon {
                     font = font.bold();
                 }
-                if run.style.italic {
+                if run.style.italic && run.style.class != CharClass::Icon {
                     font = font.italic();
                 }
                 if matches!(run.style.class, CharClass::Icon | CharClass::Block) {
@@ -5362,11 +5399,69 @@ fn git_cwd(pane: &Pane) -> Option<PathBuf> {
     pane.cwd.clone()
 }
 
-/// Process mark for a tab, keyed off the shell-reported title (OSC 0/2):
-/// CLIs advertise themselves there (`claude`, node tooling, Python, cargo),
-/// Linux shells land on the Ubuntu mark, PowerShell on the terminal prompt.
-/// A brand mark appears only when that brand is the process actually
-/// running — never as decoration. Drawn monochrome (the parent colours it).
+fn format_path_condensed(raw_path: &str) -> String {
+    let normalized = raw_path.replace('\\', "/");
+    let trimmed = normalized.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return "~".to_string();
+    }
+    let with_home = if let Some(home) = home_dir() {
+        let home_norm = home.display().to_string().replace('\\', "/");
+        let home_trimmed = home_norm.trim_end_matches('/');
+        if trimmed.eq_ignore_ascii_case(home_trimmed) {
+            "~".to_string()
+        } else if let Some(stripped) = trimmed.strip_prefix(home_trimmed) {
+            format!("~{}", stripped)
+        } else {
+            trimmed.to_string()
+        }
+    } else {
+        trimmed.to_string()
+    };
+
+    if with_home == "~" {
+        return "~".to_string();
+    }
+
+    if with_home.chars().count() > 18 {
+        let parts: Vec<&str> = with_home.split('/').filter(|s| !s.is_empty()).collect();
+        if parts.len() >= 2 {
+            format!("../{}", parts.last().unwrap())
+        } else if let Some(last) = parts.last() {
+            format!("../{}", last)
+        } else {
+            with_home
+        }
+    } else {
+        with_home
+    }
+}
+
+fn format_tab_title(pane: &Pane) -> String {
+    let p_name = profile_title(pane.profile);
+    let cmd = tab_name(&pane.title, "");
+    let path = title_path(&pane.title)
+        .or_else(|| pane.cwd.as_ref().map(|d| d.display().to_string()));
+
+    if !cmd.is_empty() && cmd != p_name {
+        return cmd;
+    }
+
+    if let Some(p) = path {
+        let condensed = format_path_condensed(&p);
+        if condensed == "~" {
+            p_name
+        } else {
+            format!("{} · {}", p_name, condensed)
+        }
+    } else {
+        p_name
+    }
+}
+
+/// Process mark for a tab, keyed off the shell-reported title (OSC 0/2) and profile:
+/// Matches PowerShell, Ubuntu/WSL, CMD, Git Bash, OpenCode, Claude, Cursor, Antigravity.
+/// Never falls back to a folder icon.
 fn session_icon(title: &str, profile: Profile) -> &'static str {
     let lower = title.to_ascii_lowercase();
     if lower.contains("claude") {
@@ -5377,8 +5472,14 @@ fn session_icon(title: &str, profile: Profile) -> &'static str {
         icons::ANTIGRAVITY_MARK
     } else if lower.contains("opencode") || lower.contains("open-code") {
         icons::OPENCODE_MARK
-    } else if matches!(profile, Profile::Wsl) {
-        icons::TERMINAL
+    } else if matches!(profile, Profile::Wsl) || lower.contains("ubuntu") || lower.contains("wsl") {
+        icons::UBUNTU
+    } else if matches!(profile, Profile::Cmd) || lower.contains("cmd.exe") || lower == "cmd" {
+        icons::CMD
+    } else if matches!(profile, Profile::GitBash) || lower.contains("bash") || lower.contains("git") {
+        icons::GIT
+    } else if matches!(profile, Profile::PowerShell) || lower.contains("powershell") || lower.contains("pwsh") {
+        icons::POWERSHELL
     } else {
         icons::TERMINAL
     }

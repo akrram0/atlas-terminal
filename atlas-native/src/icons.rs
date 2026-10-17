@@ -59,6 +59,10 @@ icon_assets![
     (KEYBOARD, "keyboard"),
     (SLIDERS, "sliders"),
     (CHECK, "check"),
+    (POWERSHELL, "powershell"),
+    (UBUNTU, "ubuntu"),
+    (CMD, "cmd"),
+    (GIT, "git"),
 ];
 
 /// Render an embedded vector icon element.
