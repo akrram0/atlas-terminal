@@ -71,3 +71,35 @@
 - `icons/folder.svg` — Inactive directory / workspace
 - `icons/claude-mark.svg`, `icons/opencode-mark.svg`, `icons/ubuntu.svg` — Agent & runtime brands
 - `icons/window-minimize.svg`, `icons/window-maximize.svg`, `icons/window-restore.svg` — Window controls fallback
+
+---
+
+## Window Architecture & Geometry Scale
+
+### 1. Window Framing & Transparency
+- **Window Backdrop**: Fully transparent (`WindowBackgroundAppearance::Transparent` + `WindowDecorations::Client`). No opaque system canvas clearing.
+- **Root Element**: Must NEVER paint a solid background quad (no `bg(...)` on root) to avoid re-introducing sharp 90-degree corners.
+- **Main Window Container**: A single unified container wrapping the top bar, breadcrumb header, and terminal grid with:
+  - `.rounded(px(14.0))` (when restored) / `0px` (when maximized)
+  - `.border_1()` with subtle border `.border_color(rgba(0xFFFFFF1A))`
+  - `.bg(theme.panel_bg)`
+  - `.overflow_hidden()`
+  - `.shadow_lg()` for soft glass depth
+
+### 2. Corner Radius & Gap Elimination Formula
+- **Outer Radius**: `14.0px`
+- **Inner Radius Formula**: `inner_radius = outer_radius - border_width` = `13.0px`
+- **Top Bar (`bar`)**: Styled with `.rounded_t(px(13.0))` with matching `bg(theme.panel_bg)`.
+- **Close Button**: Rightmost control styled with `.rounded_tr(px(13.0))` so red hover highlights curve naturally with the window.
+- **Pane Header (`head`)**: Styled with `.rounded_t(px(13.0))` and matching `bg(theme.panel_bg)`. Never use contrasting background strips (`sheet_bg`) that cut across the chrome.
+- **Terminal Grid Wrapper (`pane-cell`)**: Styled with `.rounded_b(px(13.0))` and matching `bg(theme.panel_bg)`.
+
+### 3. Safe Insets & Grid Padding
+- **Cell Padding**: Exactly 10px safe padding (`.px(px(10.0)).py(px(10.0))`) between the container border and the terminal cell grid so text and prompts never touch or clip against the rounded corners.
+
+### 4. Quad Transparency & Anti-Leak Rules
+- **GPUI Scissor Limitation**: GPUI's `overflow_hidden()` clips exclusively to the element's bounding rectangle, NOT the rounded border path. Background quads drawn by child elements will poke through rounded corners if not properly managed.
+- **No Default BG Quads**: In `TerminalElement::paint`, do not paint a solid background quad for cells matching the default background. The parent container's rounded background must show through.
+- **Edge Non-Default Quads**: Any non-default background spans (prompts, selections, reverse-video) touching the bottom row and side edges must explicitly pass `corner_radii: Corners { bottom_left: px(13.0), bottom_right: px(13.0) }` to `fill(...)`.
+- **No Layered Contrasting Backgrounds**: Never wrap the terminal grid in intermediate full-size `div` elements with differing background colors (`sheet_bg`, etc.). All container and wrapper surfaces must share `theme.panel_bg`.
+
