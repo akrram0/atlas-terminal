@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod cwd;
+mod icons;
 mod keymap;
 mod session;
 mod theme;
@@ -44,7 +45,7 @@ pub(crate) fn log_line(msg: &str) {
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
 mod rounded_corners {
-    use std::sync::atomic::{AtomicI32, AtomicIsize, Ordering};
+    use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
 
     type Hwnd = *mut core::ffi::c_void;
     type Lparam = isize;
@@ -54,6 +55,7 @@ mod rounded_corners {
     const GWL_STYLE: i32 = -16;
     const GWLP_WNDPROC: i32 = -4;
     const WS_CAPTION: i32 = 0x00C0_0000;
+    const WS_THICKFRAME: i32 = 0x0004_0000;
     // SetWindowPos flags.
     const SWP_NOSIZE: u32 = 0x0001;
     const SWP_NOMOVE: u32 = 0x0002;
@@ -82,8 +84,13 @@ mod rounded_corners {
     const HTBOTTOMRIGHT: Lresult = 17;
     const SM_CXSIZEFRAME: i32 = 32;
     const SM_CXPADDEDBORDER: i32 = 92;
-    const RESIZE_BORDER: i32 = 8;
-    const RESIZE_CORNER: i32 = 16;
+
+    // DWM window attributes and policies.
+    const DWMWA_NCRENDERING_POLICY: u32 = 2;
+    const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
+    const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    const DWMNCRP_ENABLED: i32 = 2;
+    const DWMWCP_ROUND: i32 = 2;
 
     #[repr(C)]
     #[derive(Clone, Copy, Default)]
@@ -92,6 +99,15 @@ mod rounded_corners {
         top: i32,
         right: i32,
         bottom: i32,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct Margins {
+        cx_left_width: i32,
+        cx_right_width: i32,
+        cy_top_height: i32,
+        cy_bottom_height: i32,
     }
 
     #[repr(C)]
@@ -112,8 +128,8 @@ mod rounded_corners {
     /// The bands are disjoint — the titlebar is split by its centred search
     /// pill, so each side reports its own rect.
     const CAPTION_SLOTS: usize = 4;
-    static CAPTION_RECTS: [AtomicI32; CAPTION_SLOTS * 4] =
-        [const { AtomicI32::new(0) }; CAPTION_SLOTS * 4];
+    static CAPTION_RECTS: [AtomicU32; CAPTION_SLOTS * 4] =
+        [const { AtomicU32::new(0) }; CAPTION_SLOTS * 4];
 
     #[link(name = "user32")]
     unsafe extern "system" {
@@ -159,16 +175,24 @@ mod rounded_corners {
             value: *const core::ffi::c_void,
             size: u32,
         ) -> i32;
+        fn DwmExtendFrameIntoClientArea(hwnd: Hwnd, margins: *const Margins) -> i32;
     }
 
     /// Resize-border hit test for the frameless window (physical screen
     /// coords). `None` means the point is not on a resize edge.
+    /// Scaled by window DPI so fractional scaling (1.15x, 1.25x, 1.5x) preserves
+    /// comfortable mouse grab targets.
     fn resize_hit_test(hwnd: Hwnd, x: i32, y: i32) -> Option<Lresult> {
         let mut rect = Rect::default();
         // Safety: `hwnd` is alive for the duration of the call.
         if unsafe { GetWindowRect(hwnd, &mut rect) } == 0 {
             return None;
         }
+        let dpi = unsafe { GetDpiForWindow(hwnd) };
+        let scale = if dpi == 0 { 1.0 } else { (dpi as f32 / 96.0).max(1.0) };
+        let border = (8.0 * scale).round() as i32;
+        let corner = (16.0 * scale).round() as i32;
+
         let left = x - rect.left;
         let right = rect.right - x;
         let top = y - rect.top;
@@ -176,25 +200,25 @@ mod rounded_corners {
         if left < 0 || top < 0 || right < 0 || bottom < 0 {
             return None;
         }
-        Some(if top < RESIZE_BORDER {
-            if left < RESIZE_CORNER {
+        Some(if top < border {
+            if left < corner {
                 HTTOPLEFT
-            } else if right < RESIZE_CORNER {
+            } else if right < corner {
                 HTTOPRIGHT
             } else {
                 HTTOP
             }
-        } else if bottom < RESIZE_BORDER {
-            if left < RESIZE_CORNER {
+        } else if bottom < border {
+            if left < corner {
                 HTBOTTOMLEFT
-            } else if right < RESIZE_CORNER {
+            } else if right < corner {
                 HTBOTTOMRIGHT
             } else {
                 HTBOTTOM
             }
-        } else if left < RESIZE_BORDER {
+        } else if left < border {
             HTLEFT
-        } else if right < RESIZE_BORDER {
+        } else if right < border {
             HTRIGHT
         } else {
             return None;
@@ -209,10 +233,10 @@ mod rounded_corners {
             return;
         }
         let base = slot * 4;
-        CAPTION_RECTS[base].store(x.to_bits() as i32, Ordering::Relaxed);
-        CAPTION_RECTS[base + 1].store(y.to_bits() as i32, Ordering::Relaxed);
-        CAPTION_RECTS[base + 2].store((x + w).to_bits() as i32, Ordering::Relaxed);
-        CAPTION_RECTS[base + 3].store((y + h).to_bits() as i32, Ordering::Relaxed);
+        CAPTION_RECTS[base].store(x.to_bits(), Ordering::Relaxed);
+        CAPTION_RECTS[base + 1].store(y.to_bits(), Ordering::Relaxed);
+        CAPTION_RECTS[base + 2].store((x + w).to_bits(), Ordering::Relaxed);
+        CAPTION_RECTS[base + 3].store((y + h).to_bits(), Ordering::Relaxed);
     }
 
     /// True when a physical client point lies inside one of the reported drag
@@ -222,10 +246,10 @@ mod rounded_corners {
         let scale = unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0;
         for slot in 0..CAPTION_SLOTS {
             let base = slot * 4;
-            let x0 = f32::from_bits(CAPTION_RECTS[base].load(Ordering::Relaxed) as u32);
-            let y0 = f32::from_bits(CAPTION_RECTS[base + 1].load(Ordering::Relaxed) as u32);
-            let x1 = f32::from_bits(CAPTION_RECTS[base + 2].load(Ordering::Relaxed) as u32);
-            let y1 = f32::from_bits(CAPTION_RECTS[base + 3].load(Ordering::Relaxed) as u32);
+            let x0 = f32::from_bits(CAPTION_RECTS[base].load(Ordering::Relaxed));
+            let y0 = f32::from_bits(CAPTION_RECTS[base + 1].load(Ordering::Relaxed));
+            let x1 = f32::from_bits(CAPTION_RECTS[base + 2].load(Ordering::Relaxed));
+            let y1 = f32::from_bits(CAPTION_RECTS[base + 3].load(Ordering::Relaxed));
             if x1 <= x0 || y1 <= y0 {
                 continue;
             }
@@ -281,6 +305,24 @@ mod rounded_corners {
         unsafe { IsZoomed(raw as Hwnd) != 0 }
     }
 
+    /// Update Windows 11 DWM immersive dark mode to match theme luminance.
+    pub fn set_dark_mode(dark: bool) {
+        let raw = MAIN_HWND.load(Ordering::SeqCst);
+        if raw == 0 {
+            return;
+        }
+        let hwnd = raw as Hwnd;
+        unsafe {
+            let value: i32 = if dark { 1 } else { 0 };
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &value as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+        }
+    }
+
     /// Replacement window procedure: the client area covers the entire window
     /// (so DWM can round the real content); WM_NCHITTEST serves the resize
     /// borders and the view-reported drag band; presses on those non-client
@@ -297,10 +339,10 @@ mod rounded_corners {
         lparam: Lparam,
     ) -> Lresult {
         match msg {
-            WM_NCCALCSIZE if wparam != 0 => {
+            WM_NCCALCSIZE => {
                 // On input `rgrc[0]` is the proposed *window* rect; leaving it
                 // untouched makes the client cover the whole window.
-                if unsafe { IsZoomed(hwnd) } != 0 {
+                if wparam != 0 && unsafe { IsZoomed(hwnd) } != 0 {
                     // Maximized windows are outdented past the screen edges;
                     // inset by the frame so content stays on-screen.
                     // Safety: `lparam` points to NCCALCSIZE_PARAMS here.
@@ -424,7 +466,7 @@ mod rounded_corners {
 
     pub fn apply() {
         std::thread::spawn(|| {
-            for _ in 0..400 {
+            for _ in 0..40 {
                 if let Some(hwnd) = find_main_window() {
                     MAIN_HWND.store(hwnd as isize, Ordering::SeqCst);
                     // Safety: `hwnd` is a live top-level window of this process.
@@ -435,14 +477,25 @@ mod rounded_corners {
                         ORIGINAL_WNDPROC.store(original, Ordering::SeqCst);
                         SetWindowLongPtrW(hwnd, GWLP_WNDPROC, window_proc as *const () as isize);
 
-                        // 2. USER32 auto-adds WS_CAPTION to resizable windows;
-                        //    DWM only rounds windows that draw their own chrome
-                        //    without one (same as Chromium / VS Code).
+                        // 2. Windows 11 DWM rounded corners and compositor shadows require
+                        //    the window to retain standard desktop styles (WS_THICKFRAME | WS_CAPTION).
+                        //    Our WM_NCCALCSIZE returns 0 so USER32 removes standard caption/border space,
+                        //    giving our custom chrome 100% full-bleed coverage.
                         let style = GetWindowLongW(hwnd, GWL_STYLE);
-                        let stripped = style & !WS_CAPTION;
-                        SetWindowLongW(hwnd, GWL_STYLE, stripped);
+                        let styled = style | WS_THICKFRAME | WS_CAPTION;
+                        SetWindowLongW(hwnd, GWL_STYLE, styled);
 
-                        // 3. Force the frame change: reruns WM_NCCALCSIZE
+                        // 3. Extend the DWM frame 1px into the client area.
+                        //    This signals DWM to render its native compositor shadow and rounded corner mask.
+                        let margins = Margins {
+                            cx_left_width: 1,
+                            cx_right_width: 1,
+                            cy_top_height: 1,
+                            cy_bottom_height: 1,
+                        };
+                        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+                        // 4. Force the frame change: reruns WM_NCCALCSIZE
                         //    through the subclass and makes DWM re-evaluate the
                         //    window frame (rounding + shadow) for the new style.
                         SetWindowPos(
@@ -459,7 +512,7 @@ mod rounded_corners {
                                 | SWP_NOACTIVATE,
                         );
 
-                        // 3b. The client area just grew by the old non-client
+                        // 4b. The client area just grew by the old non-client
                         //     ring; nudge the window size by one pixel so gpui
                         //     is guaranteed to see a WM_SIZE for it.
                         let mut window_rect = Rect::default();
@@ -486,28 +539,38 @@ mod rounded_corners {
                             );
                         }
 
-                        // 4. Ask DWM for rounded corners.
-                        let nc_policy: i32 = 1; // DWMNCRP_ENABLED
+                        // 5. Ask DWM for enabled non-client rendering policy and rounded corners.
+                        //    CRITICAL: DWMNCRP_ENABLED is 2 (1 is DWMNCRP_DISABLED!).
+                        let nc_policy: i32 = DWMNCRP_ENABLED;
                         let _ = DwmSetWindowAttribute(
                             hwnd,
-                            2, // DWMWA_NCRENDERING_POLICY
+                            DWMWA_NCRENDERING_POLICY,
                             &nc_policy as *const i32 as *const core::ffi::c_void,
                             core::mem::size_of::<i32>() as u32,
                         );
-                        let preference: i32 = 2; // DWMWCP_ROUND
+                        let preference: i32 = DWMWCP_ROUND;
                         let hr = DwmSetWindowAttribute(
                             hwnd,
-                            33, // DWMWA_WINDOW_CORNER_PREFERENCE
+                            DWMWA_WINDOW_CORNER_PREFERENCE,
                             &preference as *const i32 as *const core::ffi::c_void,
                             core::mem::size_of::<i32>() as u32,
                         );
 
-                        // 5. Diagnostics: with the ring gone the client should
+                        // 6. Set initial immersive dark mode (0 for light Paper theme).
+                        let dark_mode: i32 = 0;
+                        let _ = DwmSetWindowAttribute(
+                            hwnd,
+                            DWMWA_USE_IMMERSIVE_DARK_MODE,
+                            &dark_mode as *const i32 as *const core::ffi::c_void,
+                            core::mem::size_of::<i32>() as u32,
+                        );
+
+                        // 7. Diagnostics: with the ring gone the client should
                         //    match the window size.
                         let mut client_rect = Rect::default();
                         GetClientRect(hwnd, &mut client_rect);
                         crate::log_line(&format!(
-                            "dwm corners: style {style:#010x}->{stripped:#010x}, \
+                            "dwm corners: style {style:#010x}->{styled:#010x}, \
                              client {}x{} / window {}x{}, round hr={hr:#010x}",
                             client_rect.right - client_rect.left,
                             client_rect.bottom - client_rect.top,
@@ -524,6 +587,17 @@ mod rounded_corners {
     }
 }
 
+#[cfg(not(windows))]
+mod rounded_corners {
+    pub fn apply() {}
+    pub fn is_zoomed() -> bool {
+        false
+    }
+    pub fn set_dark_mode(_dark: bool) {}
+    pub fn window_button(_index: usize) {}
+    pub fn set_caption_rect(_slot: usize, _x: f32, _y: f32, _w: f32, _h: f32) {}
+}
+
 fn main() {
     // Fresh log per launch. Release builds have no console
     // (windows_subsystem), so this file is how startup and panics stay visible.
@@ -533,10 +607,18 @@ fn main() {
         if let Some(loc) = info.location() {
             msg.push_str(&format!("  at {loc}\n"));
         }
-        let _ = std::fs::write(std::env::temp_dir().join("atlas-native-debug.log"), msg);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(debug_log_path())
+        {
+            let _ = std::io::Write::write_all(&mut f, msg.as_bytes());
+        }
     }));
     log_line("opening window");
-    Application::new().run(|cx: &mut App| {
+    Application::new()
+        .with_assets(icons::IconsAssets)
+        .run(|cx: &mut App| {
         // Nerd Font symbol glyphs (fastfetch icons, starship, powerlevel10k…)
         // ship inside the exe and are registered with the text system; icon
         // cells are shaped with this family (see `view::icon_font`). No user

@@ -28,6 +28,7 @@ use gpui::{
     div, fill, point, px, relative, rgb, rgba,
 };
 
+use crate::icons;
 use crate::keymap;
 use crate::session::{Profile, Session, SessionMsg};
 use crate::theme::{Theme, ThemeRegistry};
@@ -54,9 +55,6 @@ pub struct AtlasView {
     theme: Theme,
     /// Terminal font for the cell grid.
     font: Font,
-    /// Caption-window font: native Segoe caption glyphs when present (`None`
-    /// falls back to the bundled Nerd Font window glyphs).
-    caption_font: Option<Font>,
     /// Active preset index into `registry` (settings pills + Ctrl+Shift+T).
     theme_id: usize,
     /// Named theme presets: neutral matte charcoal (default) and Warm Paper.
@@ -151,7 +149,6 @@ impl AtlasView {
             focus,
             theme: registry.preset(0).theme.clone(),
             font: terminal_font(window),
-            caption_font: caption_font(window),
             theme_id: 0,
             registry,
             settings_open: false,
@@ -643,6 +640,7 @@ impl AtlasView {
     fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
         self.theme_id = index.min(self.registry.len() - 1);
         self.theme = self.registry.preset(self.theme_id).theme.clone();
+        crate::rounded_corners::set_dark_mode(self.theme_id == 1);
         cx.notify();
     }
 
@@ -977,7 +975,7 @@ impl AtlasView {
             .h(px(46.0))
             .px(px(16.0))
             .text_color(theme.chrome_fg)
-            .child(icon_glyph(ICON_SEARCH, 14.0))
+            .child(icons::icon(icons::SEARCH).size(px(14.0)).text_color(theme.chrome_fg))
             .child(text_row);
 
         let mut list = div().flex().flex_col().p(px(6.0));
@@ -1004,7 +1002,7 @@ impl AtlasView {
                     .rounded(px(7.0))
                     .text_color(theme.chrome_fg)
                     .hover(move |style| style.bg(hover))
-                    .child(icon_glyph(icon, 13.0))
+                    .child(icons::icon(icon).size(px(13.0)).text_color(theme.chrome_fg))
                     .child(
                         div()
                             .flex_1()
@@ -1285,9 +1283,21 @@ impl AtlasView {
                     .gap(px(5.0))
                     .child(
                         div()
-                            .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
-                            .child("Atlas Terminal 0.1.0"),
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                icons::icon(icons::ATLAS_MARK)
+                                    .size(px(18.0))
+                                    .text_color(theme.accent),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .text_color(theme.chrome_fg_active)
+                                    .child("Atlas Terminal 0.1.0"),
+                            ),
                     )
                     .child(
                         div()
@@ -1376,7 +1386,10 @@ impl AtlasView {
                     let index = self.active;
                     self.close_tab(index, cx);
                 }
-                "v" => self.paste(cx),
+                "v" => {
+                    self.paste(cx);
+                    self.focus_main(window);
+                }
                 "p" => self.open_palette(window, cx),
                 "tab" => {
                     self.cycle(-1);
@@ -1467,7 +1480,7 @@ impl Render for AtlasView {
             div()
                 .id(ElementId::named_usize("workspace-pill", 0))
                 .w(px(26.0))
-                .h(px(20.0))
+                .h(px(22.0))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -1475,18 +1488,16 @@ impl Render for AtlasView {
                 .bg(ws_bg)
                 .text_color(ws_idle)
                 .hover(move |style| style.text_color(ws_hot))
-                .child(icon_glyph(ICON_PANEL, 11.0))
+                .child(icons::icon(icons::ATLAS_MARK).size(px(14.0)).text_color(ws_idle))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.toggle_profile_menu(cx);
                     window.focus(&view.focus);
                 })),
         );
 
-        // Horizontal pill tabs: the active one is a 22px capsule (white on
-        // paper, slate on stone) carrying the running process's own mark; the
-        // rest are quiet 11.5px labels with a folder mark and the working
-        // directory's basename. The close × is hover-only (middle-click and
-        // Ctrl+W also close).
+        // Horizontal tabs: active tab is a clean rounded rect (elevated bg + subtle border)
+        // carrying the running process's own mark; inactive tabs are quiet with folder icon.
+        // Tab close is hover-only.
         for ix in 0..self.tabs.len() {
             let active = ix == self.active;
             let tab = &self.tabs[ix];
@@ -1496,8 +1507,6 @@ impl Render for AtlasView {
                     if active {
                         tab_name(&pane.title, &profile_title(pane.profile))
                     } else {
-                        // A quiet pill wears a folder mark, so it carries the
-                        // working directory's basename — never "PowerShell".
                         dir_label(pane)
                             .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)))
                     }
@@ -1506,7 +1515,7 @@ impl Render for AtlasView {
             };
             let icon = match pane {
                 Some(pane) if active => session_icon(&pane.title, pane.profile),
-                _ => ICON_FOLDER,
+                _ => icons::FOLDER,
             };
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
                 (
@@ -1528,14 +1537,14 @@ impl Render for AtlasView {
             let pill_close = active && self.hover_tab == Some(ix);
             let mut pill = div()
                 .id(ElementId::named_usize("tab-pill", ix))
-                .h(px(22.0))
+                .h(px(24.0))
                 .flex()
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
-                .px(px(10.0))
+                .px(px(8.0))
                 .flex_shrink_0()
-                .rounded_full()
+                .rounded(px(6.0))
                 .bg(pill_bg)
                 .border_1()
                 .border_color(pill_border)
@@ -1544,11 +1553,11 @@ impl Render for AtlasView {
                 .child(
                     div()
                         .text_color(pill_icon)
-                        .child(icon_glyph(icon, 11.0)),
+                        .child(icons::icon(icon).size(px(12.0)).text_color(pill_icon)),
                 )
                 .child(
                     div()
-                        .text_size(px(11.5))
+                        .text_size(px(12.0))
                         .font_weight(if active {
                             FontWeight::MEDIUM
                         } else {
@@ -1558,8 +1567,6 @@ impl Render for AtlasView {
                         .child(label),
                 )
                 .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                    // Only the pill that owns the current state may clear it:
-                    // enter/leave events of neighbouring pills can interleave.
                     if !*hovered && view.hover_tab == Some(ix) {
                         view.hover_tab = None;
                         cx.notify();
@@ -1591,10 +1598,10 @@ impl Render for AtlasView {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded_full()
+                        .rounded(px(3.0))
                         .text_color(tb.faint_fg)
-                        .hover(move |style| style.text_color(close_hot))
-                        .child(icon_glyph(ICON_X, 9.0))
+                        .hover(move |style| style.text_color(close_hot).bg(tb.card_hover))
+                        .child(icons::icon(icons::CLOSE).size(px(9.0)).text_color(tb.faint_fg))
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                             view.close_tab(ix, cx);
                             window.focus(&view.focus);
@@ -1608,8 +1615,7 @@ impl Render for AtlasView {
             ));
         }
 
-        // New tab: a crisp geometric plus right after the last pill, so it
-        // never competes with the native window controls at the far right.
+        // New tab: clean vector plus button
         let plus_hover = tb.card_hover;
         let plus_ink = if self.hover_mark == Some(HOVER_MARK_NEW_TAB) {
             tb.chrome_fg_active
@@ -1620,7 +1626,7 @@ impl Render for AtlasView {
             div()
                 .id(ElementId::named_usize("topbar-new", 0))
                 .w(px(24.0))
-                .h(px(22.0))
+                .h(px(24.0))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -1629,7 +1635,7 @@ impl Render for AtlasView {
                 .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
                     set_hover_mark(view, HOVER_MARK_NEW_TAB, *hovered, cx);
                 }))
-                .child(geo_mark(GeoMark::Plus, 12.0, plus_ink))
+                .child(icons::icon(icons::PLUS).size(px(12.0)).text_color(plus_ink))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.new_tab(Profile::PowerShell, cx);
                     window.focus(&view.focus);
@@ -1638,39 +1644,21 @@ impl Render for AtlasView {
 
         bar = bar.child(caption_spacer(0));
 
-        // Window controls: native Segoe caption glyphs when available,
-        // bundled Nerd fallbacks otherwise; the maximize slot is zoomed-aware
-        // and shows the restore mark while the window is maximized.
-        let caption = self.caption_font.as_ref();
+        // Window controls: clean 38x30px native vector controls
         let zoomed = crate::rounded_corners::is_zoomed();
-        let (min_glyph, max_glyph, close_glyph, glyph_size) = if caption.is_some()
-        {
+        let controls = [
+            (icons::WINDOW_MINIMIZE, false),
             (
-                GLYPH_MIN,
-                if zoomed { GLYPH_RESTORE } else { GLYPH_MAX },
-                GLYPH_CLOSE,
-                10.5,
-            )
-        } else {
-            (
-                ICON_WINDOW_MIN,
                 if zoomed {
-                    ICON_WINDOW_RESTORE
+                    icons::WINDOW_RESTORE
                 } else {
-                    ICON_WINDOW_MAX
+                    icons::WINDOW_MAXIMIZE
                 },
-                ICON_WINDOW_CLOSE,
-                13.0,
-            )
-        };
-        for (index, (glyph, is_close)) in [
-            (min_glyph, false),
-            (max_glyph, false),
-            (close_glyph, true),
-        ]
-        .into_iter()
-        .enumerate()
-        {
+                false,
+            ),
+            (icons::CLOSE, true),
+        ];
+        for (index, (icon_path, is_close)) in controls.into_iter().enumerate() {
             let button_theme = theme.clone();
             let hover_bg = if is_close {
                 rgb(0xC42B1C)
@@ -1686,18 +1674,20 @@ impl Render for AtlasView {
             bar = bar.child(
                 div()
                     .id(ElementId::named_usize("window-control", index))
-                    .w(px(46.0))
-                    .h(px(36.0))
+                    .w(px(38.0))
+                    .h(px(30.0))
                     .flex()
                     .items_center()
                     .justify_center()
                     .text_color(idle)
                     .hover(move |style| style.bg(hover_bg).text_color(hot))
-                    .child(caption_glyph(self.caption_font.as_ref(), glyph, glyph_size))
+                    .child(
+                        icons::icon(icon_path)
+                            .size(if is_close { px(11.0) } else { px(10.0) })
+                            .text_color(idle),
+                    )
                     .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
                         crate::rounded_corners::window_button(index);
-                        // Repaint so the maximize/restore glyph tracks the
-                        // window state this click just changed.
                         cx.notify();
                     })),
             );
@@ -1870,7 +1860,7 @@ impl Render for AtlasView {
         // The header mark is the running process's own icon — a brand mark
         // only when that brand is actually the process.
         let head_icon = if self.settings_open {
-            ICON_GEAR
+            icons::SETTINGS
         } else {
             match self
                 .tabs
@@ -1878,7 +1868,7 @@ impl Render for AtlasView {
                 .and_then(|tab| tab.panes.get(tab.active_pane))
             {
                 Some(pane) => session_icon(&pane.title, pane.profile),
-                None => ICON_TERMINAL,
+                None => icons::TERMINAL,
             }
         };
         let mut head = div()
@@ -1887,9 +1877,11 @@ impl Render for AtlasView {
             .items_center()
             .gap(px(8.0))
             .h(px(26.0))
-            .pl(px(12.0))
-            .pr(px(6.0))
+            .pl(px(14.0))
+            .pr(px(10.0))
             .bg(sheet_bg)
+            .border_b_1()
+            .border_color(theme.hairline)
             .text_color(header_theme.chrome_fg)
             .child(
                 div()
@@ -1897,11 +1889,11 @@ impl Render for AtlasView {
                     .flex_row()
                     .items_center()
                     .gap(px(6.0))
-                    .child(icon_glyph(head_icon, 10.5))
+                    .child(icons::icon(head_icon).size(px(12.0)).text_color(header_theme.chrome_fg))
                     .child(
                         div()
                             .text_size(px(11.5))
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(FontWeight::MEDIUM)
                             .child(label),
                     ),
             )
@@ -1920,7 +1912,7 @@ impl Render for AtlasView {
                     .rounded(px(5.0))
                     .text_color(theme.faint_fg)
                     .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                    .child(icon_glyph(ICON_X, 11.0))
+                    .child(icons::icon(icons::CLOSE).size(px(11.0)).text_color(theme.faint_fg))
                     .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                         view.settings_open = false;
                         window.focus(&view.focus);
@@ -1931,7 +1923,7 @@ impl Render for AtlasView {
             head = head
                 .child(micro_action(
                     ElementId::named_usize("pane-action", 0),
-                    GeoMark::SplitVertical,
+                    icons::SPLIT_COLUMNS,
                     HOVER_MARK_ACTION,
                     self.hover_mark == Some(HOVER_MARK_ACTION),
                     &theme,
@@ -1943,7 +1935,7 @@ impl Render for AtlasView {
                 ))
                 .child(micro_action(
                     ElementId::named_usize("pane-action", 1),
-                    GeoMark::SplitHorizontal,
+                    icons::SPLIT_ROWS,
                     HOVER_MARK_ACTION + 1,
                     self.hover_mark == Some(HOVER_MARK_ACTION + 1),
                     &theme,
@@ -1955,7 +1947,7 @@ impl Render for AtlasView {
                 ))
                 .child(micro_action(
                     ElementId::named_usize("pane-action", 2),
-                    GeoMark::Close,
+                    icons::CLOSE,
                     HOVER_MARK_ACTION + 2,
                     self.hover_mark == Some(HOVER_MARK_ACTION + 2),
                     &theme,
@@ -1967,38 +1959,27 @@ impl Render for AtlasView {
                 ));
         }
 
-        let sheet = div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .w(relative(1.0))
-            .rounded(px(10.0))
-            .bg(sheet_bg)
-            .border_1()
-            .border_color(theme.sheet_border)
-            .child(head)
-            .child(body);
-
+        let zoomed = crate::rounded_corners::is_zoomed();
         let mut root = div()
             .relative()
             .flex()
             .flex_col()
             .w(relative(1.0))
             .h(relative(1.0))
-            .bg(theme.panel_bg)
+            .bg(sheet_bg)
             .font_family("Segoe UI")
-            .text_color(theme.fg)
+            .text_color(theme.fg);
+
+        if !zoomed {
+            root = root
+                .border_1()
+                .border_color(theme.hairline);
+        }
+
+        root = root
             .child(bar)
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .w(relative(1.0))
-                    .px(px(8.0))
-                    .pb(px(8.0))
-                    .child(sheet),
-            );
+            .child(head)
+            .child(body);
         // Overlays paint last: each is a dim click-catcher plus its panel, in
         // stacking order (profile menu, palette, rename dialog). The
         // `*_closing` flags drive fade-outs; dismissal tasks unmount them.
@@ -2084,9 +2065,9 @@ fn char_class(c: char) -> CharClass {
         // itself: font glyphs there leave hairline seams between cells.
         0x2500..=0x259F if is_procedural(c) => CharClass::Block,
         // Latin-ish ranges the terminal font covers: keep runs long.
-        0x20..=0x2BFF => CharClass::Text,
-        // Emoji, CJK, exotic scripts: shape in isolation so their glyph
-        // advances can never shift the rest of the row off the cell grid.
+        0x20..=0x24FF => CharClass::Text,
+        // Emoji, CJK, exotic scripts, and non-procedural symbols: shape in
+        // isolation so their glyph advances can never shift the rest of the row off the cell grid.
         _ => CharClass::Other,
     }
 }
@@ -2767,46 +2748,6 @@ fn home_dir() -> Option<PathBuf> {
 // inherited: the parent button sets idle text color, its hover the hot one.
 // ----------------------------------------------------------------------------
 
-/// Codicon (stroke) chrome icons.
-const ICON_X: &str = "\u{EA76}"; // nf-cod-close
-const ICON_PLUS: &str = "\u{EA60}"; // nf-cod-add
-const ICON_GEAR: &str = "\u{EAF8}"; // nf-cod-gear
-const ICON_SEARCH: &str = "\u{EA6D}"; // nf-cod-search
-const ICON_CHEVRON: &str = "\u{EAB6}"; // nf-cod-chevron_right
-const ICON_PEN: &str = "\u{EA73}"; // nf-cod-edit
-const ICON_COLUMNS: &str = "\u{EB56}"; // nf-cod-split_horizontal
-const ICON_PANEL: &str = "\u{EBF3}"; // nf-cod-layout_panel_left (workspace)
-const ICON_FOLDER: &str = "\u{EA83}"; // nf-cod-folder (inactive tab)
-
-/// Session icons (monochrome marks; the parent decides colour). Process
-/// marks are picked from the shell-reported title by `session_icon`.
-const ICON_TERMINAL: &str = "\u{F120}"; // nf-fa-terminal
-const ICON_UBUNTU: &str = "\u{EF72}"; // nf-fa-ubuntu (WSL / Linux shells)
-const ICON_CLOUD: &str = "\u{F0C2}"; // nf-fa-cloud
-const ICON_SCREEN: &str = "\u{F108}"; // nf-fa-desktop (tmux/screen)
-const ICON_NODE: &str = "\u{E718}"; // nf-dev-nodejs_small
-const ICON_PYTHON: &str = "\u{E73C}"; // nf-dev-python
-const ICON_RUST: &str = "\u{E7A8}"; // nf-dev-rust
-
-/// Caption-window glyphs: native Segoe codepoints when the OS caption font is
-/// available, bundled Font Awesome fallbacks otherwise. The maximize slot is
-/// zoomed-aware and shows the restore mark instead.
-const GLYPH_MIN: &str = "\u{E921}"; // Segoe caption minimize
-const GLYPH_MAX: &str = "\u{E922}"; // Segoe caption maximize
-const GLYPH_RESTORE: &str = "\u{E923}"; // Segoe caption restore
-const GLYPH_CLOSE: &str = "\u{E947}"; // Segoe caption close
-const ICON_WINDOW_MIN: &str = "\u{F2D1}"; // nf-fa-window_minimize
-const ICON_WINDOW_MAX: &str = "\u{F2D0}"; // nf-fa-window_maximize
-const ICON_WINDOW_RESTORE: &str = "\u{F2D2}"; // nf-fa-window_restore
-const ICON_WINDOW_CLOSE: &str = "\u{F2D3}"; // nf-fa-window_close
-
-const ICON_CHEVRON_LEFT: &str = "\u{EAB5}"; // nf-cod-chevron_left
-const ICON_REFRESH: &str = "\u{EB37}"; // nf-cod-refresh
-const ICON_COLOR_MODE: &str = "\u{EAC6}"; // nf-cod-color_mode
-const ICON_TEXT_SIZE: &str = "\u{EB69}"; // nf-cod-text_size
-const ICON_BARS: &str = "\u{F0C9}"; // nf-fa-bars (stacked rows)
-const ICON_SPARK: &str = "\u{F069}"; // nf-fa-asterisk (claude-code mark)
-
 /// Commands offered by the palette.
 #[derive(Clone, Copy)]
 enum Command {
@@ -2827,57 +2768,39 @@ enum Command {
     FontDec,
 }
 
-/// Palette entries: command, icon, label, shortcut hint.
+/// Palette entries: command, vector icon path, label, shortcut hint.
 const COMMANDS: [(Command, &str, &str, &str); 15] = [
-    (Command::NewTab, ICON_PLUS, "New tab", "Ctrl Shift N"),
-    (Command::NewTabWsl, ICON_UBUNTU, "New Ubuntu (WSL) tab", ""),
-    (Command::SplitPane, ICON_COLUMNS, "Split pane right", ""),
-    (Command::SplitPaneDown, ICON_BARS, "Split pane down", ""),
+    (Command::NewTab, icons::PLUS, "New tab", "Ctrl Shift N"),
+    (Command::NewTabWsl, icons::TERMINAL, "New Ubuntu (WSL) tab", ""),
+    (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right", ""),
+    (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down", ""),
     (
         Command::MaximizePane,
-        ICON_WINDOW_MAX,
+        icons::WINDOW_MAXIMIZE,
         "Toggle maximize pane",
         "",
     ),
-    (Command::ClosePane, ICON_X, "Close pane", ""),
-    (Command::CloseTab, ICON_X, "Close tab", "Ctrl Shift W"),
-    (Command::NextTab, ICON_CHEVRON, "Next tab", "Ctrl Tab"),
+    (Command::ClosePane, icons::CLOSE, "Close pane", ""),
+    (Command::CloseTab, icons::CLOSE, "Close tab", "Ctrl Shift W"),
+    (Command::NextTab, icons::CHEVRON_RIGHT, "Next tab", "Ctrl Tab"),
     (
         Command::PrevTab,
-        ICON_CHEVRON_LEFT,
+        icons::CHEVRON_LEFT,
         "Previous tab",
         "Ctrl Shift Tab",
     ),
-    (Command::RestartTab, ICON_REFRESH, "Restart pane", ""),
-    (Command::RenameTab, ICON_PEN, "Rename tab", ""),
+    (Command::RestartTab, icons::REFRESH, "Restart pane", ""),
+    (Command::RenameTab, icons::PEN, "Rename tab", ""),
     (
         Command::ToggleTheme,
-        ICON_COLOR_MODE,
+        icons::SUN,
         "Switch theme",
         "Ctrl Shift T",
     ),
-    (Command::OpenSettings, ICON_GEAR, "Open settings", ""),
-    (Command::FontInc, ICON_TEXT_SIZE, "Increase font size", ""),
-    (Command::FontDec, ICON_TEXT_SIZE, "Decrease font size", ""),
+    (Command::OpenSettings, icons::SETTINGS, "Open settings", ""),
+    (Command::FontInc, icons::SETTINGS, "Increase font size", ""),
+    (Command::FontDec, icons::SETTINGS, "Decrease font size", ""),
 ];
-
-/// One Nerd Font glyph, centred in its parent; the parent decides the color.
-fn icon_glyph(glyph: &'static str, size: f32) -> impl IntoElement {
-    caption_glyph(None, glyph, size)
-}
-
-/// A glyph rendered in an explicit font: `None` means the bundled Nerd
-/// symbols. The font is cloned so the returned element owns everything.
-fn caption_glyph(font: Option<&Font>, glyph: &'static str, size: f32) -> impl IntoElement {
-    let font = font.cloned().unwrap_or_else(icon_font);
-    div()
-        .flex()
-        .items_center()
-        .justify_center()
-        .font(font)
-        .text_size(px(size))
-        .child(glyph)
-}
 
 /// A flexible spacer in the titlebar that reports its painted bounds to the
 /// window subclass as drag-band slot `slot` (see `rounded_corners`).
@@ -2914,13 +2837,13 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
     let item_hover = theme.card_hover;
     let mut menu = div()
         .absolute()
-        .top(px(44.0))
-        .left(px(10.0))
-        .w(px(236.0))
+        .top(px(40.0))
+        .left(px(8.0))
+        .w(px(220.0))
         .flex()
         .flex_col()
         .p(px(6.0))
-        .rounded(px(10.0))
+        .rounded(px(8.0))
         .bg(theme.elevated_bg)
         .border_1()
         .border_color(theme.elevated_border)
@@ -2939,7 +2862,7 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
                 .text_size(px(12.5))
                 .text_color(theme.chrome_fg_active)
                 .hover(move |style| style.bg(item_hover))
-                .child(icon_glyph(icon, 13.0))
+                .child(icons::icon(icon).size(px(13.0)).text_color(theme.chrome_fg))
                 .child(label)
                 .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                     view.new_tab(profile, cx);
@@ -2958,90 +2881,16 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
         .with_easing(ease_out_cubic),
         move |el, delta| {
             let t = if closing { 1.0 - delta } else { delta };
-            el.opacity(t).top(px(44.0 - 6.0 * (1.0 - t)))
+            el.opacity(t).top(px(40.0 - 6.0 * (1.0 - t)))
         },
     )
     .into_any_element()
 }
 
-/// Hover-state ids for geometric chrome marks. Painted quads can't inherit a
-/// hover text colour, so the view keeps the one mark under the pointer.
+/// Hover-state ids for chrome marks.
 const HOVER_MARK_NEW_TAB: u64 = 0;
 const HOVER_MARK_ACTION: u64 = 1; // + action index
 
-/// Geometric chrome mark: crisp quads painted on a canvas — never a font
-/// glyph, so stroke weight and box size are exact at any DPI (the emoji-ish
-/// eye / search / ☰ / ❐ marks are gone for good).
-#[derive(Clone, Copy, PartialEq)]
-enum GeoMark {
-    /// 11px box with a 1px vertical center line — split into columns.
-    SplitVertical,
-    /// 11px box with a 1px horizontal center line — split into rows.
-    SplitHorizontal,
-    /// 10px pixel cross — close the pane.
-    Close,
-    /// 12px plus — new tab.
-    Plus,
-}
-
-/// Paint `mark` into `bounds` with 1px quads, snapped to whole pixels first
-/// so strokes stay crisp on fractional window scales.
-fn paint_geo_mark(mark: GeoMark, bounds: Bounds<Pixels>, color: Rgba, window: &mut Window) {
-    let left = f32::from(bounds.origin.x).round();
-    let top = f32::from(bounds.origin.y).round();
-    let size = f32::from(bounds.size.width)
-        .min(f32::from(bounds.size.height))
-        .round();
-    let stroke = 1.0;
-    let mut rect = |x: f32, y: f32, w: f32, h: f32| {
-        window.paint_quad(fill(
-            Bounds::from_corners(
-                point(px(left + x), px(top + y)),
-                point(px(left + x + w), px(top + y + h)),
-            ),
-            color,
-        ));
-    };
-    let mid = ((size - stroke) / 2.0).floor();
-    match mark {
-        GeoMark::Plus => {
-            rect(0.0, mid, size, stroke);
-            rect(mid, 0.0, stroke, size);
-        }
-        GeoMark::SplitVertical | GeoMark::SplitHorizontal => {
-            rect(0.0, 0.0, size, stroke);
-            rect(0.0, size - stroke, size, stroke);
-            rect(0.0, 0.0, stroke, size);
-            rect(size - stroke, 0.0, stroke, size);
-            if mark == GeoMark::SplitVertical {
-                rect(mid, 0.0, stroke, size);
-            } else {
-                rect(0.0, mid, size, stroke);
-            }
-        }
-        GeoMark::Close => {
-            let steps = size.round() as i32;
-            for i in 0..steps {
-                let f = i as f32;
-                rect(f, f, stroke, stroke);
-                rect(size - stroke - f, f, stroke, stroke);
-            }
-        }
-    }
-}
-
-/// Canvas wrapper that paints a `GeoMark` at the element's exact bounds.
-fn geo_mark(mark: GeoMark, size: f32, color: Rgba) -> impl IntoElement {
-    canvas(
-        |_bounds, _window, _cx| (),
-        move |bounds, _, window, _cx| paint_geo_mark(mark, bounds, color, window),
-    )
-    .w(px(size))
-    .h(px(size))
-}
-
-/// Pointer enter/leave bookkeeping for a geometric mark (only the mark that
-/// owns the current state may clear it; neighbour events can interleave).
 fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Context<AtlasView>) {
     if hovered {
         if view.hover_mark != Some(mark) {
@@ -3054,11 +2903,10 @@ fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Conte
     }
 }
 
-/// Micro pane-header action: an 11px geometric mark at 45% ink that comes to
-/// 90% with a soft hover pad (the whisper row inside the sheet).
+/// Micro pane-header action: a native vector icon with quiet opacity that brightens on hover.
 fn micro_action(
     id: ElementId,
-    mark: GeoMark,
+    icon_path: &'static str,
     hover_id: u64,
     hovered: bool,
     theme: &Theme,
@@ -3066,23 +2914,16 @@ fn micro_action(
     cx: &mut Context<AtlasView>,
 ) -> AnyElement {
     let idle = Rgba {
-        a: 0.45,
+        a: 0.55,
         ..theme.chrome_fg
     };
-    let hot = Rgba {
-        a: 0.9,
-        ..theme.chrome_fg_active
-    };
+    let hot = theme.chrome_fg_active;
     let ink = if hovered { hot } else { idle };
     let hover_bg = theme.card_hover;
-    let size = match mark {
-        GeoMark::Close => 10.0,
-        _ => 11.0,
-    };
     div()
         .id(id)
-        .w(px(20.0))
-        .h(px(18.0))
+        .w(px(22.0))
+        .h(px(20.0))
         .flex()
         .items_center()
         .justify_center()
@@ -3091,7 +2932,7 @@ fn micro_action(
         .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
             set_hover_mark(view, hover_id, *hovered, cx);
         }))
-        .child(geo_mark(mark, size, ink))
+        .child(icons::icon(icon_path).size(px(12.0)).text_color(ink))
         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
             on_click(view, window, cx);
         }))
@@ -3203,37 +3044,17 @@ fn git_cwd(pane: &Pane) -> Option<PathBuf> {
 fn session_icon(title: &str, profile: Profile) -> &'static str {
     let lower = title.to_ascii_lowercase();
     if lower.contains("claude") {
-        ICON_SPARK
-    } else if lower.contains("node")
-        || lower.contains("npm")
-        || lower.contains("pnpm")
-        || lower.contains("yarn")
-        || lower.contains("bun")
-        || lower.contains("vite")
-        || lower.contains("deno")
-    {
-        ICON_NODE
-    } else if lower.contains("python") || lower.contains("pip") || lower.contains("conda") {
-        ICON_PYTHON
-    } else if lower.contains("cargo") || lower.contains("rustc") || lower.contains("rust") {
-        ICON_RUST
-    } else if lower.contains("ubuntu")
-        || lower.contains("wsl")
-        || lower.contains("bash")
-        || lower.contains("zsh")
-        || lower.contains("debian")
-    {
-        ICON_UBUNTU
-    } else if lower.contains("ssh") || lower.contains("edge") || lower.contains("remote") {
-        ICON_CLOUD
-    } else if lower.contains("screen") || lower.contains("tmux") {
-        ICON_SCREEN
-    } else if lower.contains("pwsh") || lower.contains("powershell") {
-        ICON_TERMINAL
+        icons::CLAUDE_MARK
+    } else if lower.contains("cursor") {
+        icons::CURSOR_MARK
+    } else if lower.contains("antigravity") || lower.contains("agy") {
+        icons::ANTIGRAVITY_MARK
+    } else if lower.contains("opencode") || lower.contains("open-code") {
+        icons::OPENCODE_MARK
     } else if matches!(profile, Profile::Wsl) {
-        ICON_UBUNTU
+        icons::TERMINAL
     } else {
-        ICON_TERMINAL
+        icons::TERMINAL
     }
 }
 
@@ -3284,22 +3105,6 @@ fn terminal_font(window: &Window) -> Font {
     font
 }
 
-/// Caption-button glyph font: the native Windows caption fonts when present
-/// (Win11 "Segoe Fluent Icons", Win10 "Segoe MDL2 Assets"), so the
-/// minimize / maximize / close marks match the OS chrome exactly, as in the
-/// mock. `None` falls back to the bundled Nerd Font window glyphs.
-fn caption_font(window: &Window) -> Option<Font> {
-    let available = window.text_system().all_font_names();
-    ["Segoe Fluent Icons", "Segoe MDL2 Assets"]
-        .iter()
-        .find(|family| {
-            available
-                .iter()
-                .any(|name| name.eq_ignore_ascii_case(**family))
-        })
-        .map(|family| gpui::font(*family))
-}
-
 /// Bundled Nerd Font symbols (embedded in the exe, registered at startup).
 /// Resolved from gpui's custom in-memory font collection.
 fn icon_font() -> Font {
@@ -3319,7 +3124,7 @@ fn pill_button(
         a: 0.16,
         ..theme.chrome_fg_active
     };
-    let hover_bg = theme.card_active;
+    let hover_bg = theme.card_hover;
     let fg = if active {
         theme.chrome_fg_active
     } else {

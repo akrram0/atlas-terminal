@@ -53,28 +53,28 @@ pub struct Theme {
 }
 
 impl Theme {
-    /// Warm Paper: cream sheet (#FAF6EE) over sand chrome (#EFECE4), warm
-    /// deep-charcoal ink, terracotta accent.
+    /// Paper: warm cream sheet (#EDE8DC) over sand chrome (#E5E0D4), warm
+    /// deep-charcoal ink (#1C1A16), terracotta rust accent (#C05A28). Zed aesthetic.
     pub fn cream() -> Self {
         Self {
-            bg: rgb(0xFAF6EE),
-            fg: rgb(0x2C2A25),
-            cursor: rgb(0x9A6032),
-            panel_bg: rgb(0xEFECE4),
-            elevated_bg: rgb(0xFFFFFF),
-            elevated_border: rgba(0x0000000F),
-            chrome_fg: rgb(0x6B6860),
-            chrome_fg_active: rgb(0x2C2A25),
-            faint_fg: rgb(0x8A8378),
-            hairline: rgba(0x0000000F),
-            card_hover: rgba(0x00000008),
-            card_active: rgba(0xD4724E1A),
-            accent: rgb(0xD4724E),
+            bg: rgb(0xEDE8DC),
+            fg: rgb(0x1C1A16),
+            cursor: rgb(0xC05A28),
+            panel_bg: rgb(0xE5E0D4),
+            elevated_bg: rgb(0xF5F0E8),
+            elevated_border: rgba(0x00000014),
+            chrome_fg: rgb(0x7A7570),
+            chrome_fg_active: rgb(0x1C1A16),
+            faint_fg: rgb(0x9A9590),
+            hairline: rgba(0x00000014),
+            card_hover: rgba(0x0000000D),
+            card_active: rgba(0xC05A281E),
+            accent: rgb(0xC05A28),
             good: rgb(0x5F7A46),
-            sheet_border: rgb(0xE2DEC9),
+            sheet_border: rgba(0x00000014),
             soft_bg: rgba(0x0000000F),
             ansi: [
-                rgb(0x2C2A25), // 0 black
+                rgb(0x1C1A16), // 0 black
                 rgb(0xB8332A), // 1 red
                 rgb(0x5F7A46), // 2 green
                 rgb(0x8F6824), // 3 yellow
@@ -94,27 +94,26 @@ impl Theme {
         }
     }
 
-    /// Neutral matte charcoal: the chrome is #141413, the unified sheet (pane
-    /// header + terminal canvas) #1C1C1A with a #2A2A27 hairline, warm ivory
-    /// ink, terracotta accent. The registry's default preset.
+    /// Neutral matte charcoal: the chrome is #0A0A09, the canvas #0E0E0D with
+    /// subtle borders, ivory ink, warm accent. Zeron aesthetic.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x1C1C1A),
+            bg: rgb(0x0E0E0D),
             fg: rgb(0xE8E4DC),
             cursor: rgb(0xD08A5C),
-            panel_bg: rgb(0x141413),
-            elevated_bg: rgb(0x242422),
-            elevated_border: rgba(0xFFFFFF14),
-            chrome_fg: rgb(0x9C978C),
-            chrome_fg_active: rgb(0xF0EFEA),
+            panel_bg: rgb(0x0A0A09),
+            elevated_bg: rgb(0x161614),
+            elevated_border: rgba(0xFFFFFF11),
+            chrome_fg: rgb(0x6B6860),
+            chrome_fg_active: rgb(0xE8E4DC),
             faint_fg: rgb(0x7A7468),
-            hairline: rgba(0xFFFFFF12),
+            hairline: rgba(0xFFFFFF0F),
             card_hover: rgba(0xFFFFFF0A),
             card_active: rgba(0xE08A6226),
             accent: rgb(0xE08A62),
             good: rgb(0x9BAF7C),
-            sheet_border: rgb(0x2A2A27),
-            soft_bg: rgba(0xFFFFFF0F),
+            sheet_border: rgba(0xFFFFFF0D),
+            soft_bg: rgba(0xFFFFFF0D),
             ansi: [
                 rgb(0x262320), // 0 black
                 rgb(0xD06055), // 1 red
@@ -288,18 +287,17 @@ pub struct Preset {
 }
 
 impl ThemeRegistry {
-    /// The shipped presets: neutral matte charcoal first (default), Warm
-    /// Paper second.
+    /// The shipped presets: Paper (warm cream, default), Dark (matte charcoal).
     pub fn standard() -> Self {
         Self {
             presets: vec![
                 Preset {
-                    name: "Dark",
-                    theme: Theme::dark(),
+                    name: "Paper",
+                    theme: Theme::cream(),
                 },
                 Preset {
-                    name: "Warm Paper",
-                    theme: Theme::cream(),
+                    name: "Dark",
+                    theme: Theme::dark(),
                 },
             ],
         }

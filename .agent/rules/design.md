@@ -1,78 +1,73 @@
-# Design System: macOS Cupertino Terminal
+# Design System: Atlas Terminal (Zeron-Inspired GPUI Native Architecture)
 
-## Identity & Aesthetic Direction
-- **Theme**: macOS Ventura/Sonoma Cupertino aesthetic — restrained, dark-first, precision glassmorphism, authentic traffic lights, tight typography, zero superfluous clutter.
-- **Surface Elevation**: Layered semi-transparency over Windows 11 DWM backdrop blur.
+## Core Directive & Rules (MANDATORY)
+
+1. **STRICT RULE: NO UNICODE ICONS**:
+   - Under no circumstances should Unicode characters or emoji glyphs (e.g. `⚙`, `↺`, `✎`, `◐`, `⌕`, `×`, `⊞`, `⊟`) be used as UI icons.
+   - All UI icons must be **native vector SVGs** rendered via GPUI's built-in `gpui::svg()` with an embedded `AssetSource`, identical to `https://github.com/zeronsh/zeron.git`.
+   - Vector assets must follow the **Solar Icons (Linear weight)** aesthetic (clean 1.5px/1.75px stroked geometry, 24px coordinate space, uniform optical weight).
+
+2. **INSPIRATION: ZERON (`https://github.com/zeronsh/zeron.git`)**:
+   - Clean, flat, unified native control plane.
+   - **No nested cards or awkward 8px perimeter margins** around the terminal grid. The terminal canvas runs edge-to-edge with the window, beneath a subtle chrome header bar.
+   - **Restrained Chrome**: A single 36px top bar with minimal tabs (flat, quiet when inactive, crisp rounded rectangle when active) and tight, proportional window controls (38×30px, not bulky 46×36px).
+   - **Whisper Breadcrumb**: Pane header is an integrated 26px breadcrumb bar carrying session status and micro-actions.
+
+---
 
 ## Design Tokens
 
-### Color Palette
-- **Window Base Surface**: `rgba(18, 18, 18, 0.60)`
-- **Title Bar Surface**: `rgba(28, 28, 32, 0.45)`
-- **Window Border**: `rgba(255, 255, 255, 0.10)`
-- **Interior Divider / Border**: `rgba(255, 255, 255, 0.08)`
-- **Hover Overlay**: `rgba(255, 255, 255, 0.06)`
-- **Active Overlay**: `rgba(255, 255, 255, 0.12)`
+### Color Palette (Curated Dual Theme)
 
-#### Typography Colors
-- **Text Primary**: `#F5F5F7`
-- **Text Secondary / Muted**: `#86868B`
-- **Text Tertiary / Disabled**: `#55555B`
+#### 1. Paper / Warm (Default — Inspired by Zed & Claude Code)
+- **Terminal Surface (`bg`)**: `#EDE8DC` (warm cream)
+- **Chrome / Top Bar (`panel_bg`)**: `#E5E0D4`
+- **Active Tab / Elevated Surface (`elevated_bg`)**: `#F5F0E8`
+- **Elevated Border**: `rgba(0, 0, 0, 0.08)`
+- **Hairline Dividers**: `rgba(0, 0, 0, 0.08)`
+- **Primary Text (`fg`, `chrome_fg_active`)**: `#1C1A16`
+- **Muted Text (`chrome_fg`)**: `#7A7570`
+- **Faint / Shortcuts (`faint_fg`)**: `#9A9590`
+- **Accent Brand**: `#C05A28` (warm terracotta rust)
+- **Cursor**: `#C05A28`
 
-#### Window Controls (Minimalist Cupertino)
-- **Minimalist Controls**: Sleek, understated monochrome controls positioned on the top-right (Minimize, Maximize, Close).
-- **Control Styling**: Transparent background, subtle rounded hover state (`rgba(255, 255, 255, 0.08)`), icon color `#86868B` transitioning to `#F5F5F7` on hover. Close button hover accentuates to `#FF5F56`.
-- **No Traffic Lights**: Authentic macOS colored circles omitted per user direction.
+#### 2. Dark (Inspired by Zeron / OpenCode Dark)
+- **Terminal Surface (`bg`)**: `#0E0E0D` (matte near-black)
+- **Chrome / Top Bar (`panel_bg`)**: `#0A0A09`
+- **Active Tab / Elevated Surface (`elevated_bg`)**: `#161614`
+- **Elevated Border**: `rgba(255, 255, 255, 0.08)`
+- **Hairline Dividers**: `rgba(255, 255, 255, 0.06)`
+- **Primary Text (`fg`, `chrome_fg_active`)**: `#E8E4DC`
+- **Muted Text (`chrome_fg`)**: `#6B6860`
+- **Faint / Shortcuts (`faint_fg`)**: `#4A463F`
+- **Accent Brand**: `#E08A62`
+- **Cursor**: `#D08A5C`
 
-#### xterm.js Dark Palette (Curated Cupertino Terminal)
-- **Background**: `transparent`
-- **Foreground**: `#ECEFF4`
-- **Cursor**: `#0A84FF`
-- **Cursor Accent**: `#121212`
-- **Selection Background**: `rgba(10, 132, 255, 0.30)`
-- **Black**: `#1E1E22` | **Bright Black**: `#5A5D66`
-- **Red**: `#FF6B6B` | **Bright Red**: `#FF8787`
-- **Green**: `#32D74B` | **Bright Green**: `#4CD964`
-- **Yellow**: `#FFD60A` | **Bright Yellow**: `#FFE043`
-- **Blue**: `#0A84FF` | **Bright Blue**: `#409CFF`
-- **Magenta**: `#BF5AF2` | **Bright Magenta**: `#DA8FFF`
-- **Cyan**: `#64D2FF` | **Bright Cyan**: `#8BE0FF`
-- **White**: `#E5E5EA` | **Bright White**: `#FFFFFF`
+---
 
-### Spacing Scale (8pt Grid)
-- `space-1`: `4px`
-- `space-2`: `8px`
-- `space-3`: `16px`
-- `space-4`: `24px`
-- `space-5`: `32px`
-- `space-6`: `48px`
-- `space-7`: `64px`
+## Icon Architecture (`gpui::svg`)
 
-### Border Radius Tiers
-- **sm (`6px`)**: Small icon buttons, inline chips, status pills
-- **md (`10px`)**: Tab elements, dropdown menus, terminal search bar
-- **lg (`12px`)**: Main application window frame, modals, popovers
-- **full (`9999px`)**: Traffic light dots (12px diameter circle), avatar badges, status indicators
+### Pipeline
+- All SVGs are embedded into the binary using `include_bytes!` inside an `AssetSource` implementation.
+- Loaded into GPUI via `Application::new().with_assets(IconsAssets)`.
+- Rendered via a helper:
+  ```rust
+  pub fn icon(path: &'static str) -> gpui::Svg {
+      gpui::svg().path(path).flex_none()
+  }
+  ```
+- Tints are applied via `.text_color(color)` directly on the SVG element.
 
-### Blur & Glassmorphism
-- **App Frame Filter**: `backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);`
-- **Title Bar Filter**: `backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);`
-- **Tauri Window**: Transparent background (`transparent: true`), `decorations: false`, native shadow enabled.
-
-### Typography
-- **UI Font Stack**: `Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif`
-- **Terminal Canvas Font**: `"JetBrains Mono Nerd Font", "MesloLGS NF", "SF Mono", monospace`
-- **UI Type Scale**:
-  - Title Bar Header: `12px`, font-weight 500 (Medium), tracking `-0.01em`
-  - Tab Titles: `12px`, font-weight 400 (Regular)
-  - Status / Metadata: `11px`, font-weight 400 (Regular)
-  - Terminal Text: `13px` / `14px`, line-height `1.3`, font-weight 400
-
-## Component Rules
-1. **Title Bar**:
-   - Height: `38px` fixed.
-   - Window Controls: subtle, right-aligned minimalist icons (Minimize, Maximize, Close) with 6px rounded hover targets, preserving clean Cupertino aesthetic without traffic light dots.
-2. **Window Sizing & Margins**:
-   - Padding around xterm: `8px 12px 12px 12px` to give clean breathing room without wasting terminal real estate.
-3. **No Decorative Clutter**:
-   - Every border is 1px with controlled opacity. No drop shadows on buttons, no non-Apple gradients.
+### Asset Set (Solar Linear & Agent Brands)
+- `icons/terminal.svg` — Terminal session
+- `icons/plus.svg` — New tab / action
+- `icons/close.svg` — Close tab / pane
+- `icons/split-vertical.svg` & `icons/split-horizontal.svg` — Panes
+- `icons/settings.svg` — Settings gear / sliders
+- `icons/magnifer.svg` — Search / command palette
+- `icons/pen.svg` — Edit / rename tab
+- `icons/refresh.svg` — Restart session
+- `icons/sun.svg` / `icons/moon.svg` — Theme toggle
+- `icons/folder.svg` — Inactive directory / workspace
+- `icons/claude-mark.svg`, `icons/opencode-mark.svg`, `icons/ubuntu.svg` — Agent & runtime brands
+- `icons/window-minimize.svg`, `icons/window-maximize.svg`, `icons/window-restore.svg` — Window controls fallback

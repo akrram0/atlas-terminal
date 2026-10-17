@@ -1,0 +1,3 @@
+[workspace]
+members = ["atlas-native"]
+resolver = "2"

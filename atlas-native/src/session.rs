@@ -12,7 +12,7 @@ use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::term::{Config, Term};
 use alacritty_terminal::vte::ansi::Processor;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
-use smol::channel::{unbounded, Receiver, Sender};
+use smol::channel::{bounded, Receiver, Sender};
 
 /// Minimal grid dimensions for `Term`.
 pub struct TermSize {
@@ -159,7 +159,7 @@ impl Session {
         let mut reader = master.try_clone_reader()?;
         let writer = master.take_writer()?;
 
-        let (tx, rx) = unbounded::<SessionMsg>();
+        let (tx, rx) = bounded::<SessionMsg>(512);
         let proxy = EventProxy { tx: tx.clone() };
         let term = Term::new(
             Config {

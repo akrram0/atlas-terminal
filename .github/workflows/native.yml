@@ -9,6 +9,7 @@ on:
     paths:
       - "atlas-native/**"
       - ".github/workflows/native.yml"
+      - "Cargo.toml"
   workflow_dispatch:
 
 jobs:
