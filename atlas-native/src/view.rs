@@ -1183,7 +1183,7 @@ impl AtlasView {
         Some(Point::new(line, Column(col)))
     }
 
-    pub fn handle_terminal_right_click(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn handle_terminal_right_click(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let copy_text = if let Some(pane) = self.active_pane() {
             let session = pane.session.borrow();
             session.term.selection_to_string()
