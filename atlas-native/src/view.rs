@@ -21,8 +21,8 @@ use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, Context, Element, ElementId,
-    FocusHandle, Font, FontFallbacks, FontWeight, GlobalElementId, InspectorElementId,
+    Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, Context, Corners, Element,
+    ElementId, FocusHandle, Font, FontFallbacks, FontWeight, GlobalElementId, InspectorElementId,
     IntoElement, KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, Pixels, Render,
     Rgba, ScrollWheelEvent, StrikethroughStyle, Style, TextRun, UnderlineStyle, Window, canvas,
     div, fill, point, px, relative, rgb, rgba,
@@ -1779,11 +1779,10 @@ impl Render for AtlasView {
         }
 
         // Active terminal color overrides (OSC 11 etc.) define the sheet surface.
-        let over = self
+        let _over = self
             .active_pane()
             .map(|pane| *pane.session.borrow().term.colors())
             .unwrap_or_default();
-        let (sheet_bg, _, _) = theme.defaults(&over);
 
         // ---- Terminal area -------------------------------------------
         let index = self.active.min(self.tabs.len().saturating_sub(1));
@@ -1872,7 +1871,7 @@ impl Render for AtlasView {
                     .flex_1()
                     .opacity(pane.pane_expansion)
                     .overflow_hidden()
-                    .bg(sheet_bg)
+                    .bg(theme.panel_bg)
                     .px(px(10.0))
                     .py(px(10.0))
                     .on_mouse_down(
@@ -2010,7 +2009,7 @@ impl Render for AtlasView {
             .h(px(28.0))
             .pl(px(14.0))
             .pr(px(10.0))
-            .bg(sheet_bg)
+            .bg(theme.panel_bg)
             .border_b_1()
             .border_color(theme.hairline)
             .text_color(header_theme.chrome_fg)
@@ -2029,6 +2028,9 @@ impl Render for AtlasView {
                     ),
             )
             .child(div().flex_1());
+        if !zoomed {
+            head = head.rounded_t(px(inner_radius));
+        }
         if self.settings_open {
             let close_hover = theme.card_hover;
             let close_hot = theme.chrome_fg_active;
@@ -2097,7 +2099,7 @@ impl Render for AtlasView {
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
-            .bg(sheet_bg)
+            .bg(theme.panel_bg)
             .overflow_hidden()
             .child(head)
             .child(body);
@@ -2586,7 +2588,6 @@ impl Element for TerminalElement {
         // base sheet included.
         let over = *self.session.borrow().term.colors();
         let (default_bg, _default_fg, default_cursor) = theme.defaults(&over);
-        window.paint_quad(fill(bounds, default_bg));
 
         let text_system = window.text_system().clone();
         let font_size = px(self.font_size);
@@ -2598,6 +2599,7 @@ impl Element for TerminalElement {
             .max(1.0))
         .round();
         let cell_height = (f32::from(font_size) * LINE_SCALE).round().max(1.0);
+        let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;
 
         // Integer pixel snapping: rounded cell sizes + whole-pixel origin
         // keep every quad boundary crisp.
@@ -2704,6 +2706,7 @@ impl Element for TerminalElement {
             (rows, cursor_cell, cursor_shape)
         };
 
+        let total_rows = rows.len();
         for (row_index, row) in rows.iter().enumerate() {
             let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
             let y1 = y0 + cell_height;
@@ -2717,13 +2720,25 @@ impl Element for TerminalElement {
             let mut span_bg = default_bg;
             let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
                 if span_bg != default_bg && col > span_start {
-                    window.paint_quad(fill(
+                    let mut quad = fill(
                         Bounds::from_corners(
                             point(px(x(span_start)), px(y0)),
                             point(px(x(col)), px(y1)),
                         ),
                         span_bg,
-                    ));
+                    );
+                    let is_bottom = row_index + 1 >= total_rows;
+                    let is_left = span_start == 0;
+                    let is_right = col >= cols;
+                    if is_bottom && (is_left || is_right) {
+                        quad.corner_radii = Corners {
+                            top_left: px(0.0),
+                            top_right: px(0.0),
+                            bottom_left: if is_left { px(13.0) } else { px(0.0) },
+                            bottom_right: if is_right { px(13.0) } else { px(0.0) },
+                        };
+                    }
+                    window.paint_quad(quad);
                 }
             };
             for run in &row.runs {
