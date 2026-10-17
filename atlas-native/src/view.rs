@@ -1,9 +1,10 @@
 //! AtlasView — the whole UI, drawn by Rust.
 //!
 //! Structure: frameless window -> compact pill top bar (workspace pill,
-//! horizontal pill tabs, action icons, native window controls) over a
+//! horizontal pill tabs, new-tab plus, native window controls) over a
 //! floating rounded terminal sheet inset 8px, whose whisper header carries
-//! the pane title and its split/maximize/close micro actions. The terminal
+//! the pane title and its split/close micro marks. Chrome marks that used to
+//! be font glyphs are geometric quads now — exact 1px at any scale. The terminal
 //! itself is a custom gpui `Element` that walks the alacritty grid and paints
 //! cell backgrounds, text runs, procedural block glyphs and the cursor
 //! directly on the GPU canvas.
@@ -35,8 +36,8 @@ use crate::theme::{Theme, ThemeRegistry};
 /// Consolas. `terminal_font` picks the first family the text system resolves.
 const FONT_CASCADE: &[&str] = &["Cascadia Code", "Cascadia Mono", "Consolas"];
 const FONT_FALLBACK: &str = "Consolas";
-const FONT_SIZE: f32 = 13.0;
-const LINE_SCALE: f32 = 1.18;
+const FONT_SIZE: f32 = 13.5;
+const LINE_SCALE: f32 = 1.333;
 
 /// Motion timings (ms) — short and quiet, Zed-style: overlay entrances and
 /// exits and the settings/terminal body swap.
@@ -92,6 +93,9 @@ pub struct AtlasView {
     scroll_task: bool,
     /// Tab pill currently under the pointer: its hover-only close mark.
     hover_tab: Option<usize>,
+    /// Geometric chrome mark under the pointer (new-tab plus, pane actions).
+    /// Painted quads can't inherit hover text colour, so the view tracks it.
+    hover_mark: Option<u64>,
 }
 
 struct Tab {
@@ -168,6 +172,7 @@ impl AtlasView {
             scroll_anim: None,
             scroll_task: false,
             hover_tab: None,
+            hover_mark: None,
         };
         view.new_tab(Profile::PowerShell, cx);
 
@@ -638,18 +643,6 @@ impl AtlasView {
     fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
         self.theme_id = index.min(self.registry.len() - 1);
         self.theme = self.registry.preset(self.theme_id).theme.clone();
-        cx.notify();
-    }
-
-    fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings_open = !self.settings_open;
-        if self.settings_open {
-            self.profile_menu = false;
-            self.palette_open = false;
-            window.focus(&self.settings_focus);
-        } else {
-            window.focus(&self.focus);
-        }
         cx.notify();
     }
 
@@ -1464,46 +1457,51 @@ impl Render for AtlasView {
             .border_b_1()
             .border_color(tb.hairline);
 
-        // Workspace pill (28×20): the quiet sidebar mark from the reference
-        // chrome. Opens the new-tab profile menu (this shell has no sidebar).
-        let ws_bg = tb.elevated_bg;
-        let ws_border = tb.elevated_border;
+        // Workspace pill (26×20): a 6%-ink translucent fill with the quiet
+        // sidebar mark from the reference chrome. Opens the new-tab profile
+        // menu (this shell has no sidebar).
+        let ws_bg = tb.soft_bg;
         let ws_idle = tb.chrome_fg;
         let ws_hot = tb.chrome_fg_active;
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("workspace-pill", 0))
-                .w(px(28.0))
+                .w(px(26.0))
                 .h(px(20.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(6.0))
+                .rounded(px(5.0))
                 .bg(ws_bg)
-                .border_1()
-                .border_color(ws_border)
                 .text_color(ws_idle)
                 .hover(move |style| style.text_color(ws_hot))
-                .child(icon_glyph(ICON_PANEL, 12.0))
+                .child(icon_glyph(ICON_PANEL, 11.0))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.toggle_profile_menu(cx);
                     window.focus(&view.focus);
                 })),
         );
 
-        // Horizontal pill tabs: the active one is a 24px capsule (white on
+        // Horizontal pill tabs: the active one is a 22px capsule (white on
         // paper, slate on stone) carrying the running process's own mark; the
-        // rest are quiet labels with a folder mark. The close × is hover-only
-        // (middle-click and Ctrl+W also close).
+        // rest are quiet 11.5px labels with a folder mark and the working
+        // directory's basename. The close × is hover-only (middle-click and
+        // Ctrl+W also close).
         for ix in 0..self.tabs.len() {
             let active = ix == self.active;
             let tab = &self.tabs[ix];
             let pane = tab.panes.get(tab.active_pane);
             let label = match pane {
-                Some(pane) => tab
-                    .custom_title
-                    .clone()
-                    .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile))),
+                Some(pane) => tab.custom_title.clone().unwrap_or_else(|| {
+                    if active {
+                        tab_name(&pane.title, &profile_title(pane.profile))
+                    } else {
+                        // A quiet pill wears a folder mark, so it carries the
+                        // working directory's basename — never "PowerShell".
+                        dir_label(pane)
+                            .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)))
+                    }
+                }),
                 None => "Terminal".to_string(),
             };
             let icon = match pane {
@@ -1530,7 +1528,7 @@ impl Render for AtlasView {
             let pill_close = active && self.hover_tab == Some(ix);
             let mut pill = div()
                 .id(ElementId::named_usize("tab-pill", ix))
-                .h(px(24.0))
+                .h(px(22.0))
                 .flex()
                 .flex_row()
                 .items_center()
@@ -1546,11 +1544,16 @@ impl Render for AtlasView {
                 .child(
                     div()
                         .text_color(pill_icon)
-                        .child(icon_glyph(icon, if active { 13.0 } else { 12.0 })),
+                        .child(icon_glyph(icon, 11.0)),
                 )
                 .child(
                     div()
-                        .text_size(px(12.0))
+                        .text_size(px(11.5))
+                        .font_weight(if active {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
                         .truncate()
                         .child(label),
                 )
@@ -1605,53 +1608,35 @@ impl Render for AtlasView {
             ));
         }
 
-        bar = bar.child(caption_spacer(0));
-
-        // Right cluster: settings (eye), command palette (search), new tab —
-        // micro marks (13px) on a 10px pitch, quiet until hovered.
-        let mut actions = div().flex().flex_row().items_center().gap(px(10.0));
-        actions = actions
-            .child(chrome_action_button(
-                ElementId::named_usize("topbar-settings", 0),
-                ICON_EYE,
-                13.0,
-                28.0,
-                24.0,
-                6.0,
-                &theme,
-                |view, window, cx| {
-                    view.toggle_settings(window, cx);
-                },
-                cx,
-            ))
-            .child(chrome_action_button(
-                ElementId::named_usize("topbar-palette", 0),
-                ICON_SEARCH,
-                13.0,
-                28.0,
-                24.0,
-                6.0,
-                &theme,
-                |view, window, cx| {
-                    view.open_palette(window, cx);
-                },
-                cx,
-            ))
-            .child(chrome_action_button(
-                ElementId::named_usize("topbar-new", 0),
-                ICON_PLUS,
-                13.0,
-                28.0,
-                24.0,
-                6.0,
-                &theme,
-                |view, window, cx| {
+        // New tab: a crisp geometric plus right after the last pill, so it
+        // never competes with the native window controls at the far right.
+        let plus_hover = tb.card_hover;
+        let plus_ink = if self.hover_mark == Some(HOVER_MARK_NEW_TAB) {
+            tb.chrome_fg_active
+        } else {
+            tb.chrome_fg
+        };
+        bar = bar.child(
+            div()
+                .id(ElementId::named_usize("topbar-new", 0))
+                .w(px(24.0))
+                .h(px(22.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.0))
+                .hover(move |style| style.bg(plus_hover))
+                .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                    set_hover_mark(view, HOVER_MARK_NEW_TAB, *hovered, cx);
+                }))
+                .child(geo_mark(GeoMark::Plus, 12.0, plus_ink))
+                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.new_tab(Profile::PowerShell, cx);
                     window.focus(&view.focus);
-                },
-                cx,
-            ));
-        bar = bar.child(actions);
+                })),
+        );
+
+        bar = bar.child(caption_spacer(0));
 
         // Window controls: native Segoe caption glyphs when available,
         // bundled Nerd fallbacks otherwise; the maximize slot is zoomed-aware
@@ -1786,8 +1771,8 @@ impl Render for AtlasView {
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .px(px(14.0))
-                    .py(px(10.0))
+                    .px(px(16.0))
+                    .py(px(12.0))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |view, _: &MouseDownEvent, window, cx| {
@@ -1856,8 +1841,17 @@ impl Render for AtlasView {
             );
 
         // ---- Whisper header + floating sheet --------------------------
-        // The sheet is the paper: a quiet title on the left and micro
-        // actions (split right / split down / maximize / close) right.
+        // The sheet is the paper: a quiet title on the left and geometric
+        // micro marks (split vertical / split horizontal / close) right.
+        //
+        // Sheet and header share one background: the active terminal's
+        // effective background (an OSC 11 override when a TUI declares one),
+        // so the card always reads as a single rounded surface.
+        let over = self
+            .active_pane()
+            .map(|pane| *pane.session.borrow().term.colors())
+            .unwrap_or_default();
+        let (sheet_bg, _, _) = theme.defaults(&over);
         let header_theme = theme.clone();
         let label = if self.settings_open {
             "Settings".to_string()
@@ -1891,10 +1885,11 @@ impl Render for AtlasView {
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(6.0))
-            .h(px(28.0))
+            .gap(px(8.0))
+            .h(px(26.0))
             .pl(px(12.0))
             .pr(px(6.0))
+            .bg(sheet_bg)
             .text_color(header_theme.chrome_fg)
             .child(
                 div()
@@ -1905,7 +1900,7 @@ impl Render for AtlasView {
                     .child(icon_glyph(head_icon, 10.5))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(px(11.5))
                             .font_weight(FontWeight::BOLD)
                             .child(label),
                     ),
@@ -1936,7 +1931,9 @@ impl Render for AtlasView {
             head = head
                 .child(micro_action(
                     ElementId::named_usize("pane-action", 0),
-                    ICON_COLUMNS,
+                    GeoMark::SplitVertical,
+                    HOVER_MARK_ACTION,
+                    self.hover_mark == Some(HOVER_MARK_ACTION),
                     &theme,
                     |view, window, cx| {
                         view.split_active(SplitAxis::Columns, cx);
@@ -1946,7 +1943,9 @@ impl Render for AtlasView {
                 ))
                 .child(micro_action(
                     ElementId::named_usize("pane-action", 1),
-                    ICON_BARS,
+                    GeoMark::SplitHorizontal,
+                    HOVER_MARK_ACTION + 1,
+                    self.hover_mark == Some(HOVER_MARK_ACTION + 1),
                     &theme,
                     |view, window, cx| {
                         view.split_active(SplitAxis::Rows, cx);
@@ -1956,17 +1955,9 @@ impl Render for AtlasView {
                 ))
                 .child(micro_action(
                     ElementId::named_usize("pane-action", 2),
-                    ICON_WINDOW_MAX,
-                    &theme,
-                    |view, window, cx| {
-                        view.toggle_maximize(cx);
-                        window.focus(&view.focus);
-                    },
-                    cx,
-                ))
-                .child(micro_action(
-                    ElementId::named_usize("pane-action", 3),
-                    ICON_X,
+                    GeoMark::Close,
+                    HOVER_MARK_ACTION + 2,
+                    self.hover_mark == Some(HOVER_MARK_ACTION + 2),
                     &theme,
                     |view, window, cx| {
                         view.close_pane(cx);
@@ -1982,9 +1973,9 @@ impl Render for AtlasView {
             .flex_1()
             .w(relative(1.0))
             .rounded(px(10.0))
-            .bg(theme.bg)
+            .bg(sheet_bg)
             .border_1()
-            .border_color(theme.hairline)
+            .border_color(theme.sheet_border)
             .child(head)
             .child(body);
 
@@ -2813,7 +2804,6 @@ const ICON_CHEVRON_LEFT: &str = "\u{EAB5}"; // nf-cod-chevron_left
 const ICON_REFRESH: &str = "\u{EB37}"; // nf-cod-refresh
 const ICON_COLOR_MODE: &str = "\u{EAC6}"; // nf-cod-color_mode
 const ICON_TEXT_SIZE: &str = "\u{EB69}"; // nf-cod-text_size
-const ICON_EYE: &str = "\u{F06E}"; // nf-fa-eye
 const ICON_BARS: &str = "\u{F0C9}"; // nf-fa-bars (stacked rows)
 const ICON_SPARK: &str = "\u{F069}"; // nf-fa-asterisk (claude-code mark)
 
@@ -2974,22 +2964,120 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
     .into_any_element()
 }
 
-/// Micro pane-header action: an 11px glyph at 40% ink that comes to 80% on
-/// hover (the whisper row inside the sheet).
+/// Hover-state ids for geometric chrome marks. Painted quads can't inherit a
+/// hover text colour, so the view keeps the one mark under the pointer.
+const HOVER_MARK_NEW_TAB: u64 = 0;
+const HOVER_MARK_ACTION: u64 = 1; // + action index
+
+/// Geometric chrome mark: crisp quads painted on a canvas — never a font
+/// glyph, so stroke weight and box size are exact at any DPI (the emoji-ish
+/// eye / search / ☰ / ❐ marks are gone for good).
+#[derive(Clone, Copy, PartialEq)]
+enum GeoMark {
+    /// 11px box with a 1px vertical center line — split into columns.
+    SplitVertical,
+    /// 11px box with a 1px horizontal center line — split into rows.
+    SplitHorizontal,
+    /// 10px pixel cross — close the pane.
+    Close,
+    /// 12px plus — new tab.
+    Plus,
+}
+
+/// Paint `mark` into `bounds` with 1px quads, snapped to whole pixels first
+/// so strokes stay crisp on fractional window scales.
+fn paint_geo_mark(mark: GeoMark, bounds: Bounds<Pixels>, color: Rgba, window: &mut Window) {
+    let left = f32::from(bounds.origin.x).round();
+    let top = f32::from(bounds.origin.y).round();
+    let size = f32::from(bounds.size.width)
+        .min(f32::from(bounds.size.height))
+        .round();
+    let stroke = 1.0;
+    let mut rect = |x: f32, y: f32, w: f32, h: f32| {
+        window.paint_quad(fill(
+            Bounds::from_corners(
+                point(px(left + x), px(top + y)),
+                point(px(left + x + w), px(top + y + h)),
+            ),
+            color,
+        ));
+    };
+    let mid = ((size - stroke) / 2.0).floor();
+    match mark {
+        GeoMark::Plus => {
+            rect(0.0, mid, size, stroke);
+            rect(mid, 0.0, stroke, size);
+        }
+        GeoMark::SplitVertical | GeoMark::SplitHorizontal => {
+            rect(0.0, 0.0, size, stroke);
+            rect(0.0, size - stroke, size, stroke);
+            rect(0.0, 0.0, stroke, size);
+            rect(size - stroke, 0.0, stroke, size);
+            if mark == GeoMark::SplitVertical {
+                rect(mid, 0.0, stroke, size);
+            } else {
+                rect(0.0, mid, size, stroke);
+            }
+        }
+        GeoMark::Close => {
+            let steps = size.round() as i32;
+            for i in 0..steps {
+                let f = i as f32;
+                rect(f, f, stroke, stroke);
+                rect(size - stroke - f, f, stroke, stroke);
+            }
+        }
+    }
+}
+
+/// Canvas wrapper that paints a `GeoMark` at the element's exact bounds.
+fn geo_mark(mark: GeoMark, size: f32, color: Rgba) -> impl IntoElement {
+    canvas(
+        |_bounds, _window, _cx| (),
+        move |bounds, _, window, _cx| paint_geo_mark(mark, bounds, color, window),
+    )
+    .w(px(size))
+    .h(px(size))
+}
+
+/// Pointer enter/leave bookkeeping for a geometric mark (only the mark that
+/// owns the current state may clear it; neighbour events can interleave).
+fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Context<AtlasView>) {
+    if hovered {
+        if view.hover_mark != Some(mark) {
+            view.hover_mark = Some(mark);
+            cx.notify();
+        }
+    } else if view.hover_mark == Some(mark) {
+        view.hover_mark = None;
+        cx.notify();
+    }
+}
+
+/// Micro pane-header action: an 11px geometric mark at 45% ink that comes to
+/// 90% with a soft hover pad (the whisper row inside the sheet).
 fn micro_action(
     id: ElementId,
-    glyph: &'static str,
+    mark: GeoMark,
+    hover_id: u64,
+    hovered: bool,
     theme: &Theme,
     on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
     cx: &mut Context<AtlasView>,
 ) -> AnyElement {
     let idle = Rgba {
-        a: 0.4,
+        a: 0.45,
         ..theme.chrome_fg
     };
     let hot = Rgba {
-        a: 0.8,
+        a: 0.9,
         ..theme.chrome_fg_active
+    };
+    let ink = if hovered { hot } else { idle };
+    let hover_bg = theme.card_hover;
+    let size = match mark {
+        GeoMark::Close => 10.0,
+        _ => 11.0,
     };
     div()
         .id(id)
@@ -2999,43 +3087,11 @@ fn micro_action(
         .items_center()
         .justify_center()
         .rounded(px(5.0))
-        .text_color(idle)
-        .hover(move |style| style.text_color(hot))
-        .child(icon_glyph(glyph, 11.0))
-        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-            on_click(view, window, cx);
+        .hover(move |style| style.bg(hover_bg))
+        .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+            set_hover_mark(view, hover_id, *hovered, cx);
         }))
-        .into_any_element()
-}
-
-/// Small icon button (top-bar actions): quiet by default, brightens on
-/// hover, runs `on_click` — which owns focus placement, so overlays can take
-/// focus without the terminal snatching it back.
-fn chrome_action_button(
-    id: ElementId,
-    glyph: &'static str,
-    glyph_size: f32,
-    w: f32,
-    h: f32,
-    radius: f32,
-    theme: &Theme,
-    on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
-    cx: &mut Context<AtlasView>,
-) -> AnyElement {
-    let hover_bg = theme.card_hover;
-    let idle = theme.chrome_fg;
-    let hot = theme.chrome_fg_active;
-    div()
-        .id(id)
-        .w(px(w))
-        .h(px(h))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(radius))
-        .text_color(idle)
-        .hover(move |style| style.bg(hover_bg).text_color(hot))
-        .child(icon_glyph(glyph, glyph_size))
+        .child(geo_mark(mark, size, ink))
         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
             on_click(view, window, cx);
         }))
@@ -3090,6 +3146,29 @@ fn title_path(raw: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Directory label for a quiet tab pill: the basename of the shell's working
+/// directory — `~` while it sits in the home folder — so the folder mark and
+/// the words agree (never the raw shell name like "PowerShell").
+fn dir_label(pane: &Pane) -> Option<String> {
+    let raw = title_path(&pane.title)
+        .or_else(|| pane.cwd.as_ref().map(|dir| dir.display().to_string()))?;
+    let trimmed = raw.trim_end_matches(['\\', '/']);
+    if trimmed.is_empty() || trimmed == "~" {
+        return Some("~".to_string());
+    }
+    if let Some(home) = home_dir() {
+        let home = home.display().to_string();
+        if trimmed.eq_ignore_ascii_case(home.trim_end_matches(['\\', '/'])) {
+            return Some("~".to_string());
+        }
+    }
+    trimmed
+        .rsplit(['\\', '/'])
+        .next()
+        .filter(|base| !base.is_empty())
+        .map(str::to_string)
 }
 
 /// Working directory to run git against: the title path mapped back to

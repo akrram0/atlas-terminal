@@ -44,6 +44,10 @@ pub struct Theme {
     pub accent: Rgba,
     /// Success green (connected / running dots).
     pub good: Rgba,
+    /// Hairline border of the floating terminal sheet.
+    pub sheet_border: Rgba,
+    /// Soft translucent fill for quiet pills (the workspace button).
+    pub soft_bg: Rgba,
     /// ANSI palette 0..16.
     pub ansi: [Rgba; 16],
 }
@@ -67,6 +71,8 @@ impl Theme {
             card_active: rgba(0xD4724E1A),
             accent: rgb(0xD4724E),
             good: rgb(0x5F7A46),
+            sheet_border: rgb(0xE2DEC9),
+            soft_bg: rgba(0x0000000F),
             ansi: [
                 rgb(0x2C2A25), // 0 black
                 rgb(0xB8332A), // 1 red
@@ -88,24 +94,27 @@ impl Theme {
         }
     }
 
-    /// Neutral matte charcoal: a #141413 sheet under a #1C1C1A chrome, warm
-    /// ivory ink, terracotta accent. The registry's default preset.
+    /// Neutral matte charcoal: the chrome is #141413, the unified sheet (pane
+    /// header + terminal canvas) #1C1C1A with a #2A2A27 hairline, warm ivory
+    /// ink, terracotta accent. The registry's default preset.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x141413),
+            bg: rgb(0x1C1C1A),
             fg: rgb(0xE8E4DC),
             cursor: rgb(0xD08A5C),
-            panel_bg: rgb(0x1C1C1A),
-            elevated_bg: rgb(0x262624),
+            panel_bg: rgb(0x141413),
+            elevated_bg: rgb(0x242422),
             elevated_border: rgba(0xFFFFFF14),
             chrome_fg: rgb(0x9C978C),
-            chrome_fg_active: rgb(0xE8E4DC),
+            chrome_fg_active: rgb(0xF0EFEA),
             faint_fg: rgb(0x7A7468),
             hairline: rgba(0xFFFFFF12),
             card_hover: rgba(0xFFFFFF0A),
             card_active: rgba(0xE08A6226),
             accent: rgb(0xE08A62),
             good: rgb(0x9BAF7C),
+            sheet_border: rgb(0x2A2A27),
+            soft_bg: rgba(0xFFFFFF0F),
             ansi: [
                 rgb(0x262320), // 0 black
                 rgb(0xD06055), // 1 red
