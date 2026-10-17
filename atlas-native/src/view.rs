@@ -2547,7 +2547,7 @@ impl Element for TerminalElement {
             let mut col = 0usize;
             let mut span_start = 0usize;
             let mut span_bg = default_bg;
-            let mut flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
+            let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
                 if span_bg != default_bg && col > span_start {
                     window.paint_quad(fill(
                         Bounds::from_corners(

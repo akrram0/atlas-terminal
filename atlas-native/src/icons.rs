@@ -2,7 +2,7 @@
 //! Embedded into the binary via `include_bytes!` and served to GPUI's SVG renderer.
 
 use std::borrow::Cow;
-use gpui::{AssetSource, Result, SharedString, Svg, svg};
+use gpui::{AssetSource, Result, SharedString, Styled, Svg, svg};
 
 macro_rules! icon_assets {
     ($(($const_name:ident, $path:literal)),+ $(,)?) => {
