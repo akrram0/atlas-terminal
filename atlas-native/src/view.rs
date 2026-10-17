@@ -1700,6 +1700,13 @@ impl Render for AtlasView {
             );
         }
 
+        // Active terminal color overrides (OSC 11 etc.) define the sheet surface.
+        let over = self
+            .active_pane()
+            .map(|pane| *pane.session.borrow().term.colors())
+            .unwrap_or_default();
+        let (sheet_bg, _, _) = theme.defaults(&over);
+
         // ---- Terminal area -------------------------------------------
         let index = self.active.min(self.tabs.len().saturating_sub(1));
         let body: AnyElement = if self.settings_open {
@@ -1845,11 +1852,6 @@ impl Render for AtlasView {
         // Sheet and header share one background: the active terminal's
         // effective background (an OSC 11 override when a TUI declares one),
         // so the card always reads as a single rounded surface.
-        let over = self
-            .active_pane()
-            .map(|pane| *pane.session.borrow().term.colors())
-            .unwrap_or_default();
-        let (sheet_bg, _, _) = theme.defaults(&over);
         let header_theme = theme.clone();
         let label = if self.settings_open {
             "Settings".to_string()
