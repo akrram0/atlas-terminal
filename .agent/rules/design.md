@@ -7,11 +7,11 @@
    - All UI icons must be **native vector SVGs** rendered via GPUI's built-in `gpui::svg()` with an embedded `AssetSource`, identical to `https://github.com/zeronsh/zeron.git`.
    - Vector assets must follow the **Solar Icons (Linear weight)** aesthetic (clean 1.5px/1.75px stroked geometry, 24px coordinate space, uniform optical weight).
 
-2. **INSPIRATION: ZERON (`https://github.com/zeronsh/zeron.git`)**:
+2. **INSPIRATION: ZERON & GHOSTTY (`https://github.com/zeronsh/zeron.git`)**:
    - Clean, flat, unified native control plane.
    - **No nested cards or awkward 8px perimeter margins** around the terminal grid. The terminal canvas runs edge-to-edge with the window, beneath a subtle chrome header bar.
-   - **Restrained Chrome**: A single 36px top bar with minimal tabs (flat, quiet when inactive, crisp rounded rectangle when active) and tight, proportional window controls (38×30px, not bulky 46×36px).
-   - **Whisper Breadcrumb**: Pane header is an integrated 26px breadcrumb bar carrying session status and micro-actions.
+   - **Restrained Chrome**: A single unified 36px top bar with minimal tabs (flat, quiet when inactive, crisp rounded rectangle with process icon + title when active) and tight, proportional window controls (38×30px, not bulky 46×36px).
+   - **No Redundant Secondary Bars**: No second pane header bar. Process titles and icons live on the active tab pill in the top bar. Pane splitting and management rely entirely on keyboard shortcuts (`Ctrl+Shift+D` / `Ctrl+Shift+E` / `Ctrl+Shift+W` / `Ctrl+Shift+M`) and the Command Palette (`Ctrl+Shift+P`).
 
 ---
 
@@ -79,7 +79,7 @@
 ### 1. Window Framing & Transparency
 - **Window Backdrop**: Fully transparent (`WindowBackgroundAppearance::Transparent` + `WindowDecorations::Client`). No opaque system canvas clearing.
 - **Root Element**: Must NEVER paint a solid background quad (no `bg(...)` on root) to avoid re-introducing sharp 90-degree corners.
-- **Main Window Container**: A single unified container wrapping the top bar, breadcrumb header, and terminal grid with:
+- **Main Window Container**: A single unified container wrapping the top tab bar and terminal sheet with:
   - `.rounded(px(14.0))` (when restored) / `0px` (when maximized)
   - `.border_1()` with subtle border `.border_color(rgba(0xFFFFFF1A))`
   - `.bg(theme.panel_bg)`
@@ -91,8 +91,7 @@
 - **Inner Radius Formula**: `inner_radius = outer_radius - border_width` = `13.0px`
 - **Top Bar (`bar`)**: Styled with `.rounded_t(px(13.0))` with matching `bg(theme.panel_bg)`.
 - **Close Button**: Rightmost control styled with `.rounded_tr(px(13.0))` so red hover highlights curve naturally with the window.
-- **Pane Header (`head`)**: Styled with `.rounded_t(px(13.0))` and matching `bg(theme.panel_bg)`. Never use contrasting background strips (`sheet_bg`) that cut across the chrome.
-- **Terminal Grid Wrapper (`pane-cell`)**: Styled with `.rounded_b(px(13.0))` and matching `bg(theme.panel_bg)`.
+- **Terminal Sheet & Cells (`terminal-sheet`, `pane-cell`)**: Mounts directly beneath the top bar, styled with `.rounded_b(px(13.0))` and matching `bg(theme.panel_bg)`. No secondary pane header strips.
 
 ### 3. Safe Insets & Grid Padding
 - **Cell Padding**: Exactly 10px safe padding (`.px(px(10.0)).py(px(10.0))`) between the container border and the terminal cell grid so text and prompts never touch or clip against the rounded corners.

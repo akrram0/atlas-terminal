@@ -1388,6 +1388,10 @@ impl AtlasView {
                     ),
             );
 
+        let close_hover = theme.card_hover;
+        let close_hot = theme.chrome_fg_active;
+        let close_idle = theme.faint_fg;
+
         div()
             .id(ElementId::named_usize("settings-page", 0))
             .flex()
@@ -1418,6 +1422,57 @@ impl AtlasView {
                             .flex_col()
                             .gap(px(14.0))
                             .py(px(24.0))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    .justify_between()
+                                    .pb(px(4.0))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_row()
+                                            .items_center()
+                                            .gap(px(8.0))
+                                            .child(
+                                                icons::icon(icons::SETTINGS)
+                                                    .size(px(16.0))
+                                                    .text_color(theme.chrome_fg_active),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(15.0))
+                                                    .font_weight(FontWeight::SEMIBOLD)
+                                                    .text_color(theme.fg)
+                                                    .child("Settings"),
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .id(ElementId::named_usize("settings-close", 0))
+                                            .w(px(26.0))
+                                            .h(px(24.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .rounded(px(6.0))
+                                            .text_color(close_idle)
+                                            .hover(move |style| {
+                                                style.bg(close_hover).text_color(close_hot)
+                                            })
+                                            .child(
+                                                icons::icon(icons::CLOSE)
+                                                    .size(px(13.0))
+                                                    .text_color(close_idle),
+                                            )
+                                            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                                                view.settings_open = false;
+                                                window.focus(&view.focus);
+                                                cx.notify();
+                                            })),
+                                    ),
+                            )
                             .child(card().child(section("APPEARANCE")).child(theme_row))
                             .child(
                                 card()
@@ -1453,9 +1508,23 @@ impl AtlasView {
             match key {
                 "t" => self.toggle_theme(cx),
                 "n" => self.new_tab(Profile::PowerShell, cx),
+                "d" => {
+                    self.settings_open = false;
+                    self.split_active(SplitAxis::Columns, cx);
+                    self.focus_main(window);
+                }
+                "e" => {
+                    self.settings_open = false;
+                    self.split_active(SplitAxis::Rows, cx);
+                    self.focus_main(window);
+                }
+                "m" => {
+                    self.toggle_maximize(cx);
+                    self.focus_main(window);
+                }
                 "w" => {
-                    let index = self.active;
-                    self.close_tab(index, cx);
+                    self.close_pane(cx);
+                    self.focus_main(window);
                 }
                 "v" => {
                     self.paste(cx);
@@ -1965,133 +2034,8 @@ impl Render for AtlasView {
                 |el, delta| el.opacity(delta),
             );
 
-        // ---- Whisper header + floating sheet --------------------------
-        // The sheet is the paper: a quiet title on the left and geometric
-        // micro marks (split vertical / split horizontal / close) right.
-        //
-        // Sheet and header share one background: the active terminal's
-        // effective background (an OSC 11 override when a TUI declares one),
-        // so the card always reads as a single rounded surface.
-        let header_theme = theme.clone();
-        let label = if self.settings_open {
-            "Settings".to_string()
-        } else {
-            match self.tabs.get(index) {
-                Some(tab) => match tab.panes.get(tab.active_pane) {
-                    Some(pane) => tab
-                        .custom_title
-                        .clone()
-                        .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile))),
-                    None => "Atlas".to_string(),
-                },
-                None => "Atlas".to_string(),
-            }
-        };
-        // The header mark is the running process's own icon — a brand mark
-        // only when that brand is actually the process.
-        let head_icon = if self.settings_open {
-            icons::SETTINGS
-        } else {
-            match self
-                .tabs
-                .get(index)
-                .and_then(|tab| tab.panes.get(tab.active_pane))
-            {
-                Some(pane) => session_icon(&pane.title, pane.profile),
-                None => icons::TERMINAL,
-            }
-        };
-        let mut head = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(8.0))
-            .h(px(28.0))
-            .pl(px(14.0))
-            .pr(px(10.0))
-            .bg(theme.panel_bg)
-            .border_b_1()
-            .border_color(theme.hairline)
-            .text_color(header_theme.chrome_fg)
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .child(icons::icon(head_icon).size(px(12.5)).text_color(header_theme.chrome_fg))
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(label),
-                    ),
-            )
-            .child(div().flex_1());
-        if !zoomed {
-            head = head.rounded_t(px(inner_radius));
-        }
-        if self.settings_open {
-            let close_hover = theme.card_hover;
-            let close_hot = theme.chrome_fg_active;
-            head = head.child(
-                div()
-                    .id(ElementId::named_usize("settings-close", 0))
-                    .w(px(22.0))
-                    .h(px(20.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(5.0))
-                    .text_color(theme.faint_fg)
-                    .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                    .child(icons::icon(icons::CLOSE).size(px(12.0)).text_color(theme.faint_fg))
-                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                        view.settings_open = false;
-                        window.focus(&view.focus);
-                        cx.notify();
-                    })),
-            );
-        } else {
-            head = head
-                .child(micro_action(
-                    ElementId::named_usize("pane-action", 0),
-                    icons::SPLIT_COLUMNS,
-                    HOVER_MARK_ACTION,
-                    self.hover_mark == Some(HOVER_MARK_ACTION),
-                    &theme,
-                    |view, window, cx| {
-                        view.split_active(SplitAxis::Columns, cx);
-                        window.focus(&view.focus);
-                    },
-                    cx,
-                ))
-                .child(micro_action(
-                    ElementId::named_usize("pane-action", 1),
-                    icons::SPLIT_ROWS,
-                    HOVER_MARK_ACTION + 1,
-                    self.hover_mark == Some(HOVER_MARK_ACTION + 1),
-                    &theme,
-                    |view, window, cx| {
-                        view.split_active(SplitAxis::Rows, cx);
-                        window.focus(&view.focus);
-                    },
-                    cx,
-                ))
-                .child(micro_action(
-                    ElementId::named_usize("pane-action", 2),
-                    icons::CLOSE,
-                    HOVER_MARK_ACTION + 2,
-                    self.hover_mark == Some(HOVER_MARK_ACTION + 2),
-                    &theme,
-                    |view, window, cx| {
-                        view.close_pane(cx);
-                        view.focus_main(window);
-                    },
-                    cx,
-                ));
-        }
-
+        // The floating sheet holds the active terminal body (or settings page).
+        // It stretches edge-to-edge beneath the top tab bar.
         let mut sheet = div()
             .id(ElementId::named_usize("terminal-sheet", 0))
             .flex()
@@ -2101,7 +2045,6 @@ impl Render for AtlasView {
             .h(relative(1.0))
             .bg(theme.panel_bg)
             .overflow_hidden()
-            .child(head)
             .child(body);
 
         if !zoomed {
@@ -2966,15 +2909,15 @@ enum Command {
 const COMMANDS: [(Command, &str, &str, &str); 15] = [
     (Command::NewTab, icons::PLUS, "New tab", "Ctrl Shift N"),
     (Command::NewTabWsl, icons::TERMINAL, "New Ubuntu (WSL) tab", ""),
-    (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right", ""),
-    (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down", ""),
+    (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right", "Ctrl Shift D"),
+    (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down", "Ctrl Shift E"),
     (
         Command::MaximizePane,
         icons::WINDOW_MAXIMIZE,
         "Toggle maximize pane",
-        "",
+        "Ctrl Shift M",
     ),
-    (Command::ClosePane, icons::CLOSE, "Close pane", ""),
+    (Command::ClosePane, icons::CLOSE, "Close pane", "Ctrl Shift W"),
     (Command::CloseTab, icons::CLOSE, "Close tab", "Ctrl Shift W"),
     (Command::NextTab, icons::CHEVRON_RIGHT, "Next tab", "Ctrl Tab"),
     (
@@ -3083,7 +3026,6 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
 
 /// Hover-state ids for chrome marks.
 const HOVER_MARK_NEW_TAB: u64 = 0;
-const HOVER_MARK_ACTION: u64 = 1; // + action index
 const HOVER_MARK_WINDOW: u64 = 10; // + window control index
 
 fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Context<AtlasView>) {
@@ -3096,39 +3038,6 @@ fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Conte
         view.hover_mark = None;
         cx.notify();
     }
-}
-
-/// Micro pane-header action: a native vector icon with clean visibility that brightens on hover.
-fn micro_action(
-    id: ElementId,
-    icon_path: &'static str,
-    hover_id: u64,
-    hovered: bool,
-    theme: &Theme,
-    on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
-    cx: &mut Context<AtlasView>,
-) -> AnyElement {
-    let idle = theme.chrome_fg;
-    let hot = theme.chrome_fg_active;
-    let ink = if hovered { hot } else { idle };
-    let hover_bg = theme.card_hover;
-    div()
-        .id(id)
-        .w(px(24.0))
-        .h(px(22.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(5.0))
-        .hover(move |style| style.bg(hover_bg))
-        .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-            set_hover_mark(view, hover_id, *hovered, cx);
-        }))
-        .child(icons::icon(icon_path).size(px(13.0)).text_color(ink))
-        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-            on_click(view, window, cx);
-        }))
-        .into_any_element()
 }
 
 /// Full-screen click-catcher painted under an overlay panel; fades in with
