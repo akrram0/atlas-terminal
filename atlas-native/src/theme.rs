@@ -94,26 +94,26 @@ impl Theme {
         }
     }
 
-    /// Neutral matte charcoal: the chrome is #0A0A09, the canvas #0E0E0D with
+    /// Neutral matte charcoal: the chrome is #141413, the canvas #1C1C1A with
     /// subtle borders, ivory ink, warm accent. Zeron aesthetic.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x0E0E0D),
+            bg: rgb(0x1C1C1A),
             fg: rgb(0xE8E4DC),
             cursor: rgb(0xD08A5C),
-            panel_bg: rgb(0x0A0A09),
-            elevated_bg: rgb(0x161614),
-            elevated_border: rgba(0xFFFFFF11),
-            chrome_fg: rgb(0x6B6860),
-            chrome_fg_active: rgb(0xE8E4DC),
-            faint_fg: rgb(0x7A7468),
-            hairline: rgba(0xFFFFFF0F),
-            card_hover: rgba(0xFFFFFF0A),
+            panel_bg: rgb(0x141413),
+            elevated_bg: rgb(0x222220),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x8A867E),
+            chrome_fg_active: rgb(0xF0ECE4),
+            faint_fg: rgb(0x66625A),
+            hairline: rgba(0xFFFFFF12),
+            card_hover: rgba(0xFFFFFF10),
             card_active: rgba(0xE08A6226),
             accent: rgb(0xE08A62),
             good: rgb(0x9BAF7C),
-            sheet_border: rgba(0xFFFFFF0D),
-            soft_bg: rgba(0xFFFFFF0D),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
             ansi: [
                 rgb(0x262320), // 0 black
                 rgb(0xD06055), // 1 red
@@ -287,17 +287,17 @@ pub struct Preset {
 }
 
 impl ThemeRegistry {
-    /// The shipped presets: Paper (warm cream, default), Dark (matte charcoal).
+    /// The shipped presets: Dark (matte charcoal, default), Paper (warm cream).
     pub fn standard() -> Self {
         Self {
             presets: vec![
                 Preset {
-                    name: "Paper",
-                    theme: Theme::cream(),
-                },
-                Preset {
                     name: "Dark",
                     theme: Theme::dark(),
+                },
+                Preset {
+                    name: "Paper",
+                    theme: Theme::cream(),
                 },
             ],
         }

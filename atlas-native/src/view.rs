@@ -1644,7 +1644,7 @@ impl Render for AtlasView {
 
         bar = bar.child(caption_spacer(0));
 
-        // Window controls: clean 38x30px native vector controls
+        // Window controls: clean 44px wide native vector controls filling top bar height
         let zoomed = crate::rounded_corners::is_zoomed();
         let controls = [
             (icons::WINDOW_MINIMIZE, false),
@@ -1660,31 +1660,38 @@ impl Render for AtlasView {
         ];
         for (index, (icon_path, is_close)) in controls.into_iter().enumerate() {
             let button_theme = theme.clone();
+            let hover_id = HOVER_MARK_WINDOW + index as u64;
+            let is_hovered = self.hover_mark == Some(hover_id);
             let hover_bg = if is_close {
                 rgb(0xC42B1C)
             } else {
                 button_theme.card_hover
             };
-            let hot = if is_close {
-                rgb(0xFFFFFF)
+            let ink = if is_hovered {
+                if is_close {
+                    rgb(0xFFFFFF)
+                } else {
+                    button_theme.chrome_fg_active
+                }
             } else {
-                button_theme.chrome_fg_active
+                button_theme.chrome_fg
             };
-            let idle = button_theme.chrome_fg;
             bar = bar.child(
                 div()
                     .id(ElementId::named_usize("window-control", index))
-                    .w(px(38.0))
-                    .h(px(30.0))
+                    .w(px(44.0))
+                    .h(relative(1.0))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_color(idle)
-                    .hover(move |style| style.bg(hover_bg).text_color(hot))
+                    .hover(move |style| style.bg(hover_bg))
+                    .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                        set_hover_mark(view, hover_id, *hovered, cx);
+                    }))
                     .child(
                         icons::icon(icon_path)
-                            .size(if is_close { px(11.0) } else { px(10.0) })
-                            .text_color(idle),
+                            .size(px(12.5))
+                            .text_color(ink),
                     )
                     .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
                         crate::rounded_corners::window_button(index);
@@ -1761,8 +1768,9 @@ impl Render for AtlasView {
                     .flex()
                     .flex_col()
                     .flex_1()
-                    .px(px(16.0))
-                    .py(px(12.0))
+                    .bg(sheet_bg)
+                    .px(px(14.0))
+                    .py(px(10.0))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |view, _: &MouseDownEvent, window, cx| {
@@ -1871,17 +1879,19 @@ impl Render for AtlasView {
                 None => icons::TERMINAL,
             }
         };
+        let zoomed = crate::rounded_corners::is_zoomed();
         let mut head = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(8.0))
-            .h(px(26.0))
+            .h(px(28.0))
             .pl(px(14.0))
             .pr(px(10.0))
             .bg(sheet_bg)
             .border_b_1()
             .border_color(theme.hairline)
+            .rounded_t(if zoomed { px(0.0) } else { px(10.0) })
             .text_color(header_theme.chrome_fg)
             .child(
                 div()
@@ -1889,7 +1899,7 @@ impl Render for AtlasView {
                     .flex_row()
                     .items_center()
                     .gap(px(6.0))
-                    .child(icons::icon(head_icon).size(px(12.0)).text_color(header_theme.chrome_fg))
+                    .child(icons::icon(head_icon).size(px(12.5)).text_color(header_theme.chrome_fg))
                     .child(
                         div()
                             .text_size(px(11.5))
@@ -1912,7 +1922,7 @@ impl Render for AtlasView {
                     .rounded(px(5.0))
                     .text_color(theme.faint_fg)
                     .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                    .child(icons::icon(icons::CLOSE).size(px(11.0)).text_color(theme.faint_fg))
+                    .child(icons::icon(icons::CLOSE).size(px(12.0)).text_color(theme.faint_fg))
                     .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                         view.settings_open = false;
                         window.focus(&view.focus);
@@ -1959,14 +1969,28 @@ impl Render for AtlasView {
                 ));
         }
 
-        let zoomed = crate::rounded_corners::is_zoomed();
+        let sheet = div()
+            .id(ElementId::named_usize("terminal-sheet", 0))
+            .flex()
+            .flex_col()
+            .flex_1()
+            .w(relative(1.0))
+            .mx(if zoomed { px(0.0) } else { px(8.0) })
+            .mb(if zoomed { px(0.0) } else { px(8.0) })
+            .rounded(if zoomed { px(0.0) } else { px(10.0) })
+            .border_1()
+            .border_color(if zoomed { rgba(0x00000000) } else { theme.sheet_border })
+            .bg(sheet_bg)
+            .child(head)
+            .child(body);
+
         let mut root = div()
             .relative()
             .flex()
             .flex_col()
             .w(relative(1.0))
             .h(relative(1.0))
-            .bg(sheet_bg)
+            .bg(theme.panel_bg)
             .font_family("Segoe UI")
             .text_color(theme.fg);
 
@@ -1978,8 +2002,7 @@ impl Render for AtlasView {
 
         root = root
             .child(bar)
-            .child(head)
-            .child(body);
+            .child(sheet);
         // Overlays paint last: each is a dim click-catcher plus its panel, in
         // stacking order (profile menu, palette, rename dialog). The
         // `*_closing` flags drive fade-outs; dismissal tasks unmount them.
@@ -2890,6 +2913,7 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
 /// Hover-state ids for chrome marks.
 const HOVER_MARK_NEW_TAB: u64 = 0;
 const HOVER_MARK_ACTION: u64 = 1; // + action index
+const HOVER_MARK_WINDOW: u64 = 10; // + window control index
 
 fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Context<AtlasView>) {
     if hovered {
@@ -2903,7 +2927,7 @@ fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Conte
     }
 }
 
-/// Micro pane-header action: a native vector icon with quiet opacity that brightens on hover.
+/// Micro pane-header action: a native vector icon with clean visibility that brightens on hover.
 fn micro_action(
     id: ElementId,
     icon_path: &'static str,
@@ -2913,17 +2937,14 @@ fn micro_action(
     on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
     cx: &mut Context<AtlasView>,
 ) -> AnyElement {
-    let idle = Rgba {
-        a: 0.55,
-        ..theme.chrome_fg
-    };
+    let idle = theme.chrome_fg;
     let hot = theme.chrome_fg_active;
     let ink = if hovered { hot } else { idle };
     let hover_bg = theme.card_hover;
     div()
         .id(id)
-        .w(px(22.0))
-        .h(px(20.0))
+        .w(px(24.0))
+        .h(px(22.0))
         .flex()
         .items_center()
         .justify_center()
@@ -2932,7 +2953,7 @@ fn micro_action(
         .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
             set_hover_mark(view, hover_id, *hovered, cx);
         }))
-        .child(icons::icon(icon_path).size(px(12.0)).text_color(ink))
+        .child(icons::icon(icon_path).size(px(13.0)).text_color(ink))
         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
             on_click(view, window, cx);
         }))

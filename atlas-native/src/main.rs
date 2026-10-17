@@ -556,8 +556,8 @@ mod rounded_corners {
                             core::mem::size_of::<i32>() as u32,
                         );
 
-                        // 6. Set initial immersive dark mode (0 for light Paper theme).
-                        let dark_mode: i32 = 0;
+                        // 6. Set initial immersive dark mode (1 for dark default theme).
+                        let dark_mode: i32 = 1;
                         let _ = DwmSetWindowAttribute(
                             hwnd,
                             DWMWA_USE_IMMERSIVE_DARK_MODE,
