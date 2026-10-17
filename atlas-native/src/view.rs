@@ -2119,7 +2119,7 @@ impl AtlasView {
 
 impl Render for AtlasView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_active = window.is_active();
+        let is_active = crate::rounded_corners::is_active();
         if is_active && !self.window_was_active {
             self.maybe_auto_check(true, cx);
         }
@@ -3780,7 +3780,7 @@ impl AtlasView {
                 body = body.child(
                     div()
                         .max_h(px(100.0))
-                        .overflow_y_scroll()
+                        .overflow_hidden()
                         .p(px(8.0))
                         .rounded(px(6.0))
                         .bg(theme.panel_bg)

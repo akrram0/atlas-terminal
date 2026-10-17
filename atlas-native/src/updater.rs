@@ -156,7 +156,7 @@ pub fn format_epoch_time(epoch: u64) -> String {
             w_second: u16,
             w_milliseconds: u16,
         }
-        extern "system" {
+        unsafe extern "system" {
             fn FileTimeToLocalFileTime(lp_file_time: *const u64, lp_local_file_time: *mut u64) -> i32;
             fn FileTimeToSystemTime(lp_file_time: *const u64, lp_system_time: *mut SystemTime) -> i32;
         }
@@ -448,8 +448,8 @@ pub fn check_for_updates(current_version: &str, etag: Option<&str>) -> UpdateChe
         };
     }
 
-    // 403 Forbidden / 429 Too Many Requests
-    if status_code == 403 || status_code == 429 {
+    // 403 Forbidden / 429 Too Many Requests, or quota exhausted (remaining == 0)
+    if status_code == 403 || status_code == 429 || rate_limit_remaining == Some(0) {
         let now_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

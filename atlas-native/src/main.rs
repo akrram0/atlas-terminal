@@ -212,6 +212,7 @@ mod rounded_corners {
         fn GetSystemMetricsForDpi(index: i32, dpi: u32) -> i32;
         fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
+        fn GetForegroundWindow() -> Hwnd;
     }
 
     #[link(name = "dwmapi")]
@@ -350,6 +351,15 @@ mod rounded_corners {
         }
         // Safety: `hwnd` is the process's main window, stored once found.
         unsafe { IsZoomed(raw as Hwnd) != 0 }
+    }
+
+    /// Whether the Atlas main window is currently the active foreground window.
+    pub fn is_active() -> bool {
+        let raw = MAIN_HWND.load(Ordering::SeqCst);
+        if raw == 0 {
+            return false;
+        }
+        unsafe { GetForegroundWindow() == (raw as Hwnd) }
     }
 
     /// Update Windows 11 DWM immersive dark mode to match theme luminance.
@@ -639,6 +649,9 @@ mod rounded_corners {
     pub fn apply() {}
     pub fn is_zoomed() -> bool {
         false
+    }
+    pub fn is_active() -> bool {
+        true
     }
     pub fn set_dark_mode(_dark: bool) {}
     pub fn window_button(_index: usize) {}
