@@ -40,11 +40,10 @@ const FONT_FALLBACK: &str = "Consolas";
 const FONT_SIZE: f32 = 13.5;
 const LINE_SCALE: f32 = 1.333;
 
-/// Motion timings (ms) — short and quiet, Zed-style: overlay entrances and
-/// exits and the settings/terminal body swap.
-const OVERLAY_IN_MS: u64 = 170;
-const OVERLAY_OUT_MS: u64 = 110;
-const BODY_IN_MS: u64 = 150;
+/// Motion timings (ms) — Apple/macOS-style snappy, quiet, highly responsive.
+const OVERLAY_IN_MS: u64 = 135;
+const OVERLAY_OUT_MS: u64 = 85;
+const BODY_IN_MS: u64 = 110;
 
 pub struct AtlasView {
     tabs: Vec<Tab>,
@@ -76,6 +75,10 @@ pub struct AtlasView {
     cursor_style: Option<CursorShape>,
     /// Blink phase of the cursor (palette/rename carets share it).
     cursor_on: bool,
+    /// Continuous breathing phase (0.0 .. 2π) for organic cursor pulse.
+    cursor_breath_phase: f32,
+    /// Timestamp of last keystroke/output; keeps cursor 100% solid while typing.
+    cursor_last_typing: std::time::Instant,
     /// Focus handles for the overlay surfaces.
     settings_focus: FocusHandle,
     palette_focus: FocusHandle,
@@ -134,6 +137,12 @@ struct Pane {
     /// Git branch of the working directory, polled alongside it.
     branch: Option<String>,
     exited: bool,
+    /// Smooth cursor glide: (interpolated_col, interpolated_row) in cell units.
+    cursor_pos: Option<(f32, f32)>,
+    /// Target cursor position reported by the terminal grid.
+    cursor_target: (f32, f32),
+    /// Smooth split expansion progress (0.0 .. 1.0).
+    pane_expansion: f32,
 }
 
 impl AtlasView {
@@ -161,6 +170,8 @@ impl AtlasView {
             font_size: FONT_SIZE,
             cursor_style: None,
             cursor_on: true,
+            cursor_breath_phase: 0.0,
+            cursor_last_typing: std::time::Instant::now(),
             settings_focus: cx.focus_handle(),
             palette_focus: cx.focus_handle(),
             rename_focus: cx.focus_handle(),
@@ -173,26 +184,75 @@ impl AtlasView {
         };
         view.new_tab(Profile::PowerShell, cx);
 
-        // Hardware-terminal style blinking cursor: 530 ms phase flip. Typing
-        // resets it to solid (see `handle_key`), so it never blinks under the
-        // fingers.
-        let blink = cx.spawn(async move |this, cx| {
+        // Motion & breathing ticker: drives continuous kinetic cursor gliding,
+        // organic sinusoidal breathing, and smooth split-pane expansions.
+        let motion_ticker = cx.spawn(async move |this, cx| {
+            let mut last_tick = std::time::Instant::now();
             loop {
                 cx.background_executor()
-                    .timer(std::time::Duration::from_millis(530))
+                    .timer(std::time::Duration::from_millis(16))
                     .await;
-                if this
-                    .update(cx, |view, cx| {
-                        view.cursor_on = !view.cursor_on;
+                let now = std::time::Instant::now();
+                let dt = (now - last_tick).as_secs_f32().min(0.05);
+                last_tick = now;
+
+                let alive = this.update(cx, |view, cx| {
+                    let mut needs_paint = false;
+
+                    // 1. Organic cursor breathing (soft sinusoidal alpha when idle)
+                    let typing_elapsed = view.cursor_last_typing.elapsed().as_millis();
+                    if typing_elapsed > 450 {
+                        view.cursor_breath_phase =
+                            (view.cursor_breath_phase + dt * 4.5) % (std::f32::consts::PI * 2.0);
+                        needs_paint = true;
+                    } else if view.cursor_breath_phase != 0.0 {
+                        view.cursor_breath_phase = 0.0;
+                        needs_paint = true;
+                    }
+
+                    // 2. Spatial cursor gliding and split pane expansion
+                    for tab in &mut view.tabs {
+                        for pane in &mut tab.panes {
+                            if let Some((cur_col, cur_row)) = pane.cursor_pos {
+                                let (tgt_col, tgt_row) = pane.cursor_target;
+                                let d_col = tgt_col - cur_col;
+                                let d_row = tgt_row - cur_row;
+                                if d_col.abs() > 0.01 || d_row.abs() > 0.01 {
+                                    // Snappy Apple spring deceleration (~90ms)
+                                    let factor = (1.0 - (-28.0 * dt).exp()).clamp(0.0, 1.0);
+                                    let next_col = if d_col.abs() < 0.03 {
+                                        tgt_col
+                                    } else {
+                                        cur_col + d_col * factor
+                                    };
+                                    let next_row = if d_row.abs() < 0.03 {
+                                        tgt_row
+                                    } else {
+                                        cur_row + d_row * factor
+                                    };
+                                    pane.cursor_pos = Some((next_col, next_row));
+                                    needs_paint = true;
+                                } else {
+                                    pane.cursor_pos = Some((tgt_col, tgt_row));
+                                }
+                            }
+                            if pane.pane_expansion < 1.0 {
+                                pane.pane_expansion = (pane.pane_expansion + dt * 10.0).min(1.0);
+                                needs_paint = true;
+                            }
+                        }
+                    }
+
+                    if needs_paint {
                         cx.notify();
-                    })
-                    .is_err()
-                {
+                    }
+                });
+                if alive.is_err() {
                     break;
                 }
             }
         });
-        blink.detach();
+        motion_ticker.detach();
 
         // Working-directory poll: reads each live shell's PEB every 1.5 s so
         // the pane title can track `cd` like a real terminal. Repaints only
@@ -279,6 +339,9 @@ impl AtlasView {
                         cwd,
                         branch: None,
                         exited: false,
+                        cursor_pos: None,
+                        cursor_target: (0.0, 0.0),
+                        pane_expansion: 1.0,
                     }],
                     active_pane: 0,
                     axis: SplitAxis::Columns,
@@ -380,6 +443,9 @@ impl AtlasView {
                         cwd,
                         branch: None,
                         exited: false,
+                        cursor_pos: None,
+                        cursor_target: (0.0, 0.0),
+                        pane_expansion: 0.05,
                     });
                     tab.active_pane = tab.panes.len() - 1;
                     tab.axis = axis;
@@ -450,7 +516,10 @@ impl AtlasView {
                     };
                     let pane = &mut view.tabs[tab_ix].panes[pane_ix];
                     match msg {
-                        SessionMsg::Output(bytes) => pane.session.borrow_mut().feed(&bytes),
+                        SessionMsg::Output(bytes) => {
+                            view.cursor_last_typing = std::time::Instant::now();
+                            pane.session.borrow_mut().feed(&bytes);
+                        }
                         SessionMsg::Event(Event::Title(title)) => {
                             if !title.trim().is_empty() {
                                 pane.title = title;
@@ -561,10 +630,10 @@ impl AtlasView {
                         return true;
                     };
                     // Exponential approach: quick at first, gentle at the end.
-                    let next = if (target - pos).abs() < 0.35 {
+                    let next = if (target - pos).abs() < 0.04 {
                         target
                     } else {
-                        pos + (target - pos) * 0.38
+                        pos + (target - pos) * 0.30
                     };
                     let settled = next == target;
                     view.scroll_anim = if settled {
@@ -577,7 +646,8 @@ impl AtlasView {
                     }
                     let mut guard = session.borrow_mut();
                     let current = guard.term.renderable_content().display_offset as i32;
-                    let delta = next.round() as i32 - current;
+                    let target_int = next.floor() as i32;
+                    let delta = target_int - current;
                     if delta != 0 {
                         guard.term.scroll_display(Scroll::Delta(delta));
                     }
@@ -1061,7 +1131,7 @@ impl AtlasView {
                 } else {
                     OVERLAY_IN_MS
                 }))
-                .with_easing(ease_out_cubic),
+                .with_easing(ease_apple_snappy),
                 move |el, delta| {
                     let t = if closing { 1.0 - delta } else { delta };
                     el.opacity(t).top(px(54.0 - 8.0 * (1.0 - t)))
@@ -1132,7 +1202,7 @@ impl AtlasView {
             )
             .with_animation(
                 ElementId::named_usize("rename-anim", 0),
-                Animation::new(Duration::from_millis(OVERLAY_IN_MS)).with_easing(ease_out_cubic),
+                Animation::new(Duration::from_millis(OVERLAY_IN_MS)).with_easing(ease_apple_snappy),
                 |el, delta| el.opacity(delta).top(px(120.0 - 8.0 * (1.0 - delta))),
             )
             .into_any_element()
@@ -1365,8 +1435,9 @@ impl AtlasView {
         let modifiers = &ks.modifiers;
         let key = ks.key.as_str();
 
-        // Solid cursor while typing; the blink task flips it back on its own.
+        // Solid cursor while typing; the motion ticker flips it back to breathing on its own.
         self.cursor_on = true;
+        self.cursor_last_typing = std::time::Instant::now();
 
         if key == "escape" && (self.settings_open || self.profile_menu) {
             self.settings_open = false;
@@ -1608,9 +1679,16 @@ impl Render for AtlasView {
                         })),
                 );
             }
+            if active {
+                pill = pill.with_animation(
+                    ElementId::named_usize("tab-active-pill", tab.id as usize),
+                    Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
+                    |el, delta| el.opacity(0.70 + 0.30 * delta),
+                );
+            }
             bar = bar.child(pill.with_animation(
                 ElementId::named_usize("tab-pill-in", tab.id as usize),
-                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_out_cubic),
+                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
                 |el, delta| el.opacity(delta),
             ));
         }
@@ -1714,6 +1792,23 @@ impl Render for AtlasView {
         } else if self.tabs.is_empty() {
             div().flex_1().into_any_element()
         } else {
+            // Snapshot cursor targets and initialize cursor position for active panes
+            for pane in &mut self.tabs[index].panes {
+                let (tgt_col, tgt_row) = {
+                    let session = pane.session.borrow();
+                    let content = session.term.renderable_content();
+                    let offset = content.display_offset as i32;
+                    (
+                        content.cursor.point.column.0 as f32,
+                        (content.cursor.point.line.0 + offset) as f32,
+                    )
+                };
+                pane.cursor_target = (tgt_col, tgt_row);
+                if pane.cursor_pos.is_none() {
+                    pane.cursor_pos = Some((tgt_col, tgt_row));
+                }
+            }
+
             let tab = &self.tabs[index];
             let axis = tab.axis;
 
@@ -1775,6 +1870,8 @@ impl Render for AtlasView {
                     .flex()
                     .flex_col()
                     .flex_1()
+                    .opacity(pane.pane_expansion)
+                    .overflow_hidden()
                     .bg(sheet_bg)
                     .px(px(14.0))
                     .py(px(10.0))
@@ -1812,6 +1909,24 @@ impl Render for AtlasView {
                                 .child("Press R to restart this pane"),
                         );
                 } else {
+                    let cell_height = (self.font_size * LINE_SCALE).round().max(1.0);
+                    let subpixel_y = if let Some((bound, pos, _)) = &self.scroll_anim {
+                        if Rc::ptr_eq(bound, &pane.session) {
+                            (pos - pos.floor()) * cell_height
+                        } else {
+                            0.0
+                        }
+                    } else {
+                        0.0
+                    };
+
+                    let typing_recent = self.cursor_last_typing.elapsed().as_millis() < 450;
+                    let cursor_alpha = if typing_recent {
+                        1.0
+                    } else {
+                        0.25 + 0.75 * (self.cursor_breath_phase.sin() * 0.5 + 0.5)
+                    };
+
                     cell = cell.child(TerminalElement {
                         session: pane.session.clone(),
                         theme: theme.clone(),
@@ -1819,11 +1934,14 @@ impl Render for AtlasView {
                         font_size: self.font_size,
                         cursor_on: self.cursor_on,
                         cursor_override: self.cursor_style,
+                        cursor_pos: pane.cursor_pos,
+                        cursor_alpha,
+                        subpixel_y,
                     });
                 }
                 area = area.child(cell.with_animation(
                     ElementId::named_usize("pane-in", pane.epoch as usize),
-                    Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_out_cubic),
+                    Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
                     |el, delta| el.opacity(delta),
                 ));
             }
@@ -1841,7 +1959,7 @@ impl Render for AtlasView {
             .child(body)
             .with_animation(
                 ElementId::named_usize("body-anim", self.settings_open as usize),
-                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_out_cubic),
+                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
                 |el, delta| el.opacity(delta),
             );
 
@@ -2052,9 +2170,16 @@ impl Render for AtlasView {
 // Motion
 // ----------------------------------------------------------------------------
 
+/// Apple macOS snappy curve: rapid acceleration, cushioned deceleration.
+fn ease_apple_snappy(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    1.0 - (1.0 - t).powi(4)
+}
+
 /// Cubic ease-out for entrances: quick takeoff, soft landing.
+#[allow(dead_code)]
 fn ease_out_cubic(d: f32) -> f32 {
-    1.0 - (1.0 - d).powi(3)
+    ease_apple_snappy(d)
 }
 
 // ----------------------------------------------------------------------------
@@ -2068,6 +2193,9 @@ struct TerminalElement {
     font_size: f32,
     cursor_on: bool,
     cursor_override: Option<CursorShape>,
+    cursor_pos: Option<(f32, f32)>,
+    cursor_alpha: f32,
+    subpixel_y: f32,
 }
 
 /// How a cell's glyph is drawn: shaped with the terminal font, isolated from
@@ -2562,7 +2690,7 @@ impl Element for TerminalElement {
         };
 
         for (row_index, row) in rows.iter().enumerate() {
-            let y0 = top + cell_height * row_index as f32;
+            let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
             let y1 = y0 + cell_height;
             let x = |col: usize| left + cell_width * col as f32;
 
@@ -2592,39 +2720,50 @@ impl Element for TerminalElement {
                 col += run.cells;
             }
             flush(col, span_start, span_bg, window);
+        }
 
-            // Cursor: solid block fills the cell (its colours were inverted
-            // above, so the glyph stays readable); hollow block is an outline;
-            // beam and underline are bars. All shapes sit on exact cell bounds.
-            if let Some((cursor_row, cursor_col)) = cursor_cell.filter(|_| self.cursor_on) {
-                if cursor_row == row_index {
-                    let x0 = x(cursor_col);
-                    let x1 = x0 + cell_width;
-                    let color = default_cursor;
-                    let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
-                        window.paint_quad(fill(
-                            Bounds::from_corners(
-                                point(px(rx0), px(ry0)),
-                                point(px(rx1), px(ry1)),
-                            ),
-                            color,
-                        ));
-                    };
-                    match cursor_shape {
-                        CursorShape::Block => quad(x0, y0, x1, y1, window),
-                        CursorShape::HollowBlock => {
-                            let t = 1.0;
-                            quad(x0, y0, x1, y0 + t, window);
-                            quad(x0, y1 - t, x1, y1, window);
-                            quad(x0, y0, x0 + t, y1, window);
-                            quad(x1 - t, y0, x1, y1, window);
-                        }
-                        CursorShape::Beam => quad(x0, y0, x0 + 2.0, y1, window),
-                        CursorShape::Underline => quad(x0, y1 - 2.0, x1, y1, window),
-                        CursorShape::Hidden => {}
-                    }
+        // Smooth kinetic cursor with organic breathing alpha
+        if let Some((target_row, target_col)) = cursor_cell.filter(|_| self.cursor_on) {
+            let (cur_col, cur_row) = self
+                .cursor_pos
+                .unwrap_or((target_col as f32, target_row as f32));
+            let cx0 = left + cell_width * cur_col;
+            let cy0 = top + cell_height * cur_row + self.subpixel_y;
+            let cx1 = cx0 + cell_width;
+            let cy1 = cy0 + cell_height;
+            let cursor_color = Rgba {
+                r: default_cursor.r,
+                g: default_cursor.g,
+                b: default_cursor.b,
+                a: (default_cursor.a * self.cursor_alpha).clamp(0.0, 1.0),
+            };
+            let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
+                window.paint_quad(fill(
+                    Bounds::from_corners(
+                        point(px(rx0), px(ry0)),
+                        point(px(rx1), px(ry1)),
+                    ),
+                    cursor_color,
+                ));
+            };
+            match cursor_shape {
+                CursorShape::Block => quad(cx0, cy0, cx1, cy1, window),
+                CursorShape::HollowBlock => {
+                    let t = 1.0;
+                    quad(cx0, cy0, cx1, cy0 + t, window);
+                    quad(cx0, cy1 - t, cx1, cy1, window);
+                    quad(cx0, cy0, cx0 + t, cy1, window);
+                    quad(cx1 - t, cy0, cx1, cy1, window);
                 }
+                CursorShape::Beam => quad(cx0, cy0, cx0 + 2.0, cy1, window),
+                CursorShape::Underline => quad(cx0, cy1 - 2.0, cx1, cy1, window),
+                CursorShape::Hidden => {}
             }
+        }
+
+        for (row_index, row) in rows.iter().enumerate() {
+            let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
+            let x = |col: usize| left + cell_width * col as f32;
 
             // Text: one shaped line per segment, each pinned to its starting
             // grid column, so glyph advances (emoji, CJK, Nerd icons) can
@@ -2903,7 +3042,7 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
         } else {
             OVERLAY_IN_MS
         }))
-        .with_easing(ease_out_cubic),
+        .with_easing(ease_apple_snappy),
         move |el, delta| {
             let t = if closing { 1.0 - delta } else { delta };
             el.opacity(t).top(px(40.0 - 6.0 * (1.0 - t)))
@@ -2985,7 +3124,7 @@ fn overlay_backdrop(
             } else {
                 OVERLAY_IN_MS
             }))
-            .with_easing(ease_out_cubic),
+            .with_easing(ease_apple_snappy),
             move |el, delta| el.opacity(if closing { 1.0 - delta } else { delta }),
         )
         .into_any_element()
