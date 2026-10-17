@@ -55,6 +55,10 @@ icon_assets![
     (CHEVRON_LEFT, "chevron-left"),
     (CHEVRON_RIGHT, "chevron-right"),
     (ATLAS_MARK, "atlas-mark"),
+    (MINUS, "minus"),
+    (KEYBOARD, "keyboard"),
+    (SLIDERS, "sliders"),
+    (CHECK, "check"),
 ];
 
 /// Render an embedded vector icon element.

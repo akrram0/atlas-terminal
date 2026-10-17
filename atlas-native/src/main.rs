@@ -37,8 +37,33 @@ pub(crate) fn init_user_data() {
     if !settings_file.exists() {
         let default_settings = r#"{
   "theme": "dark",
+  "font_family": "Cascadia Code",
   "font_size": 13.0,
+  "line_height": 1.2,
+  "corner_radius": 14.0,
+  "opacity": 1.0,
+  "blur_enabled": false,
   "cursor_shape": "block",
+  "cursor_blink": true,
+  "shortcuts": {
+    "new_tab": "ctrl+shift+n",
+    "close_tab": "ctrl+shift+w",
+    "split_horizontal": "ctrl+shift+d",
+    "split_vertical": "ctrl+shift+e",
+    "next_tab": "ctrl+tab",
+    "prev_tab": "ctrl+shift+tab",
+    "copy": "ctrl+shift+c",
+    "paste": "ctrl+shift+v",
+    "open_settings": "ctrl+,",
+    "zoom_in": "ctrl+=",
+    "zoom_out": "ctrl+-"
+  },
+  "default_shell": "PowerShell",
+  "start_directory": "home",
+  "scrollback_lines": 10000,
+  "confirm_close_process": true,
+  "copy_on_select": false,
+  "startup_mode": "restore_session",
   "auto_check_updates": true,
   "update_check_interval_mins": 60
 }
@@ -136,6 +161,7 @@ mod rounded_corners {
     const DWMWA_NCRENDERING_POLICY: u32 = 2;
     const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
     const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
     const DWMNCRP_ENABLED: i32 = 2;
     const DWMWCP_ROUND: i32 = 2;
 
@@ -374,6 +400,24 @@ mod rounded_corners {
             let _ = DwmSetWindowAttribute(
                 hwnd,
                 DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &value as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+        }
+    }
+
+    /// Toggle Windows 11 DWM acrylic / blur background.
+    pub fn set_blur(enabled: bool) {
+        let raw = MAIN_HWND.load(Ordering::SeqCst);
+        if raw == 0 {
+            return;
+        }
+        let hwnd = raw as Hwnd;
+        unsafe {
+            let value: i32 = if enabled { 2 } else { 1 };
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
                 &value as *const i32 as *const core::ffi::c_void,
                 core::mem::size_of::<i32>() as u32,
             );
@@ -654,6 +698,7 @@ mod rounded_corners {
         true
     }
     pub fn set_dark_mode(_dark: bool) {}
+    pub fn set_blur(_enabled: bool) {}
     pub fn window_button(_index: usize) {}
     pub fn set_caption_rect(_slot: usize, _x: f32, _y: f32, _w: f32, _h: f32) {}
 }
