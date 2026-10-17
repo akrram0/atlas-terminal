@@ -1,10 +1,17 @@
 //! Atlas theme — one source of truth for every colour in the app.
 //!
-//! The default is "Warm Paper": a cream terminal sheet floating over a sand
-//! chrome, with an editorial warm ANSI palette. "Warm Dark" mirrors it with
-//! a matte-stone chrome and a warm charcoal sheet (Ctrl+Shift+T switches).
+//! `ThemeRegistry` holds the shipped presets: "Dark" — a neutral matte
+//! charcoal sheet (#141413) under a just-lighter chrome (#1C1C1A) — is the
+//! boot default, "Warm Paper" the cream alternative (#FAF6EE over #EFECE4).
+//! Ctrl+Shift+T cycles the presets; the settings page lists them.
+//!
+//! Programs can re-theme their own cells at runtime through standard OSC 4 /
+//! OSC 10/11/12 sequences (`\e]11;#101010`): alacritty_terminal routes those
+//! into the terminal's override table (`Term::colors()`), which `resolve`,
+//! `defaults` and `color_at` consult.
 
-use alacritty_terminal::vte::ansi::{Color, NamedColor};
+use alacritty_terminal::term::color::{Colors, COUNT};
+use alacritty_terminal::vte::ansi::{Color, NamedColor, Rgb};
 use gpui::{rgb, rgba, Rgba};
 
 #[derive(Clone)]
@@ -81,14 +88,14 @@ impl Theme {
         }
     }
 
-    /// Warm Dark: warm charcoal sheet (#1E1C19) under a matte-stone chrome
-    /// (#181816), warm ivory ink, terracotta accent.
+    /// Neutral matte charcoal: a #141413 sheet under a #1C1C1A chrome, warm
+    /// ivory ink, terracotta accent. The registry's default preset.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x1E1C19),
+            bg: rgb(0x141413),
             fg: rgb(0xE8E4DC),
             cursor: rgb(0xD08A5C),
-            panel_bg: rgb(0x181816),
+            panel_bg: rgb(0x1C1C1A),
             elevated_bg: rgb(0x262624),
             elevated_border: rgba(0xFFFFFF14),
             chrome_fg: rgb(0x9C978C),
@@ -121,21 +128,58 @@ impl Theme {
     }
 
     /// Resolve an alacritty cell color into a concrete RGBA.
-    pub fn resolve(&self, color: Color, dim: bool) -> Rgba {
-        let out = match color {
-            Color::Named(named) => self.named(named),
-            Color::Indexed(index) => self.indexed(index),
-            Color::Spec(rgb_) => Rgba {
-                r: rgb_.r as f32 / 255.0,
-                g: rgb_.g as f32 / 255.0,
-                b: rgb_.b as f32 / 255.0,
-                a: 1.0,
+    ///
+    /// `over` is the terminal's OSC override table (`Term::colors()`): OSC 4
+    /// palette writes and OSC 10/11/12 dynamic-color writes (`\e]10;…`) land
+    /// there, so a program can re-theme its own cells exactly like in xterm.
+    pub fn resolve(&self, color: Color, dim: bool, over: &Colors) -> Rgba {
+        let index = match color {
+            Color::Named(named) => Some(named as usize),
+            Color::Indexed(index) => Some(index as usize),
+            Color::Spec(_) => None,
+        };
+        let out = match index.and_then(|index| over[index]) {
+            Some(rgb_) => from_rgb(rgb_),
+            None => match color {
+                Color::Named(named) => self.named(named),
+                Color::Indexed(index) => self.indexed(index),
+                Color::Spec(rgb_) => from_rgb(rgb_),
             },
         };
         if dim {
             self.dimmed(out)
         } else {
             out
+        }
+    }
+
+    /// Theme defaults after OSC overrides: (background, foreground, cursor).
+    /// A program that sets `\e]11;#101010` shifts the sheet itself, and the
+    /// renderer's default-background comparisons must follow.
+    pub fn defaults(&self, over: &Colors) -> (Rgba, Rgba, Rgba) {
+        let pick = |index: usize, base: Rgba| over[index].map(from_rgb).unwrap_or(base);
+        (
+            pick(NamedColor::Background as usize, self.bg),
+            pick(NamedColor::Foreground as usize, self.fg),
+            pick(NamedColor::Cursor as usize, self.cursor),
+        )
+    }
+
+    /// Concrete color for an OSC 4/10/11/12 report index: 0-255 palette,
+    /// 256 foreground, 257 background, 258 cursor. The override table wins,
+    /// so a querying program is told what is actually on screen.
+    pub fn color_at(&self, index: usize, over: &Colors) -> Rgba {
+        if index < COUNT {
+            if let Some(rgb_) = over[index] {
+                return from_rgb(rgb_);
+            }
+        }
+        match index {
+            0..=15 => self.ansi[index],
+            16..=255 => self.indexed(index as u8),
+            257 => self.bg,
+            258 => self.cursor,
+            _ => self.fg,
         }
     }
 
@@ -209,5 +253,59 @@ impl Theme {
                 Rgba { r: v, g: v, b: v, a: 1.0 }
             }
         }
+    }
+}
+
+/// vte 8-bit RGB to paint-ready RGBA.
+fn from_rgb(rgb_: Rgb) -> Rgba {
+    Rgba {
+        r: rgb_.r as f32 / 255.0,
+        g: rgb_.g as f32 / 255.0,
+        b: rgb_.b as f32 / 255.0,
+        a: 1.0,
+    }
+}
+
+/// The named theme presets (settings pills + Ctrl+Shift+T cycle). Index 0 is
+/// the boot default.
+pub struct ThemeRegistry {
+    presets: Vec<Preset>,
+}
+
+pub struct Preset {
+    /// Label shown on the settings pill.
+    pub name: &'static str,
+    pub theme: Theme,
+}
+
+impl ThemeRegistry {
+    /// The shipped presets: neutral matte charcoal first (default), Warm
+    /// Paper second.
+    pub fn standard() -> Self {
+        Self {
+            presets: vec![
+                Preset {
+                    name: "Dark",
+                    theme: Theme::dark(),
+                },
+                Preset {
+                    name: "Warm Paper",
+                    theme: Theme::cream(),
+                },
+            ],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.presets.len()
+    }
+
+    pub fn preset(&self, index: usize) -> &Preset {
+        &self.presets[index.min(self.presets.len() - 1)]
+    }
+
+    /// Next preset in the cycle.
+    pub fn next(&self, index: usize) -> usize {
+        (index + 1) % self.presets.len()
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Structure: frameless window -> compact pill top bar (workspace pill,
 //! horizontal pill tabs, action icons, native window controls) over a
-//! floating rounded terminal sheet inset 6px, whose whisper header carries
+//! floating rounded terminal sheet inset 8px, whose whisper header carries
 //! the pane title and its split/maximize/close micro actions. The terminal
 //! itself is a custom gpui `Element` that walks the alacritty grid and paints
 //! cell backgrounds, text runs, procedural block glyphs and the cursor
@@ -29,7 +29,7 @@ use gpui::{
 
 use crate::keymap;
 use crate::session::{Profile, Session, SessionMsg};
-use crate::theme::Theme;
+use crate::theme::{Theme, ThemeRegistry};
 
 /// Preferred terminal monos, best first: Cascadia (Windows 11 inbox) then
 /// Consolas. `terminal_font` picks the first family the text system resolves.
@@ -56,8 +56,10 @@ pub struct AtlasView {
     /// Caption-window font: native Segoe caption glyphs when present (`None`
     /// falls back to the bundled Nerd Font window glyphs).
     caption_font: Option<Font>,
-    /// Warm Paper / Warm Dark switch (settings page + Ctrl+Shift+T).
-    dark: bool,
+    /// Active preset index into `registry` (settings pills + Ctrl+Shift+T).
+    theme_id: usize,
+    /// Named theme presets: neutral matte charcoal (default) and Warm Paper.
+    registry: ThemeRegistry,
     /// Settings page visibility (replaces the terminal sheet).
     settings_open: bool,
     /// Workspace (new-tab profile) menu visibility.
@@ -88,6 +90,8 @@ pub struct AtlasView {
     scroll_anim: Option<(Rc<RefCell<Session>>, f32, f32)>,
     /// One easing task per wheel gesture burst; stops when the anim settles.
     scroll_task: bool,
+    /// Tab pill currently under the pointer: its hover-only close mark.
+    hover_tab: Option<usize>,
 }
 
 struct Tab {
@@ -134,16 +138,18 @@ impl AtlasView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus);
+        let registry = ThemeRegistry::standard();
         let mut view = Self {
             tabs: Vec::new(),
             active: 0,
             next_id: 1,
             next_epoch: 1,
             focus,
-            theme: Theme::cream(),
+            theme: registry.preset(0).theme.clone(),
             font: terminal_font(window),
             caption_font: caption_font(window),
-            dark: false,
+            theme_id: 0,
+            registry,
             settings_open: false,
             profile_menu: false,
             palette_open: false,
@@ -161,6 +167,7 @@ impl AtlasView {
             profile_closing: false,
             scroll_anim: None,
             scroll_task: false,
+            hover_tab: None,
         };
         view.new_tab(Profile::PowerShell, cx);
 
@@ -292,6 +299,7 @@ impl AtlasView {
             return;
         }
         self.tabs.remove(index);
+        self.hover_tab = None;
         if self.tabs.is_empty() {
             self.new_tab(Profile::PowerShell, cx);
             return;
@@ -447,6 +455,20 @@ impl AtlasView {
                             }
                         }
                         SessionMsg::Event(Event::Exit) => pane.exited = true,
+                        SessionMsg::Event(Event::ColorRequest(index, formatter)) => {
+                            // OSC 4/10/11/12 colour query (`\e]11;?`): answer
+                            // with what is actually on screen — the current
+                            // theme, or a program's own earlier override — so
+                            // CLI agents can adapt to the live palette.
+                            let over = *pane.session.borrow().term.colors();
+                            let color = view.theme.color_at(index, &over);
+                            let reply = formatter(alacritty_terminal::vte::ansi::Rgb {
+                                r: (color.r * 255.0).round() as u8,
+                                g: (color.g * 255.0).round() as u8,
+                                b: (color.b * 255.0).round() as u8,
+                            });
+                            pane.session.borrow_mut().write_bytes(reply.as_bytes());
+                        }
                         SessionMsg::Event(_) => {}
                     }
                     cx.notify();
@@ -605,9 +627,17 @@ impl AtlasView {
         self.active = ((self.active as i32 + delta).rem_euclid(len)) as usize;
     }
 
+    /// Cycle to the next theme preset (Ctrl+Shift+T).
     fn toggle_theme(&mut self, cx: &mut Context<Self>) {
-        self.dark = !self.dark;
-        self.theme = if self.dark { Theme::dark() } else { Theme::cream() };
+        let next = self.registry.next(self.theme_id);
+        self.set_theme(next, cx);
+    }
+
+    /// Apply a registry preset and keep every mirror in sync (settings pills
+    /// and the keyboard shortcut both land here).
+    fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.theme_id = index.min(self.registry.len() - 1);
+        self.theme = self.registry.preset(self.theme_id).theme.clone();
         cx.notify();
     }
 
@@ -1146,36 +1176,22 @@ impl AtlasView {
                 .into_any_element()
         };
 
-        let theme_row = div()
+        let mut theme_row = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(6.0))
-            .child(row_label("Theme"))
-            .child(pill_button(
-                "Paper".to_string(),
-                10,
-                !self.dark,
+            .child(row_label("Theme"));
+        for index in 0..self.registry.len() {
+            theme_row = theme_row.child(pill_button(
+                self.registry.preset(index).name.to_string(),
+                10 + index,
+                self.theme_id == index,
                 theme,
-                |view, cx| {
-                    if view.dark {
-                        view.toggle_theme(cx);
-                    }
-                },
-                cx,
-            ))
-            .child(pill_button(
-                "Dark".to_string(),
-                11,
-                self.dark,
-                theme,
-                |view, cx| {
-                    if !view.dark {
-                        view.toggle_theme(cx);
-                    }
-                },
+                move |view, cx| view.set_theme(index, cx),
                 cx,
             ));
+        }
 
         let font_row = div()
             .flex()
@@ -1448,16 +1464,17 @@ impl Render for AtlasView {
             .border_b_1()
             .border_color(tb.hairline);
 
-        // Workspace switcher pill (28×22): opens the new-tab profile menu.
+        // Workspace pill (28×20): the quiet sidebar mark from the reference
+        // chrome. Opens the new-tab profile menu (this shell has no sidebar).
         let ws_bg = tb.elevated_bg;
         let ws_border = tb.elevated_border;
-        let ws_icon = tb.accent;
+        let ws_idle = tb.chrome_fg;
         let ws_hot = tb.chrome_fg_active;
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("workspace-pill", 0))
                 .w(px(28.0))
-                .h(px(22.0))
+                .h(px(20.0))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -1465,18 +1482,19 @@ impl Render for AtlasView {
                 .bg(ws_bg)
                 .border_1()
                 .border_color(ws_border)
-                .text_color(ws_icon)
+                .text_color(ws_idle)
                 .hover(move |style| style.text_color(ws_hot))
-                .child(icon_glyph(ICON_SPARK, 11.0))
+                .child(icon_glyph(ICON_PANEL, 12.0))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.toggle_profile_menu(cx);
                     window.focus(&view.focus);
                 })),
         );
 
-        // Horizontal pill tabs: the active one is a floating pill (white on
-        // paper, slate on stone) with a warm badge and its close mark; the
-        // rest are quiet labels that tint on hover.
+        // Horizontal pill tabs: the active one is a 24px capsule (white on
+        // paper, slate on stone) carrying the running process's own mark; the
+        // rest are quiet labels with a folder mark. The close × is hover-only
+        // (middle-click and Ctrl+W also close).
         for ix in 0..self.tabs.len() {
             let active = ix == self.active;
             let tab = &self.tabs[ix];
@@ -1489,8 +1507,8 @@ impl Render for AtlasView {
                 None => "Terminal".to_string(),
             };
             let icon = match pane {
-                Some(pane) => session_icon(&pane.title),
-                None => ICON_TERMINAL,
+                Some(pane) if active => session_icon(&pane.title, pane.profile),
+                _ => ICON_FOLDER,
             };
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
                 (
@@ -1509,9 +1527,10 @@ impl Render for AtlasView {
             };
             let pill_hover = tb.card_hover;
             let pill_hot = tb.chrome_fg_active;
+            let pill_close = active && self.hover_tab == Some(ix);
             let mut pill = div()
                 .id(ElementId::named_usize("tab-pill", ix))
-                .h(px(26.0))
+                .h(px(24.0))
                 .flex()
                 .flex_row()
                 .items_center()
@@ -1524,12 +1543,34 @@ impl Render for AtlasView {
                 .border_color(pill_border)
                 .text_color(pill_fg)
                 .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
-                .child(div().text_color(pill_icon).child(icon_glyph(icon, 14.0)))
+                .child(
+                    div()
+                        .text_color(pill_icon)
+                        .child(icon_glyph(icon, if active { 13.0 } else { 12.0 })),
+                )
                 .child(
                     div()
                         .text_size(px(12.0))
                         .truncate()
                         .child(label),
+                )
+                .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                    // Only the pill that owns the current state may clear it:
+                    // enter/leave events of neighbouring pills can interleave.
+                    if !*hovered && view.hover_tab == Some(ix) {
+                        view.hover_tab = None;
+                        cx.notify();
+                    } else if *hovered && view.hover_tab != Some(ix) {
+                        view.hover_tab = Some(ix);
+                        cx.notify();
+                    }
+                }))
+                .on_mouse_down(
+                    MouseButton::Middle,
+                    cx.listener(move |view, _: &MouseDownEvent, window, cx| {
+                        view.close_tab(ix, cx);
+                        window.focus(&view.focus);
+                    }),
                 )
                 .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                     view.active = ix;
@@ -1537,13 +1578,13 @@ impl Render for AtlasView {
                     window.focus(&view.focus);
                     cx.notify();
                 }));
-            if active {
+            if pill_close {
                 let close_hot = tb.chrome_fg_active;
                 pill = pill.child(
                     div()
                         .id(ElementId::named_usize("tab-close", ix))
-                        .w(px(16.0))
-                        .h(px(16.0))
+                        .w(px(14.0))
+                        .h(px(14.0))
                         .flex()
                         .items_center()
                         .justify_center()
@@ -1566,47 +1607,51 @@ impl Render for AtlasView {
 
         bar = bar.child(caption_spacer(0));
 
-        // Right cluster: settings (eye), command palette (search), new tab.
-        bar = bar.child(chrome_action_button(
-            ElementId::named_usize("topbar-settings", 0),
-            ICON_EYE,
-            14.0,
-            30.0,
-            26.0,
-            6.0,
-            &theme,
-            |view, window, cx| {
-                view.toggle_settings(window, cx);
-            },
-            cx,
-        ));
-        bar = bar.child(chrome_action_button(
-            ElementId::named_usize("topbar-palette", 0),
-            ICON_SEARCH,
-            14.0,
-            30.0,
-            26.0,
-            6.0,
-            &theme,
-            |view, window, cx| {
-                view.open_palette(window, cx);
-            },
-            cx,
-        ));
-        bar = bar.child(chrome_action_button(
-            ElementId::named_usize("topbar-new", 0),
-            ICON_PLUS,
-            14.0,
-            30.0,
-            26.0,
-            6.0,
-            &theme,
-            |view, window, cx| {
-                view.new_tab(Profile::PowerShell, cx);
-                window.focus(&view.focus);
-            },
-            cx,
-        ));
+        // Right cluster: settings (eye), command palette (search), new tab —
+        // micro marks (13px) on a 10px pitch, quiet until hovered.
+        let mut actions = div().flex().flex_row().items_center().gap(px(10.0));
+        actions = actions
+            .child(chrome_action_button(
+                ElementId::named_usize("topbar-settings", 0),
+                ICON_EYE,
+                13.0,
+                28.0,
+                24.0,
+                6.0,
+                &theme,
+                |view, window, cx| {
+                    view.toggle_settings(window, cx);
+                },
+                cx,
+            ))
+            .child(chrome_action_button(
+                ElementId::named_usize("topbar-palette", 0),
+                ICON_SEARCH,
+                13.0,
+                28.0,
+                24.0,
+                6.0,
+                &theme,
+                |view, window, cx| {
+                    view.open_palette(window, cx);
+                },
+                cx,
+            ))
+            .child(chrome_action_button(
+                ElementId::named_usize("topbar-new", 0),
+                ICON_PLUS,
+                13.0,
+                28.0,
+                24.0,
+                6.0,
+                &theme,
+                |view, window, cx| {
+                    view.new_tab(Profile::PowerShell, cx);
+                    window.focus(&view.focus);
+                },
+                cx,
+            ));
+        bar = bar.child(actions);
 
         // Window controls: native Segoe caption glyphs when available,
         // bundled Nerd fallbacks otherwise; the maximize slot is zoomed-aware
@@ -1828,11 +1873,25 @@ impl Render for AtlasView {
                 None => "Atlas".to_string(),
             }
         };
+        // The header mark is the running process's own icon — a brand mark
+        // only when that brand is actually the process.
+        let head_icon = if self.settings_open {
+            ICON_GEAR
+        } else {
+            match self
+                .tabs
+                .get(index)
+                .and_then(|tab| tab.panes.get(tab.active_pane))
+            {
+                Some(pane) => session_icon(&pane.title, pane.profile),
+                None => ICON_TERMINAL,
+            }
+        };
         let mut head = div()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(2.0))
+            .gap(px(6.0))
             .h(px(28.0))
             .pl(px(12.0))
             .pr(px(6.0))
@@ -1843,7 +1902,7 @@ impl Render for AtlasView {
                     .flex_row()
                     .items_center()
                     .gap(px(6.0))
-                    .child(icon_glyph(ICON_SPARK, 9.5))
+                    .child(icon_glyph(head_icon, 10.5))
                     .child(
                         div()
                             .text_size(px(12.0))
@@ -1866,7 +1925,7 @@ impl Render for AtlasView {
                     .rounded(px(5.0))
                     .text_color(theme.faint_fg)
                     .hover(move |style| style.bg(close_hover).text_color(close_hot))
-                    .child(icon_glyph(ICON_X, 12.0))
+                    .child(icon_glyph(ICON_X, 11.0))
                     .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                         view.settings_open = false;
                         window.focus(&view.focus);
@@ -1945,8 +2004,8 @@ impl Render for AtlasView {
                     .flex_col()
                     .flex_1()
                     .w(relative(1.0))
-                    .px(px(6.0))
-                    .pb(px(6.0))
+                    .px(px(8.0))
+                    .pb(px(8.0))
                     .child(sheet),
             );
         // Overlays paint last: each is a dim click-catcher plus its panel, in
@@ -2381,7 +2440,13 @@ impl Element for TerminalElement {
         cx: &mut App,
     ) {
         let theme = self.theme.clone();
-        window.paint_quad(fill(bounds, theme.bg));
+        // OSC overrides (OSC 4 palette writes, OSC 10/11/12 dynamic colors)
+        // live in the terminal, not the theme: pull them once per paint so a
+        // program's `\e]11;…` re-themes the cells like it would in xterm —
+        // base sheet included.
+        let over = *self.session.borrow().term.colors();
+        let (default_bg, _default_fg, default_cursor) = theme.defaults(&over);
+        window.paint_quad(fill(bounds, default_bg));
 
         let text_system = window.text_system().clone();
         let font_size = px(self.font_size);
@@ -2446,8 +2511,8 @@ impl Element for TerminalElement {
                     continue;
                 }
 
-                let mut fg = theme.resolve(cell.fg, flags.contains(Flags::DIM));
-                let mut bg = theme.resolve(cell.bg, false);
+                let mut fg = theme.resolve(cell.fg, flags.contains(Flags::DIM), &over);
+                let mut bg = theme.resolve(cell.bg, false, &over);
                 if flags.contains(Flags::INVERSE) {
                     std::mem::swap(&mut fg, &mut bg);
                 }
@@ -2509,9 +2574,9 @@ impl Element for TerminalElement {
             // seamless rectangle instead of per-cell quads.
             let mut col = 0usize;
             let mut span_start = 0usize;
-            let mut span_bg = theme.bg;
+            let mut span_bg = default_bg;
             let mut flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
-                if span_bg != theme.bg && col > span_start {
+                if span_bg != default_bg && col > span_start {
                     window.paint_quad(fill(
                         Bounds::from_corners(
                             point(px(x(span_start)), px(y0)),
@@ -2538,7 +2603,7 @@ impl Element for TerminalElement {
                 if cursor_row == row_index {
                     let x0 = x(cursor_col);
                     let x1 = x0 + cell_width;
-                    let color = theme.cursor;
+                    let color = default_cursor;
                     let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
                         window.paint_quad(fill(
                             Bounds::from_corners(
@@ -2672,43 +2737,19 @@ impl Element for TerminalElement {
                 } else {
                     None
                 };
-                let mut line = text_system.shape_line(
+                // Nerd Font icons shape at the exact text size — PUA glyphs
+                // are never downscaled, so fastfetch marks stay crisp and sit
+                // on the baseline. Per-glyph splitting plus `force_width`
+                // pins each icon's advance to its own cell, so oversized ink
+                // may fill the cell but can never drag the grid.
+                let line = text_system.shape_line(
                     segment.text.to_string().into(),
                     font_size,
                     &[text_run.clone()],
                     force,
                 );
-                let mut dx = 0.0;
-                // Nerd Font icons come from the bundled symbols font and can
-                // carry ink larger than one cell. When they do, shape the
-                // icon smaller and centre it inside its cell so it never
-                // bleeds into the neighbouring text.
-                if segment.style.class == CharClass::Icon {
-                    if let Some(ch) = segment.text.chars().next() {
-                        if segment.text.len() == ch.len_utf8() {
-                            let icon_id = text_system.resolve_font(&segment.font);
-                            if let Ok(ink) = text_system.typographic_bounds(icon_id, font_size, ch)
-                            {
-                                let ink_w = f32::from(ink.size.width).max(0.1);
-                                let ink_h = f32::from(ink.size.height).max(0.1);
-                                let scale = (cell_width * 0.98 / ink_w)
-                                    .min(cell_height * 0.98 / ink_h)
-                                    .min(1.0);
-                                if scale < 0.999 {
-                                    line = text_system.shape_line(
-                                        segment.text.to_string().into(),
-                                        px(f32::from(font_size) * scale),
-                                        &[text_run.clone()],
-                                        None,
-                                    );
-                                    dx = ((cell_width - ink_w * scale) / 2.0).max(0.0);
-                                }
-                            }
-                        }
-                    }
-                }
                 let _ = line.paint(
-                    point(px(segment.x0 + dx), px(y0)),
+                    point(px(segment.x0), px(y0)),
                     px(cell_height),
                     window,
                     cx,
@@ -2743,12 +2784,18 @@ const ICON_SEARCH: &str = "\u{EA6D}"; // nf-cod-search
 const ICON_CHEVRON: &str = "\u{EAB6}"; // nf-cod-chevron_right
 const ICON_PEN: &str = "\u{EA73}"; // nf-cod-edit
 const ICON_COLUMNS: &str = "\u{EB56}"; // nf-cod-split_horizontal
+const ICON_PANEL: &str = "\u{EBF3}"; // nf-cod-layout_panel_left (workspace)
+const ICON_FOLDER: &str = "\u{EA83}"; // nf-cod-folder (inactive tab)
 
-/// Session icons (monochrome marks; the parent decides colour).
+/// Session icons (monochrome marks; the parent decides colour). Process
+/// marks are picked from the shell-reported title by `session_icon`.
 const ICON_TERMINAL: &str = "\u{F120}"; // nf-fa-terminal
-const ICON_UBUNTU: &str = "\u{EF72}"; // nf-fa-ubuntu (brand mark)
+const ICON_UBUNTU: &str = "\u{EF72}"; // nf-fa-ubuntu (WSL / Linux shells)
 const ICON_CLOUD: &str = "\u{F0C2}"; // nf-fa-cloud
-const ICON_SCREEN: &str = "\u{F108}"; // nf-fa-desktop
+const ICON_SCREEN: &str = "\u{F108}"; // nf-fa-desktop (tmux/screen)
+const ICON_NODE: &str = "\u{E718}"; // nf-dev-nodejs_small
+const ICON_PYTHON: &str = "\u{E73C}"; // nf-dev-python
+const ICON_RUST: &str = "\u{E7A8}"; // nf-dev-rust
 
 /// Caption-window glyphs: native Segoe codepoints when the OS caption font is
 /// available, bundled Font Awesome fallbacks otherwise. The maximize slot is
@@ -2768,7 +2815,7 @@ const ICON_COLOR_MODE: &str = "\u{EAC6}"; // nf-cod-color_mode
 const ICON_TEXT_SIZE: &str = "\u{EB69}"; // nf-cod-text_size
 const ICON_EYE: &str = "\u{F06E}"; // nf-fa-eye
 const ICON_BARS: &str = "\u{F0C9}"; // nf-fa-bars (stacked rows)
-const ICON_SPARK: &str = "\u{F069}"; // nf-fa-asterisk (Atlas brand mark)
+const ICON_SPARK: &str = "\u{F069}"; // nf-fa-asterisk (claude-code mark)
 
 /// Commands offered by the palette.
 #[derive(Clone, Copy)]
@@ -2816,7 +2863,7 @@ const COMMANDS: [(Command, &str, &str, &str); 15] = [
     (
         Command::ToggleTheme,
         ICON_COLOR_MODE,
-        "Warm paper / warm dark",
+        "Switch theme",
         "Ctrl Shift T",
     ),
     (Command::OpenSettings, ICON_GEAR, "Open settings", ""),
@@ -2889,7 +2936,7 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
         .border_color(theme.elevated_border)
         .shadow_lg();
     for (index, (label, profile)) in entries.into_iter().enumerate() {
-        let icon = session_icon(&profile_title(profile));
+        let icon = session_icon(&profile_title(profile), profile);
         menu = menu.child(
             div()
                 .id(ElementId::named_usize("profile-item", index))
@@ -2927,7 +2974,7 @@ fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> An
     .into_any_element()
 }
 
-/// Micro pane-header action: a 12px glyph at 45% ink that comes to 90% on
+/// Micro pane-header action: an 11px glyph at 40% ink that comes to 80% on
 /// hover (the whisper row inside the sheet).
 fn micro_action(
     id: ElementId,
@@ -2937,24 +2984,24 @@ fn micro_action(
     cx: &mut Context<AtlasView>,
 ) -> AnyElement {
     let idle = Rgba {
-        a: 0.45,
+        a: 0.4,
         ..theme.chrome_fg
     };
     let hot = Rgba {
-        a: 0.9,
+        a: 0.8,
         ..theme.chrome_fg_active
     };
     div()
         .id(id)
-        .w(px(22.0))
-        .h(px(20.0))
+        .w(px(20.0))
+        .h(px(18.0))
         .flex()
         .items_center()
         .justify_center()
         .rounded(px(5.0))
         .text_color(idle)
         .hover(move |style| style.text_color(hot))
-        .child(icon_glyph(glyph, 12.0))
+        .child(icon_glyph(glyph, 11.0))
         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
             on_click(view, window, cx);
         }))
@@ -3069,23 +3116,43 @@ fn git_cwd(pane: &Pane) -> Option<PathBuf> {
     pane.cwd.clone()
 }
 
-/// Session mark for a tab, keyed off its shell-reported title: Ubuntu brand
-/// for WSL, cloud for remote, desktop for dev servers, terminal otherwise.
-/// Drawn monochrome (the parent decides colour).
-fn session_icon(title: &str) -> &'static str {
+/// Process mark for a tab, keyed off the shell-reported title (OSC 0/2):
+/// CLIs advertise themselves there (`claude`, node tooling, Python, cargo),
+/// Linux shells land on the Ubuntu mark, PowerShell on the terminal prompt.
+/// A brand mark appears only when that brand is the process actually
+/// running — never as decoration. Drawn monochrome (the parent colours it).
+fn session_icon(title: &str, profile: Profile) -> &'static str {
     let lower = title.to_ascii_lowercase();
-    if lower.contains("ubuntu") || lower.contains("wsl") {
+    if lower.contains("claude") {
+        ICON_SPARK
+    } else if lower.contains("node")
+        || lower.contains("npm")
+        || lower.contains("pnpm")
+        || lower.contains("yarn")
+        || lower.contains("bun")
+        || lower.contains("vite")
+        || lower.contains("deno")
+    {
+        ICON_NODE
+    } else if lower.contains("python") || lower.contains("pip") || lower.contains("conda") {
+        ICON_PYTHON
+    } else if lower.contains("cargo") || lower.contains("rustc") || lower.contains("rust") {
+        ICON_RUST
+    } else if lower.contains("ubuntu")
+        || lower.contains("wsl")
+        || lower.contains("bash")
+        || lower.contains("zsh")
+        || lower.contains("debian")
+    {
         ICON_UBUNTU
     } else if lower.contains("ssh") || lower.contains("edge") || lower.contains("remote") {
         ICON_CLOUD
-    } else if lower.contains("dev")
-        || lower.contains("server")
-        || lower.contains("vite")
-        || lower.contains("uvicorn")
-        || lower.contains("node")
-        || lower.contains("npm")
-    {
+    } else if lower.contains("screen") || lower.contains("tmux") {
         ICON_SCREEN
+    } else if lower.contains("pwsh") || lower.contains("powershell") {
+        ICON_TERMINAL
+    } else if matches!(profile, Profile::Wsl) {
+        ICON_UBUNTU
     } else {
         ICON_TERMINAL
     }
