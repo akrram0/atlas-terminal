@@ -412,6 +412,8 @@ struct Tab {
     /// Smooth width collapse on close.
     closing: bool,
     close_progress: f32,
+    /// Smooth hover expansion for the tab close button (0.0 .. 1.0).
+    close_hover_progress: f32,
 }
 
 /// How a tab's panes tile the sheet.
@@ -608,9 +610,21 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
-                    // 5. Smooth tab collapse on close
+                    // 5. Smooth tab collapse on close and close button hover expansion
                     let mut tabs_to_remove = Vec::new();
                     for (i, tab) in view.tabs.iter_mut().enumerate() {
+                        let is_hovered = view.hover_tab == Some(i) && !tab.closing;
+                        let target = if is_hovered { 1.0 } else { 0.0 };
+                        let diff = target - tab.close_hover_progress;
+                        if diff.abs() > 0.01 {
+                            let factor = (1.0 - (-24.0 * dt).exp()).clamp(0.0, 1.0);
+                            tab.close_hover_progress += diff * factor;
+                            needs_paint = true;
+                        } else if tab.close_hover_progress != target {
+                            tab.close_hover_progress = target;
+                            needs_paint = true;
+                        }
+
                         if tab.closing {
                             tab.close_progress = (tab.close_progress + dt * 9.0).min(1.0);
                             needs_paint = true;
@@ -823,6 +837,7 @@ impl AtlasView {
                     maximized: false,
                     closing: false,
                     close_progress: 0.0,
+                    close_hover_progress: 0.0,
                 });
                 self.active = self.tabs.len() - 1;
                 Self::watch(epoch, session, rx, cx);
@@ -1404,7 +1419,11 @@ impl AtlasView {
         cx.notify();
 
         let current_version = env!("CARGO_PKG_VERSION").to_string();
-        let etag = self.updater_settings.etag.clone();
+        let etag = if is_manual {
+            None
+        } else {
+            self.updater_settings.etag.clone()
+        };
 
         cx.spawn(async move |this, cx| {
             let result = smol::unblock(move || {
@@ -3544,7 +3563,6 @@ impl Render for AtlasView {
             };
             let pill_hover = tb.card_hover;
             let pill_hot = tb.chrome_fg_active;
-            let pill_close = active && self.hover_tab == Some(ix) && !tab.closing;
 
             let (max_w, min_w, px_pad, opacity) = if tab.closing {
                 let scale = (1.0 - tab.close_progress).max(0.0);
@@ -3616,13 +3634,18 @@ impl Render for AtlasView {
                         .truncate()
                         .child(label),
                 );
-            if pill_close {
+            if tab.close_hover_progress > 0.01 && !tab.closing {
                 let close_hot = tb.chrome_fg_active;
+                let close_w = 16.0 * tab.close_hover_progress;
+                let close_alpha = tab.close_hover_progress;
                 pill = pill.child(
                     div()
                         .id(ElementId::named_usize("tab-close", ix))
-                        .w(px(16.0))
+                        .w(px(close_w))
                         .h(px(16.0))
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .opacity(close_alpha)
                         .flex()
                         .items_center()
                         .justify_center()
@@ -5545,13 +5568,15 @@ fn overlay_backdrop(
 /// legacy `…\powershell.exe` startup title — return `None`.
 fn title_path(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
-    let candidate = match trimmed.rsplit_once(": ") {
-        Some((_, path)) => path.trim(),
-        None => trimmed,
+    let candidate = if let Some((_, path)) = trimmed.rsplit_once(':') {
+        path.trim().trim_end_matches(['$', '#', '>', '%', ' '])
+    } else {
+        trimmed
     };
     let looks_like_path = candidate.starts_with('/')
         || candidate.starts_with('~')
         || candidate.contains(":\\")
+        || candidate.contains(":/")
         || candidate.starts_with("\\\\");
     let is_executable = candidate.to_ascii_lowercase().ends_with(".exe");
     if looks_like_path && !candidate.contains('@') && !is_executable {
@@ -5619,8 +5644,10 @@ fn format_path_condensed(raw_path: &str) -> String {
         let home_trimmed = home_norm.trim_end_matches('/');
         if trimmed.eq_ignore_ascii_case(home_trimmed) {
             "~".to_string()
-        } else if let Some(stripped) = trimmed.strip_prefix(home_trimmed) {
-            format!("~{}", stripped)
+        } else if trimmed.len() > home_trimmed.len()
+            && trimmed[..home_trimmed.len()].eq_ignore_ascii_case(home_trimmed)
+        {
+            format!("~{}", &trimmed[home_trimmed.len()..])
         } else {
             trimmed.to_string()
         }
@@ -5641,6 +5668,8 @@ fn format_path_condensed(raw_path: &str) -> String {
         } else {
             with_home
         }
+    } else if let Some(stripped) = with_home.strip_prefix("~/") {
+        stripped.to_string()
     } else {
         with_home
     }
@@ -5657,14 +5686,9 @@ fn format_tab_title(pane: &Pane) -> String {
     }
 
     if let Some(p) = path {
-        let condensed = format_path_condensed(&p);
-        if condensed == "~" {
-            p_name
-        } else {
-            format!("{} · {}", p_name, condensed)
-        }
+        format_path_condensed(&p)
     } else {
-        p_name
+        "~".to_string()
     }
 }
 

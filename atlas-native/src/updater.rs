@@ -533,29 +533,30 @@ fn parse_github_release(
     let notes = release.body.unwrap_or_default();
 
     let mut installer_url = None;
-    let mut detected_version = raw_tag.clone();
+    let mut detected_version = String::new();
 
     if let Some(assets) = release.assets {
-        // First pass: specifically look for the Inno Setup installer
+        // Find the asset with the highest semantic version
         for asset in &assets {
-            if let Some(name) = &asset.name {
+            if let (Some(name), Some(url)) = (&asset.name, &asset.browser_download_url) {
                 if name.starts_with("AtlasTerminal-Setup-") && name.ends_with(".exe") {
-                    installer_url = asset.browser_download_url.clone();
                     if let Some(stripped) = name.strip_prefix("AtlasTerminal-Setup-") {
                         if let Some(v) = stripped.strip_suffix(".exe") {
-                            detected_version = v.to_string();
+                            if detected_version.is_empty() || is_newer_version(v, &detected_version) {
+                                detected_version = v.to_string();
+                                installer_url = Some(url.clone());
+                            }
                         }
                     }
-                    break;
                 }
             }
         }
-        // Second pass fallback: any .exe if setup exe not found
+        // Fallback: any .exe if setup exe not found
         if installer_url.is_none() {
             for asset in &assets {
-                if let Some(name) = &asset.name {
+                if let (Some(name), Some(url)) = (&asset.name, &asset.browser_download_url) {
                     if name.ends_with(".exe") {
-                        installer_url = asset.browser_download_url.clone();
+                        installer_url = Some(url.clone());
                         break;
                     }
                 }
@@ -563,13 +564,21 @@ fn parse_github_release(
         }
     }
 
-    // If version is still non-semver (e.g. tag is "native-latest"), inspect release title
-    if parse_version(&detected_version).is_none() {
-        for word in title.split_whitespace() {
-            if parse_version(word).is_some() {
-                detected_version = word.to_string();
-                break;
+    // If version from installer assets was not found or title has a version, check title/tag
+    for word in title.split_whitespace() {
+        if parse_version(word).is_some() {
+            let clean = word.trim_start_matches('v').trim_start_matches('V');
+            if detected_version.is_empty() || is_newer_version(clean, &detected_version) {
+                detected_version = clean.to_string();
             }
+            break;
+        }
+    }
+    if detected_version.is_empty() {
+        if let Some((maj, min, pat)) = parse_version(&raw_tag) {
+            detected_version = format!("{maj}.{min}.{pat}");
+        } else {
+            detected_version = raw_tag.clone();
         }
     }
 
