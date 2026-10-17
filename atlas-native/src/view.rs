@@ -146,7 +146,7 @@ struct Pane {
 }
 
 impl AtlasView {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, initial_dir: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let registry = ThemeRegistry::standard();
@@ -182,7 +182,7 @@ impl AtlasView {
             hover_tab: None,
             hover_mark: None,
         };
-        view.new_tab(Profile::PowerShell, cx);
+        view.new_tab_with_cwd(Profile::PowerShell, initial_dir, cx);
 
         // Motion & breathing ticker: drives continuous kinetic cursor gliding,
         // organic sinusoidal breathing, and smooth split-pane expansions.
@@ -314,7 +314,16 @@ impl AtlasView {
             .unwrap_or((80, 24))
     }
 
-    fn new_tab(&mut self, profile: Profile, cx: &mut Context<Self>) {
+    pub fn new_tab(&mut self, profile: Profile, cx: &mut Context<Self>) {
+        self.new_tab_with_cwd(profile, None, cx);
+    }
+
+    pub fn new_tab_with_cwd(
+        &mut self,
+        profile: Profile,
+        cwd_override: Option<PathBuf>,
+        cx: &mut Context<Self>,
+    ) {
         let id = self.next_id;
         let epoch = self.next_epoch;
         self.next_id += 1;
@@ -323,8 +332,9 @@ impl AtlasView {
         // A fresh terminal should be visible, not hidden behind settings.
         self.settings_open = false;
 
+        let spawn_cwd = cwd_override.or_else(home_dir);
         let (init_cols, init_rows) = self.default_grid_size();
-        match Session::spawn(init_cols, init_rows, home_dir(), profile) {
+        match Session::spawn(init_cols, init_rows, spawn_cwd, profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);

@@ -14,16 +14,57 @@ use gpui::{
     WindowDecorations, WindowOptions, px, size,
 };
 
+pub(crate) fn user_data_dir() -> std::path::PathBuf {
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        std::path::PathBuf::from(appdata).join("atlas-terminal")
+    } else if let Some(userprofile) = std::env::var_os("USERPROFILE") {
+        std::path::PathBuf::from(userprofile).join("AppData").join("Roaming").join("atlas-terminal")
+    } else {
+        std::env::temp_dir().join("atlas-terminal")
+    }
+}
+
+pub(crate) fn init_user_data() {
+    let base = user_data_dir();
+    let logs_dir = base.join("logs");
+    let sessions_dir = base.join("sessions");
+    let settings_file = base.join("settings.json");
+
+    let _ = std::fs::create_dir_all(&logs_dir);
+    let _ = std::fs::create_dir_all(&sessions_dir);
+
+    if !settings_file.exists() {
+        let default_settings = r#"{
+  "theme": "dark",
+  "font_size": 13.0,
+  "cursor_shape": "block"
+}
+"#;
+        let _ = std::fs::write(&settings_file, default_settings);
+    }
+}
+
 fn debug_log_path() -> std::path::PathBuf {
     std::env::temp_dir().join("atlas-native-debug.log")
 }
 
 pub(crate) fn log_line(msg: &str) {
     use std::io::Write as _;
+    // Always mirror to TEMP debug log for CI smoke test
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(debug_log_path())
+    {
+        let _ = writeln!(f, "{msg}");
+    }
+
+    // Also persist into %APPDATA%\atlas-terminal\logs\app.log
+    let app_log = user_data_dir().join("logs").join("app.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(app_log)
     {
         let _ = writeln!(f, "{msg}");
     }
@@ -602,9 +643,12 @@ mod rounded_corners {
 }
 
 fn main() {
+    init_user_data();
     // Fresh log per launch. Release builds have no console
     // (windows_subsystem), so this file is how startup and panics stay visible.
-    let _ = std::fs::write(debug_log_path(), "atlas-native starting\n");
+    let _ = std::fs::write(debug_log_path(), "atlas-terminal starting\n");
+    let app_log = user_data_dir().join("logs").join("app.log");
+    let _ = std::fs::write(&app_log, "atlas-terminal starting\n");
     std::panic::set_hook(Box::new(|info| {
         let mut msg = format!("PANIC: {info}\n");
         if let Some(loc) = info.location() {
@@ -614,6 +658,14 @@ fn main() {
             .create(true)
             .append(true)
             .open(debug_log_path())
+        {
+            let _ = std::io::Write::write_all(&mut f, msg.as_bytes());
+        }
+        let panic_log = user_data_dir().join("logs").join("panic.log");
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(panic_log)
         {
             let _ = std::io::Write::write_all(&mut f, msg.as_bytes());
         }
@@ -634,6 +686,15 @@ fn main() {
             Err(err) => log_line(&format!("nerd symbols font failed: {err:#}")),
         }
 
+        let initial_dir = std::env::args().nth(1).and_then(|arg| {
+            let p = std::path::PathBuf::from(&arg);
+            if p.is_dir() {
+                Some(p)
+            } else {
+                None
+            }
+        });
+
         let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
         cx.open_window(
             WindowOptions {
@@ -647,7 +708,7 @@ fn main() {
                 is_minimizable: true,
                 ..Default::default()
             },
-            |window, cx| cx.new(|cx| view::AtlasView::new(window, cx)),
+            |window, cx| cx.new(|cx| view::AtlasView::new(window, initial_dir, cx)),
         )
         .expect("failed to open Atlas window");
         log_line("window opened");

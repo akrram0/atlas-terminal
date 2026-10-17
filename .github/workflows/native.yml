@@ -6,10 +6,8 @@ permissions:
 on:
   push:
     branches: [main]
-    paths:
-      - "atlas-native/**"
-      - ".github/workflows/native.yml"
-      - "Cargo.toml"
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -38,6 +36,31 @@ jobs:
             Write-Output "GPUI_FXC_PATH=$($fxc.FullName)"
           } else {
             Write-Output "fxc.exe not found under Windows Kits; relying on PATH/gpui default"
+          }
+
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc.exe -ErrorAction SilentlyContinue)) {
+            $candidatePaths = @(
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+              "C:\Program Files\Inno Setup 6\ISCC.exe"
+            )
+            $found = $null
+            foreach ($cand in $candidatePaths) {
+              if (Test-Path $cand) {
+                $found = Split-Path $cand
+                break
+              }
+            }
+            if ($found) {
+              Write-Output "Found Inno Setup at $found; adding to PATH"
+              $found | Out-File -Append $env:GITHUB_PATH
+            } else {
+              Write-Output "Inno Setup not found; installing via Chocolatey..."
+              choco install innosetup --no-progress
+              "C:\Program Files (x86)\Inno Setup 6" | Out-File -Append $env:GITHUB_PATH
+            }
           }
 
       - name: cargo build (release — final exe)
@@ -78,7 +101,7 @@ jobs:
           }
           "## atlas-native compiled (release)" >> $env:GITHUB_STEP_SUMMARY
 
-          # Normalize exe location so both workspace root and subcrate paths find it
+          # Normalize exe locations so both workspace root and subcrate paths find them
           $rootExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"
           $subExe = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
           if ((Test-Path $rootExe) -and -not (Test-Path $subExe)) {
@@ -91,6 +114,18 @@ jobs:
             Write-Output "Mirrored $subExe -> $rootExe"
           }
 
+          $rootTerm = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
+          $subTerm = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-terminal.exe"
+          if ((Test-Path $rootTerm) -and -not (Test-Path $subTerm)) {
+            New-Item -ItemType Directory -Force (Split-Path $subTerm) | Out-Null
+            Copy-Item $rootTerm $subTerm -Force
+            Write-Output "Mirrored $rootTerm -> $subTerm"
+          } elseif ((Test-Path $subTerm) -and -not (Test-Path $rootTerm)) {
+            New-Item -ItemType Directory -Force (Split-Path $rootTerm) | Out-Null
+            Copy-Item $subTerm $rootTerm -Force
+            Write-Output "Mirrored $subTerm -> $rootTerm"
+          }
+
       - name: Smoke test (launch release exe, wait for window)
         shell: pwsh
         # Informational: the runner has no real GPU. Never blocks the artifact.
@@ -100,7 +135,8 @@ jobs:
         run: |
           $candidate1 = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"
           $candidate2 = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
-          $exe = if (Test-Path $candidate1) { $candidate1 } else { $candidate2 }
+          $candidate3 = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
+          $exe = if (Test-Path $candidate1) { $candidate1 } elseif (Test-Path $candidate3) { $candidate3 } else { $candidate2 }
           $log = Join-Path $env:TEMP "atlas-native-debug.log"
           Remove-Item $log -ErrorAction SilentlyContinue
           $proc = Start-Process -FilePath $exe -PassThru
@@ -142,6 +178,63 @@ jobs:
             }
           }
 
+      - name: Build Inno Setup Installer & Zip Distribution
+        shell: pwsh
+        working-directory: .
+        run: |
+          # 1. Determine version from atlas-native/Cargo.toml
+          $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
+          $version = "0.1.0"
+          if (Test-Path $cargoFile) {
+            $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
+            if ($match) {
+              $version = $match.Matches[0].Groups[1].Value
+            }
+          }
+          Write-Output "Packaging Atlas Terminal v$version"
+
+          # 2. Run Inno Setup compiler
+          $distDir = Join-Path $env:GITHUB_WORKSPACE "dist"
+          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+
+          $issPath = Join-Path $env:GITHUB_WORKSPACE "installer\atlas-terminal.iss"
+          iscc.exe "/DMyAppVersion=$version" "/O$distDir" $issPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "ISCC failed with exit code $LASTEXITCODE"
+          }
+
+          # 3. Generate SHA256 checksum for installer
+          $setupExe = Join-Path $distDir "AtlasTerminal-Setup-$version.exe"
+          if (Test-Path $setupExe) {
+            $shaFile = "$setupExe.sha256"
+            $hash = (Get-FileHash -Path $setupExe -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$([System.IO.Path]::GetFileName($setupExe))" | Out-File -Encoding ascii $shaFile
+            Write-Output "Installer created: $setupExe ($hash)"
+          } else {
+            throw "Expected setup exe not found at $setupExe"
+          }
+
+          # 4. Create plain zip distribution (atlas-terminal-windows-x64.zip)
+          $zipStaging = Join-Path $env:TEMP "atlas-terminal-zip-staging"
+          Remove-Item -Recurse -Force $zipStaging -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $zipStaging | Out-Null
+
+          $termExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
+          Copy-Item $termExe (Join-Path $zipStaging "atlas-terminal.exe")
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") (Join-Path $zipStaging "LICENSE")
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "README.md") (Join-Path $zipStaging "README.md")
+          Copy-Item -Recurse (Join-Path $env:GITHUB_WORKSPACE "assets") (Join-Path $zipStaging "assets")
+
+          $zipFile = Join-Path $distDir "atlas-terminal-windows-x64.zip"
+          Remove-Item $zipFile -ErrorAction SilentlyContinue
+          Compress-Archive -Path "$zipStaging\*" -DestinationPath $zipFile -Force
+          Remove-Item -Recurse -Force $zipStaging -ErrorAction SilentlyContinue
+
+          $zipSha = "$zipFile.sha256"
+          $hashZip = (Get-FileHash -Path $zipFile -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hashZip *$([System.IO.Path]::GetFileName($zipFile))" | Out-File -Encoding ascii $zipSha
+          Write-Output "Zip created: $zipFile ($hashZip)"
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -150,22 +243,47 @@ jobs:
           path: atlas-native/build-output.log
           if-no-files-found: ignore
 
-      - name: Upload exe
+      - name: Upload binaries
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: atlas-native-poc
+          name: atlas-native-binaries
           path: |
             target/release/atlas-native.exe
-            atlas-native/target/release/atlas-native.exe
+            target/release/atlas-terminal.exe
           if-no-files-found: error
 
-      - name: Publish rolling release (direct exe download, no login)
+      - name: Upload distribution packages
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-terminal-dist
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (on tag v*)
+        if: success() && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
+          Write-Output "Publishing release for tag: $tag"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "Atlas Terminal $tag" --generate-notes
+          }
+          $files = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $_.FullName }
+          gh release upload $tag $files --clobber
+
+      - name: Publish rolling release (on main push)
         # Stable public URL:
         # https://github.com/akrram0/atlas-terminal/releases/download/native-latest/atlas-native.exe
         if: success() && github.ref == 'refs/heads/main'
         continue-on-error: true
         shell: pwsh
+        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -178,4 +296,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create native-latest --title "atlas-native (rolling POC build)" --notes "Rolling Windows build of the native POC (GPUI + alacritty_terminal). The exe is replaced on every push to main."
           }
-          gh release upload native-latest $releaseExe --clobber
+          $files = @($releaseExe)
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $files += $_.FullName }
+          gh release upload native-latest $files --clobber

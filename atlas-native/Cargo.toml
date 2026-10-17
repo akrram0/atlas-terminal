@@ -1,9 +1,17 @@
 [package]
-name = "atlas-native"
+name = "atlas-terminal"
 version = "0.1.0"
 edition = "2024"
 publish = false
 description = "Atlas Terminal — native GPU shell (GPUI + alacritty_terminal)"
+
+[[bin]]
+name = "atlas-terminal"
+path = "src/main.rs"
+
+[[bin]]
+name = "atlas-native"
+path = "src/main.rs"
 
 [dependencies]
 gpui = "0.2.2"

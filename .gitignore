@@ -1,5 +1,11 @@
 # Rust build output
 target/
+atlas-native/target/
+
+# Installer & distribution output
+dist/
+installer/Output/
+*.exe
 
 # Environment
 .env
@@ -18,3 +24,4 @@ Desktop.ini
 
 # Debug
 *.pdb
+*.log
