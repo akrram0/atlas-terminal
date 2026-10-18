@@ -59,12 +59,7 @@ impl AtlasView {
 
     pub fn set_font_family(&mut self, family: &str, cx: &mut Context<Self>) {
         self.font_family = family.to_string();
-        let mut font = gpui::font(SharedString::from(self.font_family.clone()));
-        font.fallbacks = Some(FontFallbacks::from_fonts(vec![
-            "Segoe UI Emoji".to_string(),
-            "Segoe UI Symbol".to_string(),
-        ]));
-        self.font = font;
+        self.font = crate::view::resolve_terminal_font(&self.font_family);
         self.sync_and_save_settings();
         cx.notify();
     }
@@ -195,7 +190,7 @@ impl AtlasView {
             "Consolas",
             "Fira Code",
             "JetBrains Mono",
-            "Segoe UI",
+            "Cascadia Mono",
         ];
         let mut font_family_row = div()
             .flex()

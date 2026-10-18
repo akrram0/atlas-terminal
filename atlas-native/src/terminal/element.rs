@@ -162,14 +162,13 @@ impl Element for TerminalElement {
         let test_line = text_system.shape_line("0123456789".into(), font_size, &[test_run], None);
         let measured_advance = f32::from(test_line.width) / 10.0;
         let cell_width = if measured_advance > 2.0 {
-            measured_advance.round()
+            measured_advance
         } else {
-            (text_system
+            text_system
                 .em_advance(font_id, font_size)
                 .map(f32::from)
                 .unwrap_or(7.8)
-                .max(1.0))
-            .round()
+                .max(1.0)
         };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
         let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;

@@ -130,6 +130,21 @@ pub struct AtlasView {
 }
 
 
+pub(crate) fn resolve_terminal_font(family: &str) -> gpui::Font {
+    let mut font = gpui::font(SharedString::from(family.to_string()));
+    let mut fallbacks = vec![
+        "Cascadia Code".to_string(),
+        "Consolas".to_string(),
+        "JetBrainsMono NF".to_string(),
+        "Courier New".to_string(),
+        "Segoe UI Emoji".to_string(),
+        "Segoe UI Symbol".to_string(),
+    ];
+    fallbacks.retain(|f| !f.eq_ignore_ascii_case(family));
+    font.fallbacks = Some(FontFallbacks::from_fonts(fallbacks));
+    font
+}
+
 impl AtlasView {
     pub fn new(window: &mut Window, initial_dir: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
@@ -155,11 +170,7 @@ impl AtlasView {
         let blur_enabled = app_settings.blur_enabled;
         let cursor_blink = app_settings.cursor_blink;
 
-        let mut font = gpui::font(SharedString::from(font_family.clone()));
-        font.fallbacks = Some(FontFallbacks::from_fonts(vec![
-            "Segoe UI Emoji".to_string(),
-            "Segoe UI Symbol".to_string(),
-        ]));
+        let font = resolve_terminal_font(&font_family);
 
         let mut view = Self {
             tabs: Vec::new(),
@@ -316,21 +327,9 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
-                    // 5. Smooth tab collapse on close and close button hover expansion
+                    // 5. Smooth tab collapse on close
                     let mut tabs_to_remove = Vec::new();
                     for (i, tab) in view.tabs.iter_mut().enumerate() {
-                        let is_hovered = view.hover_tab == Some(i) && !tab.closing;
-                        let target = if is_hovered { 1.0 } else { 0.0 };
-                        let diff = target - tab.close_hover_progress;
-                        if diff.abs() > 0.01 {
-                            let factor = (1.0 - (-26.0 * dt).exp()).clamp(0.0, 1.0);
-                            tab.close_hover_progress += diff * factor;
-                            needs_paint = true;
-                        } else if tab.close_hover_progress != target {
-                            tab.close_hover_progress = target;
-                            needs_paint = true;
-                        }
-
                         if tab.closing {
                             tab.close_progress = (tab.close_progress + dt * 8.0).min(1.0);
                             needs_paint = true;
@@ -1649,9 +1648,9 @@ impl Render for AtlasView {
 
         // Horizontal tabs: active tab is a clean rounded rect (elevated bg + subtle border)
         // carrying the running process's own mark; inactive tabs are quiet with folder icon.
-        // Tab close is hover-only.
+        // Tab close is visible on active and hover.
         for ix in 0..self.tabs.len() {
-            let active = ix == self.active;
+            let active = ix == self.active && !self.settings_open;
             let tab = &self.tabs[ix];
             let pane = tab.panes.get(tab.active_pane);
             let label = match pane {
@@ -1752,25 +1751,25 @@ impl Render for AtlasView {
                         .truncate()
                         .child(label),
                 );
-            if tab.close_hover_progress > 0.01 && !tab.closing {
-                let close_hot = tb.chrome_fg_active;
-                let close_w = 16.0 * tab.close_hover_progress;
-                let close_alpha = tab.close_hover_progress;
+
+            let show_close = (active || self.hover_tab == Some(ix)) && !tab.closing;
+            if show_close {
                 pill = pill.child(
                     div()
                         .id(ElementId::named_usize("tab-close", ix))
-                        .w(px(close_w))
+                        .w(px(16.0))
                         .h(px(16.0))
-                        .min_w(px(0.0))
-                        .overflow_hidden()
-                        .opacity(close_alpha)
+                        .flex_none()
                         .flex()
                         .items_center()
                         .justify_center()
                         .rounded(px(4.0))
-                        .text_color(tb.faint_fg)
-                        .hover(move |style| style.text_color(close_hot).bg(tb.card_hover))
-                        .child(icons::icon(icons::CLOSE).size(px(10.5)))
+                        .hover(move |style| style.bg(tb.card_hover))
+                        .child(
+                            icons::icon(icons::CLOSE)
+                                .size(px(10.0))
+                                .text_color(tb.faint_fg),
+                        )
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                             view.close_tab(ix, cx);
                             window.focus(&view.focus);
@@ -1782,6 +1781,68 @@ impl Render for AtlasView {
                 Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
                 |el, delta| el.opacity(delta),
             ));
+        }
+
+        // When in settings, render an active Settings tab pill
+        if self.settings_open {
+            let pill_bg = tb.elevated_bg;
+            let pill_border = tb.elevated_border;
+            let pill_fg = tb.chrome_fg_active;
+            let pill_icon = tb.accent;
+
+            let settings_pill = div()
+                .id(ElementId::named_usize("tab-pill-settings", 0))
+                .h(px(24.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(8.0))
+                .max_w(px(220.0))
+                .min_w(px(70.0))
+                .overflow_hidden()
+                .flex_shrink()
+                .rounded(px(6.0))
+                .bg(pill_bg)
+                .border_1()
+                .border_color(pill_border)
+                .text_color(pill_fg)
+                .child(
+                    div()
+                        .text_color(pill_icon)
+                        .child(icons::icon(icons::SETTINGS).size(px(14.0)).text_color(pill_icon)),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .truncate()
+                        .child("Settings"),
+                )
+                .child(
+                    div()
+                        .id(ElementId::named_usize("tab-close-settings", 0))
+                        .w(px(16.0))
+                        .h(px(16.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(4.0))
+                        .hover(move |style| style.bg(tb.card_hover))
+                        .child(
+                            icons::icon(icons::CLOSE)
+                                .size(px(10.0))
+                                .text_color(tb.faint_fg),
+                        )
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            view.settings_open = false;
+                            window.focus(&view.focus);
+                            cx.notify();
+                        })),
+                );
+
+            bar = bar.child(settings_pill);
         }
 
         // New tab: clean vector plus button

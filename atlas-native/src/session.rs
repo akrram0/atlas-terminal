@@ -164,7 +164,13 @@ impl Session {
                          function prompt { \
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
                              if ($atlas_old) { & $atlas_old } else { 'PS ' + (Get-Location) + '> ' } \
-                         }"
+                         }; \
+                         $opencode_bin = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.exe'; \
+                         if (Test-Path $opencode_bin) { \
+                             function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.exe') @args } \
+                         } elseif (Get-Command opencode.cmd -ErrorAction SilentlyContinue) { \
+                             function global:opencode { & (Get-Command opencode.cmd).Source @args } \
+                         };"
                     );
                 }
                 Profile::Cmd => {}
@@ -187,6 +193,9 @@ impl Session {
             cmd.env("COLORTERM", "truecolor");
             cmd.env("LANG", "en_US.UTF-8");
             cmd.env("LC_ALL", "en_US.UTF-8");
+            cmd.env("WT_SESSION", "1");
+            cmd.env("TERM_PROGRAM", "Atlas");
+            cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
             if let Some(dir) = cwd.as_ref() {
                 if dir.is_dir() {
                     cmd.cwd(dir.clone());
