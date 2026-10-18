@@ -2,13 +2,17 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod config;
 mod cwd;
 mod icons;
 mod keymap;
 mod session;
+mod terminal;
 mod theme;
+mod ui;
 pub mod updater;
 mod view;
+mod workspace;
 
 use gpui::{
     App, AppContext as _, Application, Bounds, WindowBackgroundAppearance, WindowBounds,
@@ -116,7 +120,7 @@ pub(crate) fn log_line(msg: &str) {
 // harmlessly on older Windows; the result is logged for the CI smoke test.
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
-mod rounded_corners {
+pub(crate) mod rounded_corners {
     use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
 
     type Hwnd = *mut core::ffi::c_void;
