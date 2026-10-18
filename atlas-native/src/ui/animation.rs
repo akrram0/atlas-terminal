@@ -116,3 +116,9 @@ pub fn ease_out_expo(t: f32) -> f32 {
 pub fn ease_in_out(t: f32) -> f32 {
     EASE_IN_OUT.eval(t)
 }
+
+/// Standard ease-out.
+pub fn ease_out(t: f32) -> f32 {
+    EASE_OUT.eval(t)
+}
+

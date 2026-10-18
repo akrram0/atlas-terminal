@@ -429,7 +429,7 @@ impl AtlasView {
 
                     // 8. Settings kinetic smooth scrolling
                     if view.settings_open {
-                        let max_y = f32::from(view.settings_scroll_handle.max_offset().y).max(0.0);
+                        let max_y = f32::from(view.settings_scroll_handle.max_offset().height).max(0.0);
                         if max_y > 0.0 && view.settings_scroll_target > max_y {
                             view.settings_scroll_target = max_y;
                         }
@@ -887,7 +887,7 @@ impl AtlasView {
             self.settings_scroll_pos = current_offset;
             self.settings_scroll_target = current_offset;
         }
-        let max_y = f32::from(self.settings_scroll_handle.max_offset().y).max(0.0);
+        let max_y = f32::from(self.settings_scroll_handle.max_offset().height).max(0.0);
         let upper_bound = if max_y > 0.0 { max_y } else { 10_000.0 };
         self.settings_scroll_target = (self.settings_scroll_target - delta_y).clamp(0.0, upper_bound);
         cx.notify();

@@ -241,6 +241,7 @@ pub fn load_app_settings() -> AppSettingsFile {
         }
     }
     AppSettingsFile {
+        theme_mode: default_theme_mode(),
         theme: default_theme_name(),
         font_family: default_font_family(),
         font_size: default_font_size(),
