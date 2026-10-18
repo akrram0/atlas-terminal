@@ -391,7 +391,7 @@ impl AtlasView {
         let cwd_poll = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
-                    .timer(std::time::Duration::from_millis(1500))
+                    .timer(std::time::Duration::from_millis(800))
                     .await;
                 if this
                     .update(cx, |view, cx| {
@@ -491,10 +491,10 @@ impl AtlasView {
 
         let spawn_cwd = cwd_override.or_else(home_dir);
         let (init_cols, init_rows) = self.default_grid_size();
-        match Session::spawn(init_cols, init_rows, spawn_cwd, profile) {
+        match Session::spawn(init_cols, init_rows, spawn_cwd.clone(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
-                let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
+                let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd).or(spawn_cwd);
                 self.tabs.push(Tab {
                     id,
                     custom_title: None,
@@ -609,18 +609,19 @@ impl AtlasView {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let profile = match tab.panes.get(tab.active_pane) {
-            Some(pane) => pane.profile,
+        let (profile, inherit_cwd) = match tab.panes.get(tab.active_pane) {
+            Some(pane) => (pane.profile, pane.cwd.clone()),
             None => return,
         };
         let epoch = self.next_epoch;
         self.next_epoch += 1;
 
+        let spawn_cwd = inherit_cwd.or_else(home_dir);
         let (init_cols, init_rows) = self.default_grid_size();
-        match Session::spawn(init_cols, init_rows, home_dir(), profile) {
+        match Session::spawn(init_cols, init_rows, spawn_cwd.clone(), profile) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
-                let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
+                let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd).or(spawn_cwd);
                 if let Some(tab) = self.tabs.get_mut(self.active) {
                     tab.panes.push(Pane {
                         epoch,
@@ -2175,6 +2176,11 @@ impl Render for AtlasView {
             .flex()
             .flex_col()
             .flex_1()
+            .w(relative(1.0))
+            .h(relative(1.0))
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .overflow_hidden()
             .child(body)
             .with_animation(
                 ElementId::named_usize("body-anim", self.settings_open as usize),

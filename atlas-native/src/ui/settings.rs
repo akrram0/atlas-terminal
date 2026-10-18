@@ -106,16 +106,16 @@ impl AtlasView {
         ];
 
         let mut sidebar = div()
-            .w(px(220.0))
+            .w(px(170.0))
             .flex_shrink_0()
             .h(relative(1.0))
             .min_h(px(0.0))
-            .overflow_hidden()
+            .overflow_y_scroll()
             .flex()
             .flex_col()
             .border_r_1()
             .border_color(theme.hairline)
-            .p(px(12.0))
+            .p(px(10.0))
             .child(
                 div()
                     .flex()
@@ -463,22 +463,10 @@ impl AtlasView {
             .gap(px(16.0))
             .child(
                 div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(18.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(theme.fg)
-                            .child("Appearance"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme.faint_fg)
-                            .child("Font typography, window geometry, backdrop blur, and color palette"),
-                    ),
+                    .text_size(px(12.0))
+                    .text_color(theme.faint_fg)
+                    .mb(px(4.0))
+                    .child("Font typography, window geometry, backdrop blur, and color palette"),
             )
             .child(
                 card()
@@ -662,24 +650,12 @@ impl AtlasView {
                     .flex_row()
                     .items_center()
                     .justify_between()
+                    .mb(px(4.0))
                     .child(
                         div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(2.0))
-                            .child(
-                                div()
-                                    .text_size(px(18.0))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(theme.fg)
-                                    .child("Shortcuts"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .text_color(theme.faint_fg)
-                                    .child("Click a binding to rebind. Press Esc to cancel."),
-                            ),
+                            .text_size(px(12.0))
+                            .text_color(theme.faint_fg)
+                            .child("Click a binding to rebind. Press Esc to cancel."),
                     )
                     .child(pill_button(
                         "Reset All".to_string(),
@@ -1024,22 +1000,10 @@ impl AtlasView {
             .gap(px(16.0))
             .child(
                 div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(18.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(theme.fg)
-                            .child("General"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme.faint_fg)
-                            .child("Shell profiles, session startup, and application updates"),
-                    ),
+                    .text_size(px(12.0))
+                    .text_color(theme.faint_fg)
+                    .mb(px(4.0))
+                    .child("Shell profiles, session startup, and application updates"),
             )
             .child(
                 card()
@@ -1126,12 +1090,14 @@ impl AtlasView {
         let right_pane = div()
             .id(ElementId::named_usize("settings-content-scroll", 0))
             .flex_1()
-            .min_w(px(0.0))
+            .w(relative(1.0))
             .h(relative(1.0))
+            .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_y_scroll()
             .track_scroll(&self.settings_scroll_handle)
-            .p(px(24.0))
+            .p(px(16.0))
+            .pb(px(60.0))
             .child(
                 div()
                     .w(relative(1.0))

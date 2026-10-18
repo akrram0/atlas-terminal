@@ -65,13 +65,24 @@ pub fn home_dir() -> Option<PathBuf> {
 
 pub fn title_path(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
-    let candidate = if let Some((_, path)) = trimmed.rsplit_once(':') {
-        path.trim().trim_end_matches(['$', '#', '>', '%', ' '])
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Only split on ": " when it's a Linux/WSL/SSH style "user@host: /path"
+    let candidate = if let Some((prefix, path)) = trimmed.split_once(": ") {
+        if prefix.contains('@') {
+            path.trim().trim_end_matches(['$', '#', '>', '%', ' '])
+        } else {
+            trimmed
+        }
     } else {
         trimmed
     };
     let looks_like_path = candidate.starts_with('/')
         || candidate.starts_with('~')
+        || (candidate.len() >= 3
+            && candidate.as_bytes()[1] == b':'
+            && (candidate.as_bytes()[2] == b'\\' || candidate.as_bytes()[2] == b'/'))
         || candidate.contains(":\\")
         || candidate.contains(":/")
         || candidate.starts_with("\\\\");
@@ -175,8 +186,11 @@ pub fn format_path_condensed(raw_path: &str) -> String {
 pub fn format_tab_title(pane: &Pane) -> String {
     let p_name = profile_title(pane.profile);
     let cmd = tab_name(&pane.title, "");
-    let path = title_path(&pane.title)
-        .or_else(|| pane.cwd.as_ref().map(|d| d.display().to_string()));
+    let path = pane
+        .cwd
+        .as_ref()
+        .map(|d| d.display().to_string())
+        .or_else(|| title_path(&pane.title));
 
     if !cmd.is_empty() && cmd != p_name {
         return cmd;

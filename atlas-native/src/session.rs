@@ -125,16 +125,16 @@ impl Session {
             match profile {
                 Profile::PowerShell => {
                     cmd.arg("-NoLogo");
-                    if shell.eq_ignore_ascii_case("powershell.exe") {
-                        // Windows PowerShell 5.1 defaults its console to the
-                        // OEM code page (CP850…): tools like fastfetch then
-                        // report `en_US.CP850` and legacy encodings. Point
-                        // .NET — and through it the console — at UTF-8; the
-                        // shell stays interactive after the one-shot command.
-                        cmd.arg("-NoExit");
-                        cmd.arg("-Command");
-                        cmd.arg("[Console]::OutputEncoding=[System.Text.Encoding]::UTF8");
-                    }
+                    cmd.arg("-NoExit");
+                    cmd.arg("-Command");
+                    cmd.arg(
+                        "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; \
+                         $atlas_old = (Get-Command prompt -ErrorAction SilentlyContinue).ScriptBlock; \
+                         function prompt { \
+                             try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
+                             if ($atlas_old) { & $atlas_old } else { 'PS ' + (Get-Location) + '> ' } \
+                         }"
+                    );
                 }
                 Profile::Cmd => {}
                 Profile::Wsl => {}
