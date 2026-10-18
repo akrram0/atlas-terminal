@@ -36,11 +36,10 @@ use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_NEW_TAB,
     HOVER_MARK_WINDOW,
 };
-use crate::ui::palette::Command;
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
-    dir_label, format_path_condensed, format_tab_title, git_branch, git_cwd, home_dir,
-    profile_title, session_icon, title_path, Pane, SplitAxis, Tab,
+    format_tab_title, git_branch, git_cwd, home_dir, profile_title, session_icon, Pane,
+    SplitAxis, Tab,
 };
 
 

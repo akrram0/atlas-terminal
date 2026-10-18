@@ -106,6 +106,7 @@ impl AtlasView {
         ];
 
         let mut sidebar = div()
+            .id(ElementId::named_usize("settings-sidebar-scroll", 0))
             .w(px(170.0))
             .flex_shrink_0()
             .h(relative(1.0))
