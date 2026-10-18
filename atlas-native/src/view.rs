@@ -1073,20 +1073,22 @@ impl AtlasView {
             return default_bg;
         }
 
-        let grid = sess.term.grid();
+        let content = sess.term.renderable_content();
         let mut counts: Vec<(alacritty_terminal::vte::ansi::Color, usize)> = Vec::new();
 
-        // Sample 25 points across the middle of the grid, avoiding top and bottom rows
-        let row_samples = [0.2, 0.35, 0.5, 0.65, 0.8];
-        let col_samples = [0.15, 0.3, 0.5, 0.7, 0.85];
+        // Sample the visible viewport, focusing on the middle 70% of rows and columns
+        // to avoid top headers, tabs, and bottom status bars/command lines.
+        let min_line = (rows as f32 * 0.15) as i32;
+        let max_line = (rows as f32 * 0.85) as i32;
+        let min_col = (cols as f32 * 0.15) as usize;
+        let max_col = (cols as f32 * 0.85) as usize;
 
-        for &rf in &row_samples {
-            let r = ((rf * rows as f32) as usize).clamp(1, rows.saturating_sub(2));
-            let line = Line(r as i32);
-            for &cf in &col_samples {
-                let c = ((cf * cols as f32) as usize).clamp(1, cols.saturating_sub(2));
-                let color = grid[line][Column(c)].bg;
-                if let Some(entry) = counts.iter_mut().find(|(col, _)| *col == color) {
+        for indexed in content.display_iter {
+            let line = indexed.point.line.0;
+            let col = indexed.point.column.0;
+            if line >= min_line && line <= max_line && col >= min_col && col <= max_col {
+                let color = indexed.cell.bg;
+                if let Some(entry) = counts.iter_mut().find(|(c, _)| *c == color) {
                     entry.1 += 1;
                 } else {
                     counts.push((color, 1));
@@ -1095,7 +1097,7 @@ impl AtlasView {
         }
 
         if let Some((most_frequent_color, count)) = counts.into_iter().max_by_key(|(_, count)| *count) {
-            if count >= 6 && most_frequent_color != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
+            if count >= 10 && most_frequent_color != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
                 return theme.resolve(most_frequent_color, false, &over);
             }
         }
@@ -2134,8 +2136,8 @@ impl Render for AtlasView {
                 .id(ElementId::named_usize("terminal-area", 0))
                 .flex()
                 .flex_1()
-                .w(relative(1.0))
-                .h(relative(1.0))
+                .min_w(px(0.0))
+                .min_h(px(0.0))
                 .track_focus(&self.focus)
                 .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                     let keystroke = event.keystroke.clone();
@@ -2533,8 +2535,6 @@ impl Render for AtlasView {
             .flex()
             .flex_col()
             .flex_1()
-            .w(relative(1.0))
-            .h(relative(1.0))
             .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_hidden()
@@ -2545,21 +2545,27 @@ impl Render for AtlasView {
                 |el, delta| el.opacity(delta),
             );
 
+        let (sheet_mx, sheet_mb, sheet_radius) = if zoomed {
+            (px(0.0), px(0.0), px(0.0))
+        } else {
+            (px(6.0), px(6.0), px(10.0))
+        };
+
         let sheet = if self.settings_open {
             div()
                 .id(ElementId::named_usize("terminal-sheet", 0))
                 .flex()
                 .flex_col()
                 .flex_1()
-                .w(relative(1.0))
-                .h(relative(1.0))
                 .min_w(px(0.0))
                 .min_h(px(0.0))
-                .mx(px(6.0))
-                .mb(px(6.0))
-                .rounded(px(10.0))
+                .mx(sheet_mx)
+                .mb(sheet_mb)
+                .rounded(sheet_radius)
                 .overflow_hidden()
                 .bg(theme.elevated_bg)
+                .border_1()
+                .border_color(tb.sheet_border)
                 .child(body)
         } else {
             div()
@@ -2567,15 +2573,15 @@ impl Render for AtlasView {
                 .flex()
                 .flex_col()
                 .flex_1()
-                .w(relative(1.0))
-                .h(relative(1.0))
                 .min_w(px(0.0))
                 .min_h(px(0.0))
-                .mx(px(6.0))
-                .mb(px(6.0))
-                .rounded(px(10.0))
+                .mx(sheet_mx)
+                .mb(sheet_mb)
+                .rounded(sheet_radius)
                 .overflow_hidden()
                 .bg(active_bg)
+                .border_1()
+                .border_color(tb.sheet_border)
                 .child(body)
         };
 
