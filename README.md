@@ -49,7 +49,7 @@ Terminal emulators on Windows have historically been forced into a painful compr
 
 Get the latest release for Windows (x64):
 
-* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.24.exe)** *(Recommended: Start menu integration, desktop shortcuts, background auto-updates)*
+* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.25.exe)** *(Recommended: Start menu integration, desktop shortcuts, background auto-updates)*
 * 🗜️ **[Download Portable (.zip)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
 * 🚀 **[All Releases & Changelogs](https://github.com/akrram0/atlas-terminal/releases)**
 
@@ -61,9 +61,13 @@ Get the latest release for Windows (x64):
 Atlas Terminal natively intercepts and renders inline images directly inside the terminal grid without relying on Sixel or WebViews.
 
 #### Displaying Images in Fastfetch
-You can render photos alongside system info using Fastfetch:
+You can render photos alongside system info using Fastfetch. When passing an image override on the command line, specify the grid dimensions (`--logo-width` and `--logo-height` in character cells) so fastfetch formats the text columns accurately:
 ```powershell
-fastfetch --logo-type iterm --logo "C:\path\to\your\image.png"
+# Command-line override (replace with your real image path, width, and height in cells):
+fastfetch --logo-type iterm --logo "C:\path\to\your\image.png" --logo-width 40 --logo-height 20
+
+# Or simply run fastfetch directly if configured in config.jsonc (recommended):
+fastfetch
 ```
 
 #### Making Fastfetch Always Show Your Photo

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::Dimensions;
-use alacritty_terminal::term::{Config, Term};
+use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::Processor;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use smol::channel::{bounded, Receiver, Sender};
@@ -26,6 +26,7 @@ pub struct PlacedImage {
     pub col: usize,
     pub cols: usize,
     pub rows: usize,
+    pub is_alt_screen: bool,
 }
 
 
@@ -307,6 +308,8 @@ impl Session {
         for event in events {
             match event {
                 OscScannerEvent::Bytes(clean_bytes) => {
+                    let was_alt_screen = self.term.mode().contains(TermMode::ALT_SCREEN);
+
                     // Clear placed images on full screen/scrollback reset (ED 3: \x1b[3J or RIS: \x1bc)
                     if clean_bytes.windows(4).any(|w| w == b"\x1b[3J")
                         || clean_bytes.windows(2).any(|w| w == b"\x1bc")
@@ -314,15 +317,26 @@ impl Session {
                         self.placed_images.clear();
                     } else if clean_bytes.windows(4).any(|w| w == b"\x1b[2J") {
                         // Clear images on the active screen for ED 2 (e.g. `cls` or `clear`)
-                        let cur_history = self.term.history_size() as i32;
-                        self.placed_images.retain(|img| img.anchor_line < cur_history);
+                        if was_alt_screen {
+                            self.placed_images.retain(|img| !img.is_alt_screen);
+                        } else {
+                            let cur_history = self.term.history_size() as i32;
+                            self.placed_images.retain(|img| img.is_alt_screen || img.anchor_line < cur_history);
+                        }
                     }
 
                     if !clean_bytes.is_empty() {
                         self.parser.advance(&mut self.term, &clean_bytes);
                     }
+
+                    let is_alt_screen = self.term.mode().contains(TermMode::ALT_SCREEN);
+                    if was_alt_screen && !is_alt_screen {
+                        // Exited alternate screen: purge images placed in alternate screen
+                        self.placed_images.retain(|img| !img.is_alt_screen);
+                    }
                 }
                 OscScannerEvent::Image(decoded) => {
+                    let is_alt_screen = self.term.mode().contains(TermMode::ALT_SCREEN);
                     let (img_cols, img_rows) = compute_image_grid_size(
                         decoded.pixel_width,
                         decoded.pixel_height,
@@ -337,7 +351,11 @@ impl Session {
                         let cursor = self.term.renderable_content().cursor;
                         (cursor.point.column.0, cursor.point.line.0)
                     };
-                    let history = self.term.history_size() as i32;
+                    let history = if is_alt_screen {
+                        0
+                    } else {
+                        self.term.history_size() as i32
+                    };
                     let anchor_line = history + cursor_line;
 
                     let id = self.next_image_id;
@@ -350,13 +368,18 @@ impl Session {
                         col: cursor_col,
                         cols: img_cols,
                         rows: img_rows,
+                        is_alt_screen,
                     });
 
                     // Advance cursor below the image so that shell prompt, command output,
                     // and scrollback wrap naturally underneath the image, matching iTerm2 behavior.
                     if !decoded.params.do_not_move_cursor {
-                        let mut advance_bytes = Vec::with_capacity(img_rows);
-                        for _ in 0..img_rows {
+                        let advance_rows = match decoded.params.height {
+                            Some(crate::image_osc::LengthSpec::Cells(r)) => r,
+                            _ => img_rows,
+                        };
+                        let mut advance_bytes = Vec::with_capacity(advance_rows);
+                        for _ in 0..advance_rows {
                             advance_bytes.push(b'\n');
                         }
                         self.parser.advance(&mut self.term, &advance_bytes);
@@ -368,7 +391,7 @@ impl Session {
         // Prune images whose anchor line has scrolled past the maximum scrollback limit (10,000 lines)
         let cur_history = self.term.history_size() as i32;
         self.placed_images.retain(|img| {
-            img.anchor_line >= cur_history - 10_000
+            img.is_alt_screen || img.anchor_line >= cur_history - 10_000
         });
     }
 

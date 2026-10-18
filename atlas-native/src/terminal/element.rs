@@ -8,6 +8,7 @@ use std::rc::Rc;
 use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::Line;
 use alacritty_terminal::term::cell::Flags;
+use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::{
     App, Bounds, ContentMask, Corners, Element, ElementId, Font, GlobalElementId, InspectorElementId,
@@ -189,8 +190,9 @@ impl Element for TerminalElement {
         self.session.borrow_mut().grid_bounds = Some((left, top, cell_width, cell_height));
 
         // Snapshot the grid into paint-ready rows (no borrows outlive this block).
-        let (rows, cursor_cell, cursor_shape, selection_range, offset, placed_images, cur_history) = {
+        let (rows, cursor_cell, cursor_shape, selection_range, offset, placed_images, cur_history, is_alt_screen) = {
             let session = self.session.borrow();
+            let is_alt_screen = session.term.mode().contains(TermMode::ALT_SCREEN);
             let content = session.term.renderable_content();
             let offset = content.display_offset as i32;
             let cursor_shape = self.cursor_override.unwrap_or(content.cursor.shape);
@@ -289,7 +291,16 @@ impl Element for TerminalElement {
                 });
                 row.text.push_str(&text);
             }
-            (rows, cursor_cell, cursor_shape, selection_range, offset, placed_images, cur_history)
+            (
+                rows,
+                cursor_cell,
+                cursor_shape,
+                selection_range,
+                offset,
+                placed_images,
+                cur_history,
+                is_alt_screen,
+            )
         };
 
         let total_rows = rows.len();
@@ -394,7 +405,17 @@ impl Element for TerminalElement {
             let num_screen_rows = rows.len().max(1);
             window.with_content_mask(Some(ContentMask { bounds }), |window| {
                 for img in &placed_images {
-                    let grid_line = img.anchor_line - cur_history;
+                    // Do not render primary screen images in alternate screen (OpenCode, Vim, etc.),
+                    // and do not render alternate screen images in primary screen.
+                    if img.is_alt_screen != is_alt_screen {
+                        continue;
+                    }
+
+                    let grid_line = if is_alt_screen {
+                        img.anchor_line
+                    } else {
+                        img.anchor_line - cur_history
+                    };
                     let screen_row = grid_line + offset;
 
                     let img_bottom_row = screen_row + img.rows as i32;
