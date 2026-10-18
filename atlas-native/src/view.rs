@@ -1,6 +1,7 @@
 //! AtlasView - core view coordinator, window lifecycle, and primary rendering orchestration.
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -18,18 +19,18 @@ use gpui::{
 };
 
 use crate::config::{
-    load_app_settings, AppSettingsFile, SettingsTab, ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB,
-    ACTION_COPY, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN,
-    ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE,
-    ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL, ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN,
-    ACTION_ZOOM_OUT, format_keystroke_chord,
+    default_shortcuts, format_keystroke_chord, load_app_settings, AppSettingsFile, SettingsTab,
+    ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FOCUS_NEXT_PANE,
+    ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEXT_TAB,
+    ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL,
+    ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN, ACTION_ZOOM_OUT,
 };
 use crate::icons;
 use crate::keymap;
 use crate::session::{Profile, Session, SessionMsg};
 use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};
-use crate::ui::animation::{ease_apple_snappy, ease_out_cubic, OVERLAY_IN_MS, OVERLAY_OUT_MS};
+use crate::ui::animation::{ease_apple_snappy, ease_out_cubic, BODY_IN_MS, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_NEW_TAB,
     HOVER_MARK_WINDOW,
@@ -37,8 +38,8 @@ use crate::ui::overlay::{
 use crate::ui::palette::Command;
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
-    dir_label, format_path_condensed, format_tab_title, git_branch, git_cwd, profile_title,
-    session_icon, title_path, Pane, SplitAxis, Tab,
+    dir_label, format_path_condensed, format_tab_title, git_branch, git_cwd, home_dir,
+    profile_title, session_icon, title_path, Pane, SplitAxis, Tab,
 };
 
 
