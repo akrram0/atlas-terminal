@@ -6,7 +6,7 @@ use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontFallbacks, FontWeight,
-    IntoElement, KeyDownEvent, Rgba, SharedString, div, px, relative, rgb, rgba,
+    IntoElement, KeyDownEvent, Rgba, ScrollWheelEvent, SharedString, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{
@@ -178,6 +178,9 @@ impl AtlasView {
                     )
                     .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                         view.settings_tab = tab;
+                        view.settings_scroll_pos = 0.0;
+                        view.settings_scroll_target = 0.0;
+                        view.settings_scroll_handle.set_offset(gpui::Point::default());
                         cx.notify();
                     })),
             );
@@ -1097,6 +1100,14 @@ impl AtlasView {
             .min_h(px(0.0))
             .overflow_y_scroll()
             .track_scroll(&self.settings_scroll_handle)
+            .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
+                let delta_y = match event.delta {
+                    gpui::ScrollDelta::Lines(delta) => delta.y * 36.0,
+                    gpui::ScrollDelta::Pixels(delta) => f32::from(delta.y),
+                };
+                view.scroll_settings_smooth(delta_y, cx);
+                cx.stop_propagation();
+            }))
             .p(px(16.0))
             .pb(px(60.0))
             .child(

@@ -31,7 +31,7 @@ use crate::keymap;
 use crate::session::{Profile, Session, SessionMsg};
 use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};
-use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, OVERLAY_OUT_MS};
+use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, OVERLAY_OUT_MS, EASE_OUT};
 use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_NEW_TAB,
     HOVER_MARK_WINDOW,
@@ -92,8 +92,6 @@ pub struct AtlasView {
     /// Smooth scrolling: the pane being eased plus (position, target) display
     /// offsets in lines. Bound to a session so tab switches stay safe.
     pub(crate) scroll_anim: Option<(Rc<RefCell<Session>>, f32, f32)>,
-    /// One easing task per wheel gesture burst; stops when the anim settles.
-    pub(crate) scroll_task: bool,
     /// Floating auto-hiding scrollbar opacity and activity timer.
     pub(crate) scrollbar_opacity: f32,
     pub(crate) last_scroll_time: std::time::Instant,
@@ -124,6 +122,8 @@ pub struct AtlasView {
     pub(crate) window_was_active: bool,
     pub(crate) mouse_down_pane: Option<usize>,
     pub(crate) settings_scroll_handle: ScrollHandle,
+    pub(crate) settings_scroll_pos: f32,
+    pub(crate) settings_scroll_target: f32,
 }
 
 
@@ -186,7 +186,6 @@ impl AtlasView {
             palette_closing: false,
             profile_closing: false,
             scroll_anim: None,
-            scroll_task: false,
             scrollbar_opacity: 0.0,
             last_scroll_time: std::time::Instant::now(),
             hover_tab: None,
@@ -219,6 +218,8 @@ impl AtlasView {
             window_was_active: true,
             mouse_down_pane: None,
             settings_scroll_handle: ScrollHandle::new(),
+            settings_scroll_pos: 0.0,
+            settings_scroll_target: 0.0,
         };
         crate::rounded_corners::set_dark_mode(theme_id == 0);
         crate::rounded_corners::set_blur(blur_enabled);
@@ -227,7 +228,7 @@ impl AtlasView {
 
         // Motion & breathing ticker: drives continuous kinetic cursor gliding,
         // organic sinusoidal breathing, theme crossfading, palette gliding,
-        // auto-hiding scrollbar transitions, and smooth tab/pane collapses.
+        // auto-hiding scrollbar transitions, settings kinetic scroll, and tab/pane collapses.
         let motion_ticker = cx.spawn(async move |this, cx| {
             let mut last_tick = std::time::Instant::now();
             loop {
@@ -242,8 +243,14 @@ impl AtlasView {
                     let mut needs_paint = false;
 
                     // 1. Organic cursor breathing (soft sinusoidal alpha when idle)
+                    // Pauses when settings or modal overlays are open to prevent wasted redraws
                     let typing_elapsed = view.cursor_last_typing.elapsed().as_millis();
-                    if typing_elapsed > 450 {
+                    let should_breathe = !view.settings_open
+                        && !view.palette_open
+                        && !view.profile_menu
+                        && !view.rename_open
+                        && !view.update_panel_open;
+                    if should_breathe && typing_elapsed > 450 {
                         view.cursor_breath_phase =
                             (view.cursor_breath_phase + dt * 4.5) % (std::f32::consts::PI * 2.0);
                         needs_paint = true;
@@ -254,8 +261,8 @@ impl AtlasView {
 
                     // 2. Theme crossfade interpolation (zero-flash smooth transition)
                     if let Some((ref from, ref to, ref mut t)) = view.theme_transition {
-                        *t = (*t + dt * 6.5).min(1.0);
-                        view.theme = Theme::interpolate(from, to, *t);
+                        *t = (*t + dt * 7.0).min(1.0);
+                        view.theme = Theme::interpolate(from, to, EASE_OUT.eval(*t));
                         needs_paint = true;
                         if *t >= 1.0 {
                             view.theme = to.clone();
@@ -268,7 +275,7 @@ impl AtlasView {
                         let target = view.palette_index as f32;
                         let diff = target - view.palette_anim_index;
                         if diff.abs() > 0.005 {
-                            let factor = (1.0 - (-26.0 * dt).exp()).clamp(0.0, 1.0);
+                            let factor = (1.0 - (-28.0 * dt).exp()).clamp(0.0, 1.0);
                             view.palette_anim_index += diff * factor;
                             needs_paint = true;
                         } else {
@@ -295,7 +302,7 @@ impl AtlasView {
                         let target = if is_hovered { 1.0 } else { 0.0 };
                         let diff = target - tab.close_hover_progress;
                         if diff.abs() > 0.01 {
-                            let factor = (1.0 - (-24.0 * dt).exp()).clamp(0.0, 1.0);
+                            let factor = (1.0 - (-26.0 * dt).exp()).clamp(0.0, 1.0);
                             tab.close_hover_progress += diff * factor;
                             needs_paint = true;
                         } else if tab.close_hover_progress != target {
@@ -304,7 +311,7 @@ impl AtlasView {
                         }
 
                         if tab.closing {
-                            tab.close_progress = (tab.close_progress + dt * 9.0).min(1.0);
+                            tab.close_progress = (tab.close_progress + dt * 8.0).min(1.0);
                             needs_paint = true;
                             if tab.close_progress >= 1.0 {
                                 tabs_to_remove.push(i);
@@ -330,7 +337,7 @@ impl AtlasView {
                                 let d_col = tgt_col - cur_col;
                                 let d_row = tgt_row - cur_row;
                                 if d_col.abs() > 0.01 || d_row.abs() > 0.01 {
-                                    // Snappy Apple spring deceleration (~90ms)
+                                    // Snappy Apple spring deceleration (~70ms)
                                     let factor = (1.0 - (-28.0 * dt).exp()).clamp(0.0, 1.0);
                                     let next_col = if d_col.abs() < 0.03 {
                                         tgt_col
@@ -370,6 +377,51 @@ impl AtlasView {
                             if tab.panes.len() == 1 {
                                 tab.maximized = false;
                             }
+                        }
+                    }
+
+                    // 7. Terminal smooth kinetic scrolling (unified into ticker)
+                    if let Some((session, pos, target)) = view.scroll_anim.clone() {
+                        view.last_scroll_time = std::time::Instant::now();
+                        let diff = target - pos;
+                        let factor = (1.0 - (-24.0 * dt).exp()).clamp(0.0, 1.0);
+                        let next = if diff.abs() < 0.04 {
+                            target
+                        } else {
+                            pos + diff * factor
+                        };
+                        let settled = next == target;
+                        view.scroll_anim = if settled {
+                            None
+                        } else {
+                            Some((session.clone(), next, target))
+                        };
+                        let mut guard = session.borrow_mut();
+                        let current = guard.term.renderable_content().display_offset as i32;
+                        let target_int = next.floor() as i32;
+                        let delta = target_int - current;
+                        if delta != 0 {
+                            guard.term.scroll_display(Scroll::Delta(delta));
+                        }
+                        needs_paint = true;
+                    }
+
+                    // 8. Settings kinetic smooth scrolling
+                    if view.settings_open {
+                        let max_y = f32::from(view.settings_scroll_handle.max_offset().y).max(0.0);
+                        if max_y > 0.0 && view.settings_scroll_target > max_y {
+                            view.settings_scroll_target = max_y;
+                        }
+                        let diff = view.settings_scroll_target - view.settings_scroll_pos;
+                        if diff.abs() > 0.5 {
+                            let factor = (1.0 - (-24.0 * dt).exp()).clamp(0.0, 1.0);
+                            view.settings_scroll_pos += diff * factor;
+                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(-view.settings_scroll_pos)));
+                            needs_paint = true;
+                        } else if (view.settings_scroll_pos - view.settings_scroll_target).abs() > 0.01 {
+                            view.settings_scroll_pos = view.settings_scroll_target;
+                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(-view.settings_scroll_pos)));
+                            needs_paint = true;
                         }
                     }
 
@@ -778,8 +830,7 @@ impl AtlasView {
 
     /// Wheel scrolling: let the display offset glide toward the gesture target
     /// instead of stepping line-by-line (the trackpad "smooth" feel). Deltas
-    /// accumulate while the gesture is hot; the easing task stops itself once
-    /// the offset has settled.
+    /// accumulate while the gesture is hot; the motion ticker eases towards it.
     fn scroll_smooth(&mut self, lines: f32, cx: &mut Context<Self>) {
         if lines == 0.0 {
             return;
@@ -804,53 +855,21 @@ impl AtlasView {
         } else {
             self.scroll_anim = Some((session, current, (current + lines).clamp(0.0, max)));
         }
+        cx.notify();
+    }
 
-        if self.scroll_task {
-            return;
+    /// Smooth kinetic scrolling for Settings: accumulates delta and eases towards target.
+    pub(crate) fn scroll_settings_smooth(&mut self, delta_y: f32, cx: &mut Context<Self>) {
+        let current_offset = -f32::from(self.settings_scroll_handle.offset().y);
+        // If previous animation has completed or settled, resync position with handle
+        if (self.settings_scroll_target - self.settings_scroll_pos).abs() < 0.5 {
+            self.settings_scroll_pos = current_offset;
+            self.settings_scroll_target = current_offset;
         }
-        self.scroll_task = true;
-        cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(16))
-                    .await;
-                let tick = this.update(cx, |view, cx| {
-                    let Some((session, pos, target)) = view.scroll_anim.clone() else {
-                        view.scroll_task = false;
-                        return true;
-                    };
-                    view.last_scroll_time = std::time::Instant::now();
-                    // Exponential approach: quick at first, gentle at the end.
-                    let next = if (target - pos).abs() < 0.04 {
-                        target
-                    } else {
-                        pos + (target - pos) * 0.30
-                    };
-                    let settled = next == target;
-                    view.scroll_anim = if settled {
-                        None
-                    } else {
-                        Some((session.clone(), next, target))
-                    };
-                    if settled {
-                        view.scroll_task = false;
-                    }
-                    let mut guard = session.borrow_mut();
-                    let current = guard.term.renderable_content().display_offset as i32;
-                    let target_int = next.floor() as i32;
-                    let delta = target_int - current;
-                    if delta != 0 {
-                        guard.term.scroll_display(Scroll::Delta(delta));
-                    }
-                    cx.notify();
-                    settled
-                });
-                if !matches!(tick, Ok(false)) {
-                    break;
-                }
-            }
-        })
-        .detach();
+        let max_y = f32::from(self.settings_scroll_handle.max_offset().y).max(0.0);
+        let upper_bound = if max_y > 0.0 { max_y } else { 10_000.0 };
+        self.settings_scroll_target = (self.settings_scroll_target - delta_y).clamp(0.0, upper_bound);
+        cx.notify();
     }
 
     fn paste(&self, cx: &mut Context<Self>) {
@@ -1302,6 +1321,9 @@ impl AtlasView {
             if chord == self.get_shortcut(ACTION_OPEN_SETTINGS) {
                 self.settings_open = !self.settings_open;
                 if self.settings_open {
+                    self.settings_scroll_pos = 0.0;
+                    self.settings_scroll_target = 0.0;
+                    self.settings_scroll_handle.set_offset(gpui::Point::default());
                     window.focus(&self.settings_focus);
                 } else {
                     window.focus(&self.focus);
@@ -1629,7 +1651,7 @@ impl Render for AtlasView {
             let pill_hot = tb.chrome_fg_active;
 
             let (max_w, min_w, px_pad, opacity) = if tab.closing {
-                let scale = (1.0 - tab.close_progress).max(0.0);
+                let scale = (1.0 - EASE_OUT.eval(tab.close_progress)).max(0.0);
                 (220.0 * scale, 0.0, 8.0 * scale, scale)
             } else {
                 (220.0, 40.0, 8.0, 1.0)
@@ -1716,7 +1738,7 @@ impl Render for AtlasView {
                         .rounded(px(4.0))
                         .text_color(tb.faint_fg)
                         .hover(move |style| style.text_color(close_hot).bg(tb.card_hover))
-                        .child(icons::icon(icons::CLOSE).size(px(10.5)).text_color(tb.faint_fg))
+                        .child(icons::icon(icons::CLOSE).size(px(10.5)))
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                             view.close_tab(ix, cx);
                             window.focus(&view.focus);
@@ -1843,6 +1865,9 @@ impl Render for AtlasView {
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = !view.settings_open;
                     if view.settings_open {
+                        view.settings_scroll_pos = 0.0;
+                        view.settings_scroll_target = 0.0;
+                        view.settings_scroll_handle.set_offset(gpui::Point::default());
                         window.focus(&view.settings_focus);
                     } else {
                         window.focus(&view.focus);

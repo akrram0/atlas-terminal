@@ -10,7 +10,11 @@ pub mod settings;
 pub mod updater;
 
 #[allow(unused_imports)]
-pub use animation::{ease_apple_snappy, ease_out_cubic, BODY_IN_MS, OVERLAY_IN_MS, OVERLAY_OUT_MS};
+pub use animation::{
+    ease_apple_snappy, ease_in_out, ease_out, ease_out_cubic, ease_out_expo, CubicBezier,
+    BODY_IN_MS, EASE, EASE_IN_OUT, EASE_OUT, EASE_OUT_EXPO, EASE_OUT_QUINT, OVERLAY_IN_MS,
+    OVERLAY_OUT_MS, TAB_SLIDE_MS,
+};
 #[allow(unused_imports)]
 pub use controls::{pill_button, stepper, toggle_pill};
 #[allow(unused_imports)]
