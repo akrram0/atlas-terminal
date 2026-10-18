@@ -1623,7 +1623,7 @@ impl Render for AtlasView {
             self.update_panel_closing = false;
         }
         let theme = self.theme.clone();
-        let _zoomed = crate::rounded_corners::is_zoomed();
+        let zoomed = crate::rounded_corners::is_zoomed();
 
         // Detect dominant background of the active terminal session
         let active_bg = if let Some(tab) = self.tabs.get(self.active) {

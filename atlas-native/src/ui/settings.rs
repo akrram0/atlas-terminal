@@ -5,8 +5,8 @@ use std::time::Duration;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontFallbacks, FontWeight,
-    IntoElement, KeyDownEvent, Rgba, ScrollWheelEvent, SharedString, div, px, relative, rgb, rgba,
+    Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontWeight,
+    IntoElement, KeyDownEvent, Rgba, ScrollWheelEvent, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{
