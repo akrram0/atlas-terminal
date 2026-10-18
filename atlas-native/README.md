@@ -1,96 +1,87 @@
-# Atlas Native — GPUI proof of concept
+# Atlas Native — High-Performance GPU Terminal Engine
 
-The native Atlas Terminal. **Zero webview, zero CSS, zero HTML.** Everything —
-titlebar, sidebar, tab pills, split panes, the terminal grid, the cursor — is
-drawn by Rust code on the GPU.
+The core native implementation of Atlas Terminal. **Zero webview, zero CSS, zero HTML.** Everything — titlebar, tab pills, split panes, terminal cell grid, cursor gliding, and dialogs — is rendered directly on DirectX via GPUI.
 
-## Stack
+<p align="center">
+  <img src="../assets/screenshots/atlas-light-fastfetch.png" alt="Atlas Terminal - Light / Paper Theme" width="49%">
+  <img src="../assets/screenshots/atlas-dark-opencode.png" alt="Atlas Terminal - Dark Theme running OpenCode" width="49%">
+</p>
 
-| Layer | Crate | Notes |
+---
+
+## Technical Stack
+
+| Layer | Crate | Details |
 |---|---|---|
-| Window + UI + GPU rendering | `gpui 0.2.2` | Zed's UI framework, Windows: DirectX/DirectComposition + DirectWrite |
-| Terminal emulation | `alacritty_terminal 0.26` | The exact engine the codebase of Alacritty uses: VTE parser, grid, scrollback, attributes |
-| PTY | `portable-pty 0.8` | ConPTY on Windows |
-| Async plumbing | `smol 2` | channel between the PTY reader thread and the UI task |
+| **Window + UI + GPU Engine** | `gpui 0.2.2` | Zed's UI framework on Windows: DirectX / DirectComposition + DirectWrite |
+| **Terminal Emulation** | `alacritty_terminal 0.26` | Alacritty's VTE parser, cell grid, scrollback history, SGR mouse reporting |
+| **PTY Layer** | `portable-pty 0.8` | Windows ConPTY architecture |
+| **Async Plumbing** | `smol 2` | Channel synchronization between ConPTY reader thread & GPUI UI thread |
+| **Iconography** | Vector SVGs (`crate::icons`) | Zero Unicode icons; Solar Linear stroked SVGs loaded via `IconsAssets` |
+| **Timer Precision** | Windows Multimedia Timer | `timeBeginPeriod(1)` yielding 1ms scheduler resolution for up to 240Hz refresh |
 
-Design rule: there is no stylesheet anywhere. A theme is a Rust struct
-(`src/theme.rs`) — one source of truth for chrome, ANSI palette and cursor
-(light / dark).
+---
 
-## What the POC does
+## Engine Capabilities
 
-- Frameless window (`titlebar: None`) with a custom titlebar: drag region,
-  minimize / maximize / close drawn by gpui and handled natively
-  (`WindowControlArea`), `−` `▢` `✕` buttons.
-- Erasable tabs: pill tabs with title (from OSC 0 sent by the shell), `+`
-  button, close on demand. Each tab owns a real PTY session. Titles can be
-  overridden through the Rename dialog (pane pen icon).
-- Split panes: a tab is one or more panes side by side (sidebar split icon,
-  command palette or pane menu). Click to focus, close panes independently;
-  each pane keeps its own PTY, title, cwd, branch and exit state.
-- Profiles: the New-tab caret opens a picker — PowerShell (`pwsh` falling back
-  to `powershell.exe`) and Ubuntu (WSL via `wsl.exe`). Each pane remembers its
-  profile, so `R` restarts the same shell. Tab names, icons and fallbacks are
-  profile-aware (an Ubuntu pane reads "Ubuntu", never "PowerShell").
-- Live location per pane: the path embedded in the shell title
-  (`user@host: /mnt/c/...` — WSL reports its Linux cwd there) wins over the
-  Windows PEB poll, so WSL panes show their real cwd; git branch detection
-  maps `/mnt/<drive>/...` back to the Windows drive.
-- Command palette (`Ctrl+Shift+P`, titlebar search pill, or the pane `⋯`
-  menu): new / close / split tabs and panes, rename, theme toggle, settings,
-  sidebar, font size — typed filtering, ↑/↓, Enter, Esc.
-- Settings is a full in-app page (Appearance / Terminal / About): light/dark
-  theme, font size, cursor style (Auto / Block / Bar / Under), GitHub link.
-- Sidebar with tabs list, collapse to a 46 px rail (expand + new tab), and a
-  status bar: shell label, cwd / git branch, grid size, connection state.
-- Terminal grid rendered as a custom gpui `Element`: cell-accurate background
-  quads, per-run text (bold / italic / underline / strikethrough), 256-color
-  palette, block/beam/underline cursor, inverse video, wide chars preserved.
-- Input: full keymap (arrows incl. DECCKM, F1–F12, control chars, Alt=Meta,
-  space), clipboard paste (`Ctrl+Shift+V`, bracketed-paste aware), scrollback
-  (`Shift+PageUp/PageDown`, wheel).
-- App shortcuts: `Ctrl+Shift+T` new tab, `Ctrl+Shift+W` close tab,
-  `Ctrl+Tab` / `Ctrl+Shift+Tab` cycle tabs, `Ctrl+Shift+P` palette,
-  `Ctrl+Shift+D` theme, `R` restart after exit.
-- Exited pane: overlay with restart hint; closing a pane/tab kills its child
-  and the session is dropped.
+### ⚡ 240Hz Adaptive Motion Loop
+- Real-time adaptive frame scheduling in `view.rs`:
+  - **4ms (~240Hz)** during active scrolling, cursor gliding, tab collapsing, or theme crossfading.
+  - **16ms (~60Hz)** for organic cursor breathing.
+  - **33ms (~30Hz)** when quiescent (0% idle CPU).
+- Calibrated critically damped kinetic scroll decay (`-18.0 * dt`) with flick velocity boost.
+- Continuous ceil-aligned subpixel row rendering (`(pos - pos.ceil()) * cell_height`) eliminating row jumps.
 
-## Build (CI only)
+### 🖱️ SGR Mouse Reporting & TUI Interactivity
+- Encodes SGR 1006 mouse events directly to the active PTY:
+  - Down: `\x1b[<{btn};{col};{row}M`
+  - Up: `\x1b[<{btn};{col};{row}m`
+  - Drag / Motion: `\x1b[<{btn + 32};{col};{row}M`
+  - Wheel: `\x1b[<64;{col};{row}M` / `\x1b[<65;{col};{row}M`
+- TUI apps (**OpenCode**, **Lazygit**, **Micro**, **Helix**) are fully clickable and interactive.
+- Native text drag-selection and copy-on-select when holding `Shift` or in standard shell mode.
 
-Per the project rule, no local Rust toolchain: every push to `main` touching
-`atlas-native/**` builds on `windows-latest` via
-`.github/workflows/native.yml`, smoke-tests the exe and uploads the final
-`atlas-native.exe` (release) as the `atlas-native-poc` artifact, plus
-`build-output.log` for troubleshooting. Pushes to `main` also refresh the
-rolling release:
+### 🪟 Windows 11 DWM Integration & Smooth 10px Corners
+- Frameless `titlebar: None` client area subclassed via Win32 `wndproc` for native DWM rounding.
+- Edge-to-edge terminal canvas with smooth 10px inner rounded corners matching the active terminal/TUI background.
 
-https://github.com/akrram0/atlas-terminal/releases/download/native-latest/atlas-native.exe
+### 🔄 In-App Streaming Background Updater
+- Built-in GitHub Releases query, streaming chunked download, and RFC 6234 SHA-256 verification.
+- Silent restart using Inno Setup command-line flags.
 
-If the compiler is ever installed locally, `cargo run` inside `atlas-native/`
-also works; a release build additionally needs `GPUI_FXC_PATH` (Windows SDK
-`fxc.exe`) on this gpui version.
+---
 
-## Layout
+## Architecture & Layout
 
 ```
 atlas-native/
-  Cargo.toml
-  src/
-    main.rs     — window setup (frameless, caption slots, rounded corners)
-    view.rs     — AtlasView: chrome, palette, settings page, TerminalElement (the renderer)
-    session.rs  — Session: portable-pty + Term + reader thread + events
-    keymap.rs   — Keystroke -> PTY bytes
-    theme.rs    — light/dark theme structs (chrome + ANSI + cursor)
-    cwd.rs      — live working directory (PEB read)
+├── Cargo.toml
+└── src/
+    ├── main.rs            # Process setup, 1ms timer, Win32 DWM corner rounding
+    ├── view.rs            # AtlasView: chrome, 240Hz ticker, tabs, command palette
+    ├── session.rs         # Session: ConPTY + alacritty Term + background reader
+    ├── updater.rs         # In-app background streaming installer & SHA-256 verification
+    ├── keymap.rs          # Keystroke mapping & SGR mouse sequence generation
+    ├── theme.rs           # Dual-theme palette definitions & color interpolation
+    ├── cwd.rs             # Live working directory resolution (PEB read)
+    ├── icons.rs           # Embedded Solar Linear vector icons (AssetSource)
+    └── ui/
+        ├── controls.rs    # Tactile steppers, toggle pills, and option buttons
+        ├── settings.rs    # Settings page with smart dynamic contrast
+        ├── palette.rs     # Command palette (Ctrl+K / Ctrl+Shift+P)
+        ├── overlay.rs     # Modal sheets and contextual menus
+        └── animation.rs   # CubicBezier easing curves & motion physics
 ```
 
-## Known POC limits
+---
 
-- No text selection or buffer search yet (the search pill opens the palette).
-- No IME (e.g. Chinese/Japanese input via composition) in the palette / rename
-  inputs yet.
-- No font-family picker (Cascadia-first stack).
-- Splits are equal width (no drag-to-resize divider).
-- Text layout re-shapes every frame; per-row caching comes next if needed.
-- macOS/Linux: `gpui` supports them, but the POC targets Windows first
-  (ConPTY + Windows control areas).
+## Build & Development
+
+Atlas Terminal builds via GitHub Actions on `windows-latest`. To run locally:
+
+```powershell
+cd atlas-native
+cargo run --release
+```
+
+*(Note: On Windows, release compilation locates `fxc.exe` from the Windows SDK automatically).*

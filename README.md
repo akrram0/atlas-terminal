@@ -1,89 +1,136 @@
 # Atlas Terminal
 
-A native, GPU-accelerated terminal emulator for Windows — **no webview, no CSS,
-no HTML**. Window chrome, tabs, split panes, the command palette and the
-terminal grid itself are all drawn from Rust code on the GPU.
+A blisteringly fast, GPU-accelerated native terminal emulator for Windows — **zero webview, zero Electron, zero HTML/CSS**. Window chrome, tabs, split panes, command palette, and the terminal grid itself are all rendered directly on DirectX via GPUI.
 
 [![CI & Release Pipeline](https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml/badge.svg)](https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml)
 [![Latest Release](https://img.shields.io/github/v/release/akrram0/atlas-terminal?color=C05A28&logo=github)](https://github.com/akrram0/atlas-terminal/releases/latest)
-![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
+![Windows 11](https://img.shields.io/badge/Windows-11%20%7C%2010-0078D6?logo=windows&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white)
 ![gpui](https://img.shields.io/badge/UI-gpui%200.2-7C3AED)
+![FPS](https://img.shields.io/badge/Display-Up%20to%20240Hz-success)
+
+---
+
+## Preview
+
+<p align="center">
+  <img src="assets/screenshots/atlas-light-fastfetch.png" alt="Atlas Terminal - Light / Paper Theme with fastfetch" width="49%">
+  <img src="assets/screenshots/atlas-dark-opencode.png" alt="Atlas Terminal - Dark Theme running OpenCode TUI" width="49%">
+</p>
+
+*Left: Warm Paper theme running fastfetch with process tabs. Right: Matte Dark theme running OpenCode with smooth 10px rounded corners and full SGR mouse interaction.*
+
+---
 
 ## Download
 
 Get the latest release for Windows (x64):
 
-* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.15.exe)**
+* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.15.exe)** *(recommended: automatic shortcuts, silent background upgrades)*
 * 🗜️ **[Download Portable (.zip)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
-* 🚀 **[All Releases & Changelog](https://github.com/akrram0/atlas-terminal/releases)**
+* 🚀 **[All Releases & Changelogs](https://github.com/akrram0/atlas-terminal/releases)**
 
+---
 
-## Stack
+## Core Highlights
 
-| Layer | Crate | Notes |
-| --- | --- | --- |
-| Window, UI, GPU rendering | `gpui 0.2.2` | Zed's UI framework (DirectX on Windows) |
-| Terminal emulation | `alacritty_terminal 0.26` | VTE parser, grid, scrollback, attributes |
-| PTY | `portable-pty 0.8` | ConPTY on Windows |
-| Async plumbing | `smol 2` | PTY reader thread → UI channel |
+### ⚡ 240Hz High-FPS Motion & Inertial Scrolling
+- **1ms Windows OS Scheduler Resolution**: Activates `timeBeginPeriod(1)` at startup, bypassing Windows 15.6ms timer quantisation.
+- **Adaptive Cadence**: Renders at **4ms (~240Hz)** during active scrolling and animations, stepping down to 16ms for organic cursor breathing and 33ms when idle (0% CPU).
+- **Critically Damped Kinetic Scroll**: Inertial wheel physics with flick velocity boost and continuous ceil-aligned subpixel row interpolation (`(pos - pos.ceil()) * cell_height`) for jitter-free history browsing.
 
-There is no stylesheet anywhere: a theme is a Rust struct
-(`atlas-native/src/theme.rs`) — one source of truth for chrome, the ANSI
-palette and the cursor (light / dark).
+### 🖱️ Full SGR Mouse Reporting & TUI Support
+- Comprehensive support for mouse reporting modes (`?1000h`, `?1002h`, `?1003h`, `?1006h`).
+- Interactive TUI applications (**OpenCode**, **Lazygit**, **Micro**, **Helix**) are fully clickable, draggable, and scrollable.
+- Intelligent selection system: Shift-click overrides reporting for native terminal text copy/selection.
 
-## Features
+### 🎨 Apple/macOS-Inspired Restrained Aesthetic
+- Frameless native window with client-side titlebar and seamless Windows 11 DWM integration.
+- Smooth **10px** inner rounded corners that adapt dynamically to the terminal or TUI background color without corner bleeding or fractional pixel clipping.
+- Tactile button micro-interactions with physical depression feedback and spring release on all interactive controls.
+- Dual curated themes: **Matte Dark** and **Warm Paper**, plus automatic system dark/light switching.
 
-- **Tabs** — each tab owns a real PTY; titles come from the shell (OSC 0/2)
-  with a Rename dialog on top; hidden tabs keep running.
-- **Split panes** — side-by-side panes per tab (sidebar split icon, command
-  palette or the pane `⋯` menu); click a pane to focus it, close panes
-  independently. Every pane keeps its own PTY, title, cwd and exit state.
-- **Profiles** — PowerShell and Ubuntu (WSL). The status bar and breadcrumb
-  track each pane's live working directory and git branch; WSL paths are read
-  from the shell title (`/mnt/c/…`) and mapped back for git lookups.
-- **Command palette** — `Ctrl+K` (or `Ctrl+Shift+P`), the titlebar search pill or the pane
-  `⋯` menu. New / close / split tabs and panes, rename, theme, settings,
-  sidebar, font size — typed filtering, ↑/↓ + Enter.
-- **Settings page** — an in-app page, not a popup: light/dark theme, font
-  size, cursor style (Auto / Block / Bar / Under), About + GitHub link.
-- **Terminal core** — full keymap (arrows including DECCKM, F1–F12, control
-  chars, Alt=Meta), 256-color palette, bold/italic/underline/strikethrough,
-  wide chars, block/beam/underline cursor, inverse video, scrollback
-  (`Shift+PageUp/PageDown` and wheel), bracketed paste.
-- **Chrome** — frameless window with a custom titlebar (drag region, native
-  minimize / maximize / close), collapsible sidebar (46 px rail), breadcrumb
-  header, status bar (shell, cwd/branch, grid size, state).
+### 🔄 In-App Background Auto-Updater
+- One-click update detection from GitHub Releases with non-blocking streaming background downloads.
+- RFC 6234 cryptographic SHA-256 checksum verification against official release manifests.
+- Silent Inno Setup restart applying upgrades seamlessly in-place.
 
-## Project layout
+### 🪟 Tabs & Split Panes
+- Multi-tab PTY management with process-aware titles and icons (`pwsh`, `cmd`, `wsl`, `opencode`, etc.).
+- Flexible vertical and horizontal split panes with independent cwd, titles, and session lifecycles.
+- Fast Command Palette (`Ctrl+K` or `Ctrl+Shift+P`) for fuzzy action discovery.
+
+---
+
+## Architecture & Stack
+
+| Layer | Technology | Role |
+| :--- | :--- | :--- |
+| **Window & GPU Engine** | `gpui 0.2.2` | Zed's native GPU framework (DirectX / DirectWrite on Windows) |
+| **Terminal Core** | `alacritty_terminal 0.26` | VTE parser, cell grid, scrollback buffer, attributes |
+| **PTY Layer** | `portable-pty 0.8` | Windows ConPTY integration |
+| **Async Runtime** | `smol 2` | Lock-free PTY channel and background executor |
+| **Icons & Fonts** | Vector SVGs + Nerd Font | Embedded Solar Linear vector icons & Symbols Nerd Font |
+
+---
+
+## Project Structure
 
 ```
-atlas-native/
-  Cargo.toml
-  src/
-    main.rs      — window setup (frameless, caption slots, rounded corners)
-    view.rs      — AtlasView: chrome, palette, settings page, TerminalElement
-    session.rs   — Session: portable-pty + alacritty Term + reader thread
-    keymap.rs    — Keystroke → PTY bytes
-    theme.rs     — light/dark theme structs (chrome + ANSI + cursor)
-    cwd.rs       — live working directory (PEB read)
-.github/workflows/native.yml — CI: build + smoke test + rolling release
+atlas-terminal/
+├── assets/
+│   ├── icons/                  # Solar Linear stroked vector SVGs
+│   ├── screenshots/            # Showcase screenshots
+│   └── SymbolsNerdFontMono.ttf # Bundled Nerd Font glyphs
+├── atlas-native/
+│   ├── Cargo.toml
+│   └── src/
+│       ├── main.rs             # Window setup, 1ms timer, DWM corner rounding
+│       ├── view.rs             # AtlasView: chrome, 240Hz ticker, tabs, palette
+│       ├── session.rs          # ConPTY reader thread & Alacritty term state
+│       ├── updater.rs          # Background streaming updater & SHA-256 validation
+│       ├── keymap.rs           # Keystroke mapping & SGR mouse encoding
+│       ├── theme.rs            # Dual-theme palette definitions & interpolation
+│       └── ui/                 # Controls, settings, palette, animations
+├── installer/
+│   └── atlas-terminal.iss      # Inno Setup Windows installer script
+└── .github/workflows/
+    └── native.yml              # CI/CD: build, test & automated release pipeline
 ```
 
-## Building (CI only)
+---
 
-There is intentionally no local Rust toolchain requirement: every push to
-`main` that touches `atlas-native/**` builds on `windows-latest`
-(`.github/workflows/native.yml`), smoke-tests the exe, uploads the
-`atlas-native-poc` artifact and refreshes the rolling release above.
+## Keyboard Shortcuts
 
-If the toolchain is installed anyway, `cargo run` inside `atlas-native/`
-works; a release build additionally wants `GPUI_FXC_PATH` (Windows SDK
-`fxc.exe`) on this gpui version — the CI locates it automatically.
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette |
+| `Ctrl+Shift+T` / `Ctrl+Shift+N` | New Tab |
+| `Ctrl+Shift+W` | Close Tab / Pane |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / Previous Tab |
+| `Ctrl+Shift+D` | Split Horizontal |
+| `Ctrl+Shift+E` | Split Vertical |
+| `Ctrl+Shift+M` | Maximize / Restore Active Pane |
+| `Ctrl+Shift+C` | Copy Selection to Clipboard |
+| `Ctrl+Shift+V` | Paste from Clipboard |
+| `Ctrl+,` | Toggle Settings Page |
+| `R` | Restart Exited Process Pane |
 
-## Known limits (POC)
+---
 
-- No text selection or buffer search yet.
-- No IME composition in the palette / rename inputs.
-- No font-family picker (font stack prefers Cascadia-style Nerd Fonts).
-- Splits are equal width (no drag-to-resize divider).
+## Building from Source
+
+Atlas Terminal builds automatically on GitHub Actions (`windows-latest`). To build locally on Windows:
+
+```powershell
+# Prerequisites: Rust stable toolchain with MSVC
+git clone https://github.com/akrram0/atlas-terminal.git
+cd atlas-terminal/atlas-native
+cargo run --release
+```
+
+---
+
+## License
+
+MIT / Apache-2.0
