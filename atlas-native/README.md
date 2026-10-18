@@ -8,7 +8,7 @@
   <strong>The high-performance GPU terminal engine powering Atlas Terminal on Windows.</strong>
 </p>
 <p align="center">
-  <em>DirectX via GPUI · 240Hz Adaptive Motion · Zero Webview / Electron · SGR Mouse Reporting</em>
+  <em>DirectX via GPUI · 240Hz Adaptive Motion · Zero Webview / Electron · SGR Mouse Reporting · iTerm2 Inline Images</em>
 </p>
 
 <p align="center">
@@ -24,6 +24,7 @@
 |---|---|---|
 | **Window + UI + GPU Engine** | `gpui 0.2.2` | Zed's UI framework on Windows: DirectX / DirectComposition + DirectWrite |
 | **Terminal Emulation** | `alacritty_terminal 0.26` | Alacritty's VTE parser, cell grid, scrollback history, SGR mouse reporting |
+| **Inline Graphics Engine** | `image_osc` | Stateful OSC 1337 scanner, base64 decoder, and BGRA `gpui::RenderImage` textures |
 | **PTY Layer** | `portable-pty 0.8` | Windows ConPTY architecture |
 | **Async Plumbing** | `smol 2` | Channel synchronization between ConPTY reader thread & GPUI UI thread |
 | **Iconography** | Vector SVGs (`crate::icons`) | Zero Unicode icons; Solar Linear stroked SVGs loaded via `IconsAssets` |
@@ -40,6 +41,12 @@
   - **33ms (~30Hz)** when quiescent (0% idle CPU).
 - Calibrated critically damped kinetic scroll decay (`-18.0 * dt`) with flick velocity boost.
 - Continuous ceil-aligned subpixel row rendering (`(pos - pos.ceil()) * cell_height`) eliminating row jumps.
+
+### 🖼️ Inline Graphics (iTerm2 OSC 1337 Protocol)
+- **Pre-Parser Stateful Interceptor**: Scans incoming PTY chunks across 8KB boundaries before Alacritty's VTE parser sees them.
+- **Chronological Event Streaming**: Emits clean byte runs and decoded image anchors in exact sequence so pre-image escape codes (clears, cursor jumps) take effect before an image is placed.
+- **GPU BGRA Render Pass**: Decodes base64 PNG/JPEG/WebP/GIF into `gpui::RenderImage` textures, painted on DirectX directly between background cell quads and shaped glyph runs.
+- **Natural Vertical Flow**: Advances cursor by `rows` newlines and anchors to absolute history lines so images scroll naturally with terminal history and prune cleanly at the 10,000-line boundary.
 
 ### 🖱️ SGR Mouse Reporting & TUI Interactivity
 - Encodes SGR 1006 mouse events directly to the active PTY:
@@ -69,6 +76,7 @@ atlas-native/
     ├── main.rs            # Process setup, 1ms timer, Win32 DWM corner rounding
     ├── view.rs            # AtlasView: chrome, 240Hz ticker, tabs, command palette
     ├── session.rs         # Session: ConPTY + alacritty Term + background reader
+    ├── image_osc.rs       # iTerm2 OSC 1337 streaming scanner, base64 decode, grid sizing
     ├── updater.rs         # In-app background streaming installer & SHA-256 verification
     ├── keymap.rs          # Keystroke mapping & SGR mouse sequence generation
     ├── theme.rs           # Dual-theme palette definitions & color interpolation

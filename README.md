@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <em>DirectX-accelerated via GPUI · 240Hz Adaptive Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic</em>
+  <em>DirectX-accelerated via GPUI · 240Hz Adaptive Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic · iTerm2 Inline Image Graphics</em>
 </p>
 
 <p align="center">
@@ -49,9 +49,109 @@ Terminal emulators on Windows have historically been forced into a painful compr
 
 Get the latest release for Windows (x64):
 
-* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.15.exe)** *(Recommended: Start menu integration, desktop shortcuts, background auto-updates)*
+* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.24.exe)** *(Recommended: Start menu integration, desktop shortcuts, background auto-updates)*
 * 🗜️ **[Download Portable (.zip)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
-* 🚀 **[All Releases & Release Notes](https://github.com/akrram0/atlas-terminal/releases)**
+* 🚀 **[All Releases & Changelogs](https://github.com/akrram0/atlas-terminal/releases)**
+
+---
+
+## User Guide & Documentation
+
+### 1. Inline Image Rendering (iTerm2 OSC 1337 Protocol)
+Atlas Terminal natively intercepts and renders inline images directly inside the terminal grid without relying on Sixel or WebViews.
+
+#### Displaying Images in Fastfetch
+You can render photos alongside system info using Fastfetch:
+```powershell
+fastfetch --logo-type iterm --logo "C:\path\to\your\image.png"
+```
+
+#### Making Fastfetch Always Show Your Photo
+To display your picture automatically on every `fastfetch` command without typing extra flags, edit your Fastfetch configuration file at `~/.config/fastfetch/config.jsonc` (or `%USERPROFILE%\.config\fastfetch\config.jsonc`):
+
+```jsonc
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "iterm",
+    "source": "C:/Users/YourName/.config/fastfetch/avatar.png",
+    "width": 38,
+    "height": 19,
+    "padding": {
+      "top": 1,
+      "left": 1,
+      "right": 3
+    }
+  },
+  "modules": [
+    "title",
+    "separator",
+    "os", "host", "kernel", "uptime", "shell", "display", "cpu", "gpu", "memory"
+  ]
+}
+```
+
+#### Displaying Images from Shell Scripts or Python
+Any tool that speaks the standard iTerm2 inline image escape sequence renders natively in Atlas:
+```bash
+printf '\033]1337;File=inline=1;width=40;height=20:%s\007\n' "$(base64 -w0 photo.png)"
+```
+
+---
+
+### 2. Interactive TUI Applications (Full Mouse Control)
+Atlas Terminal provides comprehensive SGR mouse reporting (`?1000h`, `?1002h`, `?1003h`, `?1006h`):
+- **Clickable Interfaces**: Click buttons, select list items, and collapse accordions inside modern terminal apps like **OpenCode**, **Lazygit**, **Micro**, **Helix**, and **Neovim**.
+- **Smooth Mouse Wheel Scrolling**: Scroll through diffs, file trees, and logs directly with the wheel.
+- **Copy Text from a Mouse-Aware App**: Hold the **`Shift`** key while dragging to bypass application mouse capture and perform standard terminal selection and clipboard copying.
+
+---
+
+### 3. Workspaces: Tabs & Split Panes
+Organize multiple concurrent tasks and long-running services in a single window:
+- **New Tab**: Press `Ctrl+Shift+T` or `Ctrl+Shift+N` (or click `+` on the tab bar).
+- **Split Vertically**: Press `Ctrl+Shift+E` to divide the screen into side-by-side panes.
+- **Split Horizontally**: Press `Ctrl+Shift+D` to divide the screen top and bottom.
+- **Maximize Pane**: Press `Ctrl+Shift+M` to temporarily focus entirely on the active pane, and press it again to restore the split layout.
+- **Close Pane / Tab**: Press `Ctrl+Shift+W`.
+- **Switch Tabs**: Press `Ctrl+Tab` or `Ctrl+Shift+Tab`.
+
+---
+
+### 4. Command Palette (`Ctrl+K` or `Ctrl+Shift+P`)
+Press `Ctrl+K` or `Ctrl+Shift+P` at any time to open the instant fuzzy-search Command Palette:
+- Jump between tabs and active processes.
+- Split panes, close sessions, or toggle fullscreen.
+- Switch themes (**Matte Dark** / **Warm Paper**).
+- Open Settings directly from your keyboard.
+
+---
+
+### 5. Settings & Theme Customization (`Ctrl+,`)
+Press `Ctrl+,` to open the built-in Settings dashboard:
+- **Appearance & Themes**: Instant crossfade between **Matte Dark** and **Warm Paper**, or enable automatic Windows system dark/light synchronization.
+- **Typography**: Select any installed system font (defaults to `Segoe UI` and `Symbols Nerd Font`), font size, and line height.
+- **Cursor Aesthetics**: Switch between smooth kinetic `Block`, `Hollow Block`, `Beam`, and `Underline` with organic breathing alpha.
+- **Background Updates**: Configure automatic update checks (30 min, 1 hour, 6 hours, Daily) with silent background streaming.
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette |
+| `Ctrl+Shift+T` / `Ctrl+Shift+N` | New Tab |
+| `Ctrl+Shift+W` | Close Tab / Active Split Pane |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / Previous Tab |
+| `Ctrl+Shift+E` | Split Pane Vertically (Side-by-Side) |
+| `Ctrl+Shift+D` | Split Pane Horizontally (Top / Bottom) |
+| `Ctrl+Shift+M` | Maximize / Restore Active Split Pane |
+| `Ctrl+Shift+C` | Copy Selection to Clipboard |
+| `Ctrl+Shift+V` | Paste from Clipboard |
+| `Ctrl+,` | Toggle Settings Dashboard |
+| `Shift + Mouse Drag` | Bypass TUI mouse reporting for text copy |
+| `R` | Restart Exited Process Pane |
 
 ---
 
@@ -69,21 +169,11 @@ Get the latest release for Windows (x64):
 - **Tactile Button Micro-Interactions**: Real physical feedback on press (micro-depression and opacity dip) with snappy spring release across all buttons, tabs, steppers, and window controls.
 - **Dual Curated Themes**: Instant zero-flash crossfading between **Matte Dark** and **Warm Paper**, with automatic Windows dark/light system synchronization.
 
-### 🖱️ Full SGR Mouse Reporting (Clickable TUIs)
-- Comprehensive support for SGR mouse modes (`?1000h`, `?1002h`, `?1003h`, `?1006h`).
-- Mouse clicks, drags, selections, and scroll wheel gestures work natively inside modern TUI tools like **OpenCode**, **Lazygit**, **Micro**, and **Helix**.
-- Hold `Shift` to bypass reporting for standard terminal drag-selection and clipboard copying.
-
 ### 🔄 In-App Streaming Background Auto-Updater
-- Silent update checks against GitHub Releases.
+- Silent update checks against GitHub Releases with conditional ETag validation.
 - Non-blocking streaming chunked downloads with real-time percentage indicators.
 - Cryptographic SHA-256 verification (RFC 6234) against official release checksums.
-- One-click silent restart applying updates in-place.
-
-### 🪟 Multi-Tab & Split Pane Control
-- Multi-PTY tab bar with live process title detection (`pwsh`, `cmd`, `wsl`, `opencode`, etc.).
-- Flexible vertical and horizontal split panes with independent working directories, titles, and session lifecycles.
-- Fast Command Palette (`Ctrl+K` or `Ctrl+Shift+P`) for keyboard-driven fuzzy command execution.
+- One-click silent restart applying updates in-place via Inno Setup.
 
 ---
 
@@ -100,7 +190,10 @@ Get the latest release for Windows (x64):
 │   alacritty_terminal     │        portable-pty         │
 │  (VTE parser, cell grid, │   (Windows ConPTY process   │
 │   SGR mouse, scrollback) │       reader & channels)    │
-└──────────────────────────┴─────────────────────────────┘
+├──────────────────────────┴─────────────────────────────┤
+│              image_osc (iTerm2 OSC 1337)               │
+│     (Stateful streaming interceptor & BGRA decoder)    │
+└────────────────────────────────────────────────────────┘
 ```
 
 | Layer | Technology | Details |
@@ -108,41 +201,16 @@ Get the latest release for Windows (x64):
 | **Window & Rendering** | `gpui 0.2.2` | Zed's GPU framework running directly on DirectX on Windows |
 | **Terminal Core** | `alacritty_terminal 0.26` | Alacritty's high-speed VTE parser, cell grid, and scrollback history |
 | **PTY Layer** | `portable-pty 0.8` | Windows ConPTY integration |
+| **Inline Graphics** | `image_osc` | Stateful OSC 1337 scanner + GPU-ready BGRA `gpui::RenderImage` textures |
 | **Async Engine** | `smol 2` | Channel synchronization between ConPTY reader thread & UI thread |
 | **Iconography** | Vector SVGs (`crate::icons`) | 100% native Solar Linear stroked vector SVGs (zero unicode emojis) |
 | **Typography** | Embedded Nerd Font | Bundled `SymbolsNerdFontMono-Regular.ttf` for icons, fastfetch & starship |
 
 ---
 
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-| :--- | :--- |
-| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette |
-| `Ctrl+Shift+T` / `Ctrl+Shift+N` | New Tab |
-| `Ctrl+Shift+W` | Close Tab / Pane |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / Previous Tab |
-| `Ctrl+Shift+D` | Split Horizontal |
-| `Ctrl+Shift+E` | Split Vertical |
-| `Ctrl+Shift+M` | Maximize / Restore Active Pane |
-| `Ctrl+Shift+C` | Copy Selection to Clipboard |
-| `Ctrl+Shift+V` | Paste from Clipboard |
-| `Ctrl+,` | Toggle Settings Page |
-| `R` | Restart Exited Process Pane |
-
----
-
-## Repository Topics & Tags
-
-For discoverability across GitHub:
-
-`terminal` · `terminal-emulator` · `windows` · `windows-11` · `rust` · `gpui` · `gpu-accelerated` · `directx` · `alacritty` · `conpty` · `aesthetic-ui` · `high-fps` · `smooth-scrolling` · `opencode` · `tui`
-
----
-
 ## Building from Source
 
-Atlas Terminal builds via GitHub Actions on `windows-latest`. To compile locally on Windows:
+Atlas Terminal compiles via GitHub Actions on `windows-latest`. To compile locally on Windows:
 
 ```powershell
 # Prerequisites: Rust stable toolchain with MSVC
