@@ -27,7 +27,7 @@ use gpui::{
     Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Context, Corners, Element,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, GlobalElementId, InspectorElementId,
     IntoElement, KeyDownEvent, Keystroke, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Render, Rgba, ScrollWheelEvent, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle,
+    Pixels, Render, Rgba, ScrollHandle, ScrollWheelEvent, SharedString, StrikethroughStyle, Style, TextRun, UnderlineStyle,
     Window, canvas, div, fill, point, px, relative, rgb, rgba,
 };
 use serde::{Deserialize, Serialize};
@@ -395,6 +395,7 @@ pub struct AtlasView {
     pub cursor_blink: bool,
     window_was_active: bool,
     pub mouse_down_pane: Option<usize>,
+    pub settings_scroll_handle: ScrollHandle,
 }
 
 struct Tab {
@@ -541,6 +542,7 @@ impl AtlasView {
             cursor_blink,
             window_was_active: true,
             mouse_down_pane: None,
+            settings_scroll_handle: ScrollHandle::new(),
         };
         crate::rounded_corners::set_dark_mode(theme_id == 0);
         crate::rounded_corners::set_blur(blur_enabled);
@@ -3147,6 +3149,7 @@ impl AtlasView {
             .h(relative(1.0))
             .min_h(px(0.0))
             .overflow_y_scroll()
+            .track_scroll(&self.settings_scroll_handle)
             .p(px(24.0))
             .child(
                 div()
@@ -4738,54 +4741,10 @@ impl Element for TerminalElement {
                     continue;
                 }
 
-                let is_selected = if let Some(ref range) = selection_range {
-                    if range.is_block {
-                        let (min_col, max_col) = if range.start.column <= range.end.column {
-                            (range.start.column.0, range.end.column.0)
-                        } else {
-                            (range.end.column.0, range.start.column.0)
-                        };
-                        let (min_line, max_line) = if range.start.line <= range.end.line {
-                            (range.start.line.0, range.end.line.0)
-                        } else {
-                            (range.end.line.0, range.start.line.0)
-                        };
-                        point.line.0 >= min_line && point.line.0 <= max_line && col >= min_col && col <= max_col
-                    } else {
-                        let (start, end) = if range.start <= range.end {
-                            (range.start, range.end)
-                        } else {
-                            (range.end, range.start)
-                        };
-                        if point.line < start.line || point.line > end.line {
-                            false
-                        } else if point.line == start.line && point.line == end.line {
-                            point.column >= start.column && point.column <= end.column
-                        } else if point.line == start.line {
-                            point.column >= start.column
-                        } else if point.line == end.line {
-                            point.column <= end.column
-                        } else {
-                            true
-                        }
-                    }
-                } else {
-                    false
-                };
-
                 let mut fg = theme.resolve(cell.fg, flags.contains(Flags::DIM), &over);
                 let mut bg = theme.resolve(cell.bg, false, &over);
                 if flags.contains(Flags::INVERSE) {
                     std::mem::swap(&mut fg, &mut bg);
-                }
-                if is_selected {
-                    bg = Rgba {
-                        r: theme.accent.r,
-                        g: theme.accent.g,
-                        b: theme.accent.b,
-                        a: 0.38,
-                    };
-                    fg = theme.chrome_fg_active;
                 }
                 if cursor_inverts && self.cursor_on && cursor_cell == Some((row_index, col)) {
                     std::mem::swap(&mut fg, &mut bg);
@@ -4843,8 +4802,7 @@ impl Element for TerminalElement {
             let x = |col: usize| left + cell_width * col as f32;
 
             // Cell backgrounds: one quad per run of equal colour, so
-            // highlight strips (prompt rows, selections) paint as a single
-            // seamless rectangle instead of per-cell quads.
+            // highlight strips (prompt rows) paint as a single seamless rectangle.
             let mut col = 0usize;
             let mut span_start = 0usize;
             let mut span_bg = default_bg;
@@ -4880,6 +4838,76 @@ impl Element for TerminalElement {
                 col += run.cells;
             }
             flush(col, span_start, span_bg, window);
+
+            // Selection highlight layer: paints seamlessly behind intact text runs
+            // so text shaping and character advances never jitter during drag selection.
+            if let Some(ref range) = selection_range {
+                let row_line = Line(row_index as i32 - offset);
+                let row_sel = if range.is_block {
+                    let (min_col, max_col) = if range.start.column <= range.end.column {
+                        (range.start.column.0, range.end.column.0)
+                    } else {
+                        (range.end.column.0, range.start.column.0)
+                    };
+                    let (min_line, max_line) = if range.start.line <= range.end.line {
+                        (range.start.line.0, range.end.line.0)
+                    } else {
+                        (range.end.line.0, range.start.line.0)
+                    };
+                    if row_line.0 >= min_line && row_line.0 <= max_line {
+                        Some((min_col, max_col.min(cols.saturating_sub(1))))
+                    } else {
+                        None
+                    }
+                } else {
+                    let (start, end) = if range.start <= range.end {
+                        (range.start, range.end)
+                    } else {
+                        (range.end, range.start)
+                    };
+                    if row_line < start.line || row_line > end.line {
+                        None
+                    } else if row_line == start.line && row_line == end.line {
+                        Some((start.column.0, end.column.0.min(cols.saturating_sub(1))))
+                    } else if row_line == start.line {
+                        Some((start.column.0, cols.saturating_sub(1)))
+                    } else if row_line == end.line {
+                        Some((0, end.column.0.min(cols.saturating_sub(1))))
+                    } else {
+                        Some((0, cols.saturating_sub(1)))
+                    }
+                };
+
+                if let Some((sel_c0, sel_c1)) = row_sel {
+                    if sel_c1 >= sel_c0 {
+                        let sel_bg = Rgba {
+                            r: theme.accent.r,
+                            g: theme.accent.g,
+                            b: theme.accent.b,
+                            a: 0.38,
+                        };
+                        let mut quad = fill(
+                            Bounds::from_corners(
+                                point(px(x(sel_c0)), px(y0)),
+                                point(px(x(sel_c1 + 1)), px(y1)),
+                            ),
+                            sel_bg,
+                        );
+                        let is_bottom = row_index + 1 >= total_rows;
+                        let is_left = sel_c0 == 0;
+                        let is_right = sel_c1 + 1 >= cols;
+                        if is_bottom && (is_left || is_right) {
+                            quad.corner_radii = Corners {
+                                top_left: px(0.0),
+                                top_right: px(0.0),
+                                bottom_left: if is_left { px(13.0) } else { px(0.0) },
+                                bottom_right: if is_right { px(13.0) } else { px(0.0) },
+                            };
+                        }
+                        window.paint_quad(quad);
+                    }
+                }
+            }
         }
 
         // Smooth kinetic cursor with organic breathing alpha
