@@ -49,8 +49,9 @@ SolidCompression=yes
 CloseApplications=yes
 CloseApplicationsFilter={#MyAppExeName},atlas-native.exe
 
-; Broadcast environment changes when PATH is updated
+; Broadcast environment and shell associations so Windows purges icon caches
 ChangesEnvironment=yes
+ChangesAssociations=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

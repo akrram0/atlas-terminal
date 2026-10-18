@@ -114,16 +114,44 @@ impl Session {
 
         let PtyPair { master, slave } = pair;
 
-        let candidates: &[&str] = match profile {
-            Profile::PowerShell => &["pwsh", "powershell.exe"],
-            Profile::Cmd => &["cmd.exe"],
-            Profile::Wsl => &["wsl.exe"],
-            Profile::GitBash => &["bash.exe", "C:\\Program Files\\Git\\bin\\bash.exe"],
-            Profile::OpenCode => &["opencode.exe", "opencode.cmd", "opencode", "cmd.exe"],
+        let mut opencode_path = None;
+        if matches!(profile, Profile::OpenCode) {
+            let probes = [
+                std::env::var_os("LOCALAPPDATA")
+                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.exe")),
+                std::env::var_os("USERPROFILE")
+                    .map(|u| PathBuf::from(u).join("AppData").join("Local").join("pnpm").join("bin").join("opencode.exe")),
+                std::env::var_os("APPDATA")
+                    .map(|a| PathBuf::from(a).join("npm").join("opencode.cmd")),
+                std::env::var_os("USERPROFILE")
+                    .map(|u| PathBuf::from(u).join(".cargo").join("bin").join("opencode.exe")),
+            ];
+            for cand in probes.into_iter().flatten() {
+                if cand.is_file() {
+                    opencode_path = Some(cand.to_string_lossy().to_string());
+                    break;
+                }
+            }
+        }
+
+        let candidates_vec: Vec<String> = match profile {
+            Profile::PowerShell => vec!["pwsh".into(), "powershell.exe".into()],
+            Profile::Cmd => vec!["cmd.exe".into()],
+            Profile::Wsl => vec!["wsl.exe".into()],
+            Profile::GitBash => vec!["bash.exe".into(), "C:\\Program Files\\Git\\bin\\bash.exe".into()],
+            Profile::OpenCode => {
+                let mut v = Vec::new();
+                if let Some(ref path) = opencode_path {
+                    v.push(path.clone());
+                }
+                v.push("opencode.exe".into());
+                v.push("cmd.exe".into());
+                v
+            }
         };
         let mut child: Option<Box<dyn Child + Send + Sync>> = None;
-        let mut shell_used = *candidates.last().unwrap_or(&"powershell.exe");
-        for shell in candidates {
+        let mut shell_used = candidates_vec.last().cloned().unwrap_or_else(|| "powershell.exe".into());
+        for shell in &candidates_vec {
             let mut cmd = CommandBuilder::new(shell);
             match profile {
                 Profile::PowerShell => {
@@ -146,7 +174,7 @@ impl Session {
                     cmd.arg("-i");
                 }
                 Profile::OpenCode => {
-                    if *shell == "cmd.exe" {
+                    if shell == "cmd.exe" {
                         cmd.arg("/k");
                         cmd.arg("opencode");
                     }
@@ -174,7 +202,7 @@ impl Session {
             }
         }
         let child =
-            child.ok_or_else(|| anyhow::anyhow!("no shell found (tried {candidates:?})"))?;
+            child.ok_or_else(|| anyhow::anyhow!("no shell found (tried {candidates_vec:?})"))?;
         let pid = child.process_id();
         drop(slave);
 

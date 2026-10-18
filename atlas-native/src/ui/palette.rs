@@ -8,6 +8,7 @@ use gpui::{
     KeyDownEvent, Keystroke, Window, div, px,
 };
 
+use crate::config::SettingsTab;
 use crate::icons;
 use crate::session::Profile;
 use crate::theme::Theme;

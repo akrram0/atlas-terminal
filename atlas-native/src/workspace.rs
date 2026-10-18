@@ -68,10 +68,16 @@ pub fn title_path(raw: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    // Only split on ": " when it's a Linux/WSL/SSH style "user@host: /path"
-    let candidate = if let Some((prefix, path)) = trimmed.split_once(": ") {
+    // Handle Linux/WSL/SSH style "user@host: /path" or "user@host:~"
+    let candidate = if let Some((prefix, path)) = trimmed.split_once(':') {
         if prefix.contains('@') {
             path.trim().trim_end_matches(['$', '#', '>', '%', ' '])
+        } else if trimmed.contains(": ") {
+            if let Some((_, p)) = trimmed.split_once(": ") {
+                p.trim().trim_end_matches(['$', '#', '>', '%', ' '])
+            } else {
+                trimmed
+            }
         } else {
             trimmed
         }
@@ -281,7 +287,7 @@ pub fn tab_name(raw: &str, fallback: &str) -> String {
         lower.as_str(),
         "powershell" | "pwsh" | "windows powershell" | "powershell 7" | "ubuntu" | "wsl"
     ) || lower.contains("windows powershell");
-    let promptish = trimmed.contains('@') && trimmed.contains(": ");
+    let promptish = trimmed.contains('@') && trimmed.contains(':');
     if trimmed.is_empty() || shellish || promptish || trimmed.contains(['\\', '/']) {
         return fallback.to_string();
     }
