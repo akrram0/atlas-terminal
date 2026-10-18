@@ -15,7 +15,7 @@ use alacritty_terminal::vte::ansi::Processor;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use smol::channel::{bounded, Receiver, Sender};
 
-use crate::image_osc::{compute_image_grid_size, Osc1337Scanner};
+use crate::image_osc::{compute_image_grid_size, Osc1337Scanner, OscScannerEvent};
 
 /// An inline graphic placed on the terminal grid.
 #[derive(Clone)]
@@ -302,54 +302,73 @@ impl Session {
 
     /// Feed PTY bytes into the terminal state machine, intercepting inline images.
     pub fn feed(&mut self, bytes: &[u8]) {
-        // Clear placed images on full screen/scrollback reset (ED 3: \x1b[3J or RIS: \x1bc)
-        if bytes.windows(4).any(|w| w == b"\x1b[3J") || bytes.windows(2).any(|w| w == b"\x1bc") {
-            self.placed_images.clear();
-        }
+        let events = self.osc_scanner.process(bytes);
 
-        let (clean_bytes, decoded_images) = self.osc_scanner.process(bytes);
+        for event in events {
+            match event {
+                OscScannerEvent::Bytes(clean_bytes) => {
+                    // Clear placed images on full screen/scrollback reset (ED 3: \x1b[3J or RIS: \x1bc)
+                    if clean_bytes.windows(4).any(|w| w == b"\x1b[3J")
+                        || clean_bytes.windows(2).any(|w| w == b"\x1bc")
+                    {
+                        self.placed_images.clear();
+                    } else if clean_bytes.windows(4).any(|w| w == b"\x1b[2J") {
+                        // Clear images on the active screen for ED 2 (e.g. `cls` or `clear`)
+                        let cur_history = self.term.history_size() as i32;
+                        self.placed_images.retain(|img| img.anchor_line < cur_history);
+                    }
 
-        for decoded in decoded_images {
-            let (img_cols, img_rows) = compute_image_grid_size(
-                decoded.pixel_width,
-                decoded.pixel_height,
-                &decoded.params,
-                self.cell_width,
-                self.cell_height,
-                self.cols,
-                self.rows,
-            );
+                    if !clean_bytes.is_empty() {
+                        self.parser.advance(&mut self.term, &clean_bytes);
+                    }
+                }
+                OscScannerEvent::Image(decoded) => {
+                    let (img_cols, img_rows) = compute_image_grid_size(
+                        decoded.pixel_width,
+                        decoded.pixel_height,
+                        &decoded.params,
+                        self.cell_width,
+                        self.cell_height,
+                        self.cols,
+                        self.rows,
+                    );
 
-            let (cursor_col, cursor_line) = {
-                let cursor = self.term.renderable_content().cursor;
-                (cursor.point.column.0, cursor.point.line.0)
-            };
-            let history = self.term.history_size() as i32;
-            let anchor_line = history + cursor_line;
+                    let (cursor_col, cursor_line) = {
+                        let cursor = self.term.renderable_content().cursor;
+                        (cursor.point.column.0, cursor.point.line.0)
+                    };
+                    let history = self.term.history_size() as i32;
+                    let anchor_line = history + cursor_line;
 
-            let id = self.next_image_id;
-            self.next_image_id += 1;
+                    let id = self.next_image_id;
+                    self.next_image_id += 1;
 
-            self.placed_images.push(PlacedImage {
-                id,
-                image: decoded.render_image,
-                anchor_line,
-                col: cursor_col,
-                cols: img_cols,
-                rows: img_rows,
-            });
+                    self.placed_images.push(PlacedImage {
+                        id,
+                        image: decoded.render_image,
+                        anchor_line,
+                        col: cursor_col,
+                        cols: img_cols,
+                        rows: img_rows,
+                    });
 
-            // Advance cursor below the image so that shell prompt, command output,
-            // and scrollback wrap naturally underneath the image, matching iTerm2 behavior.
-            let mut advance_bytes = Vec::with_capacity(img_rows);
-            for _ in 0..img_rows {
-                advance_bytes.push(b'\n');
+                    // Advance cursor below the image so that shell prompt, command output,
+                    // and scrollback wrap naturally underneath the image, matching iTerm2 behavior.
+                    if !decoded.params.do_not_move_cursor {
+                        let mut advance_bytes = Vec::with_capacity(img_rows + 16);
+                        for _ in 0..img_rows {
+                            advance_bytes.push(b'\n');
+                        }
+                        // Advance column to cursor_col + img_cols so Device Status Report
+                        // CPR queries (\e[6n) report the true image dimensions to fastfetch.
+                        let target_col = (cursor_col + img_cols).min(self.cols.saturating_sub(1));
+                        let col_seq = format!("\x1b[{}G", target_col + 1);
+                        advance_bytes.extend_from_slice(col_seq.as_bytes());
+
+                        self.parser.advance(&mut self.term, &advance_bytes);
+                    }
+                }
             }
-            self.parser.advance(&mut self.term, &advance_bytes);
-        }
-
-        if !clean_bytes.is_empty() {
-            self.parser.advance(&mut self.term, &clean_bytes);
         }
 
         // Prune images whose anchor line has scrolled past the maximum scrollback limit (10,000 lines)

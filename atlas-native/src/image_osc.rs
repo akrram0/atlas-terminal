@@ -11,7 +11,7 @@ use base64::prelude::*;
 pub const MAX_PAYLOAD_BYTES: usize = 32 * 1024 * 1024;
 
 /// Parsed parameters for OSC 1337 File=...
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImageParams {
     pub name: Option<String>,
     pub size: Option<usize>,
@@ -19,6 +19,21 @@ pub struct ImageParams {
     pub width: Option<LengthSpec>,
     pub height: Option<LengthSpec>,
     pub preserve_aspect_ratio: bool,
+    pub do_not_move_cursor: bool,
+}
+
+impl Default for ImageParams {
+    fn default() -> Self {
+        Self {
+            name: None,
+            size: None,
+            inline: false,
+            width: None,
+            height: None,
+            preserve_aspect_ratio: true,
+            do_not_move_cursor: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -30,11 +45,19 @@ pub enum LengthSpec {
 }
 
 /// An image decoded and ready to be placed on the grid.
+#[derive(Clone)]
 pub struct DecodedImage {
     pub params: ImageParams,
     pub render_image: Arc<gpui::RenderImage>,
     pub pixel_width: u32,
     pub pixel_height: u32,
+}
+
+/// Chronologically ordered event yielded by the streaming scanner.
+#[derive(Clone)]
+pub enum OscScannerEvent {
+    Bytes(Vec<u8>),
+    Image(DecodedImage),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +72,8 @@ enum ScannerState {
 }
 
 /// Stateful scanner that intercepts `ESC ] 1337 ; File = ... : <base64> (BEL | ESC \)`
-/// across arbitrary chunk boundaries.
+/// across arbitrary chunk boundaries, emitting clean bytes and decoded images
+/// in exact chronological stream order.
 pub struct Osc1337Scanner {
     state: ScannerState,
     header_buf: Vec<u8>,
@@ -75,12 +99,12 @@ impl Osc1337Scanner {
 
     /// Process a chunk of incoming PTY bytes.
     ///
-    /// Returns:
-    /// - `clean_bytes`: bytes with OSC 1337 sequences stripped to pass to `alacritty_terminal`.
-    /// - `images`: any decoded inline images found in the stream.
-    pub fn process(&mut self, input: &[u8]) -> (Vec<u8>, Vec<DecodedImage>) {
+    /// Yields `OscScannerEvent` items in exact chronological order:
+    /// - `OscScannerEvent::Bytes`: terminal bytes with OSC 1337 stripped.
+    /// - `OscScannerEvent::Image`: decoded inline images right where they occur in the stream.
+    pub fn process(&mut self, input: &[u8]) -> Vec<OscScannerEvent> {
+        let mut events = Vec::new();
         let mut clean_bytes = Vec::with_capacity(input.len());
-        let mut images = Vec::new();
 
         const PREFIX: &[u8] = b"1337;File=";
 
@@ -121,6 +145,11 @@ impl Osc1337Scanner {
                             self.state = ScannerState::Ground;
                         } else if len == PREFIX.len() {
                             // Matched "1337;File="!
+                            // Immediately flush all preceding clean bytes so terminal
+                            // executes all prior cursor positioning/clears BEFORE image placement.
+                            if !clean_bytes.is_empty() {
+                                events.push(OscScannerEvent::Bytes(std::mem::take(&mut clean_bytes)));
+                            }
                             self.header_buf.clear();
                             self.params_buf.clear();
                             self.state = ScannerState::Params;
@@ -131,14 +160,8 @@ impl Osc1337Scanner {
                     if byte == b':' {
                         self.payload_buf.clear();
                         self.state = ScannerState::Payload;
-                    } else if byte == 0x07 {
-                        // Premature BEL without colon
-                        self.state = ScannerState::Ground;
-                    } else if byte == 0x1B {
-                        // Premature ESC
-                        self.state = ScannerState::Ground;
-                    } else if self.params_buf.len() >= 4096 {
-                        // Malformed oversized params header
+                    } else if byte == 0x07 || byte == 0x1B || self.params_buf.len() >= 4096 {
+                        // Premature BEL, ESC, or malformed oversized params header
                         self.state = ScannerState::Ground;
                     } else {
                         self.params_buf.push(byte);
@@ -147,7 +170,9 @@ impl Osc1337Scanner {
                 ScannerState::Payload => {
                     if byte == 0x07 {
                         // Terminated with BEL
-                        self.decode_current(&mut images);
+                        if let Some(img) = self.decode_current() {
+                            events.push(OscScannerEvent::Image(img));
+                        }
                         self.state = ScannerState::Ground;
                     } else if byte == 0x1B {
                         self.state = ScannerState::PayloadEscape;
@@ -160,13 +185,11 @@ impl Osc1337Scanner {
                     }
                 }
                 ScannerState::PayloadEscape => {
-                    if byte == b'\\' {
-                        // Terminated with ST (`\x1b\\`)
-                        self.decode_current(&mut images);
-                        self.state = ScannerState::Ground;
-                    } else if byte == 0x07 {
-                        // Fallback BEL
-                        self.decode_current(&mut images);
+                    if byte == b'\\' || byte == 0x07 {
+                        // Terminated with ST (`\x1b\\`) or fallback BEL
+                        if let Some(img) = self.decode_current() {
+                            events.push(OscScannerEvent::Image(img));
+                        }
                         self.state = ScannerState::Ground;
                     } else {
                         // Malformed escape sequence in payload
@@ -185,23 +208,28 @@ impl Osc1337Scanner {
             }
         }
 
-        (clean_bytes, images)
+        if !clean_bytes.is_empty() {
+            events.push(OscScannerEvent::Bytes(clean_bytes));
+        }
+
+        events
     }
 
-    fn decode_current(&mut self, out: &mut Vec<DecodedImage>) {
+    fn decode_current(&mut self) -> Option<DecodedImage> {
         let Ok(params_str) = std::str::from_utf8(&self.params_buf) else {
             self.params_buf.clear();
             self.payload_buf.clear();
-            return;
+            return None;
         };
 
         let params = parse_params(params_str);
         if !params.inline {
             self.params_buf.clear();
             self.payload_buf.clear();
-            return;
+            return None;
         }
 
+        let mut decoded = None;
         if let Ok(raw_bytes) = BASE64_STANDARD.decode(&self.payload_buf) {
             if let Ok(dynamic_image) = image::load_from_memory(&raw_bytes) {
                 let width = dynamic_image.width();
@@ -214,7 +242,7 @@ impl Osc1337Scanner {
                     }
                     let frame = image::Frame::new(rgba);
                     let render_image = Arc::new(gpui::RenderImage::new(vec![frame]));
-                    out.push(DecodedImage {
+                    decoded = Some(DecodedImage {
                         params,
                         render_image,
                         pixel_width: width,
@@ -226,6 +254,7 @@ impl Osc1337Scanner {
 
         self.params_buf.clear();
         self.payload_buf.clear();
+        decoded
     }
 }
 
@@ -260,6 +289,9 @@ pub fn parse_params(params_str: &str) -> ImageParams {
             }
             "preserveAspectRatio" => {
                 params.preserve_aspect_ratio = val != "0";
+            }
+            "doNotMoveCursor" => {
+                params.do_not_move_cursor = val == "1" || val.eq_ignore_ascii_case("true");
             }
             "size" => {
                 params.size = val.parse().ok();
@@ -370,14 +402,38 @@ pub fn compute_image_grid_size(
             (cols, rows)
         }
         (None, None) => {
-            let cols = (img_w / cell_w).round().max(1.0) as usize;
-            let rows = (img_h / cell_h).round().max(1.0) as usize;
-            (cols, rows)
+            // When neither width nor height is specified:
+            // Scale large images so they comfortably fit within the visible terminal window
+            let max_w = (grid_cols as f32 * cell_w).max(cell_w);
+            let max_h = (grid_rows as f32 * cell_h).max(cell_h);
+            let scale = if img_w > max_w || img_h > max_h {
+                (max_w / img_w).min(max_h / img_h)
+            } else {
+                1.0
+            };
+            let final_pixel_w = img_w * scale;
+            let final_pixel_h = img_h * scale;
+            (
+                (final_pixel_w / cell_w).round().max(1.0) as usize,
+                (final_pixel_h / cell_h).round().max(1.0) as usize,
+            )
         }
     };
 
-    let clamped_cols = cols.min(grid_cols).max(1);
-    (clamped_cols, rows.max(1))
+    let (clamped_cols, clamped_rows) = if cols > grid_cols && grid_cols > 0 {
+        let scale = grid_cols as f32 / cols as f32;
+        let c = grid_cols;
+        let r = if params.preserve_aspect_ratio {
+            ((rows as f32 * scale).round() as usize).max(1)
+        } else {
+            rows
+        };
+        (c, r)
+    } else {
+        (cols.max(1), rows.max(1))
+    };
+
+    (clamped_cols, clamped_rows)
 }
 
 #[cfg(test)]
@@ -392,44 +448,57 @@ mod tests {
     fn test_normal_text_passthrough() {
         let mut scanner = Osc1337Scanner::new();
         let input = b"Hello, World!\r\n\x1b[32mGreen\x1b[0m";
-        let (clean, images) = scanner.process(input);
-        assert_eq!(clean, input);
-        assert!(images.is_empty());
+        let events = scanner.process(input);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, input),
+            _ => panic!("Expected Bytes"),
+        }
     }
 
     #[test]
     fn test_other_osc_passthrough() {
         let mut scanner = Osc1337Scanner::new();
         let input = b"\x1b]0;Tab Title\x07\x1b]1337;CurrentDir=/home\x07";
-        let (clean, images) = scanner.process(input);
-        assert_eq!(clean, input);
-        assert!(images.is_empty());
+        let events = scanner.process(input);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, input),
+            _ => panic!("Expected Bytes"),
+        }
     }
 
     #[test]
     fn test_osc1337_bel_terminator() {
         let mut scanner = Osc1337Scanner::new();
         let seq = format!("\x1b]1337;File=inline=1;width=10;height=5:{TINY_PNG_B64}\x07");
-        let (clean, images) = scanner.process(seq.as_bytes());
-        assert!(clean.is_empty());
-        assert_eq!(images.len(), 1);
-        let img = &images[0];
-        assert_eq!(img.pixel_width, 1);
-        assert_eq!(img.pixel_height, 1);
-        assert_eq!(img.params.width, Some(LengthSpec::Cells(10)));
-        assert_eq!(img.params.height, Some(LengthSpec::Cells(5)));
-        assert!(img.params.inline);
+        let events = scanner.process(seq.as_bytes());
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            OscScannerEvent::Image(img) => {
+                assert_eq!(img.pixel_width, 1);
+                assert_eq!(img.pixel_height, 1);
+                assert_eq!(img.params.width, Some(LengthSpec::Cells(10)));
+                assert_eq!(img.params.height, Some(LengthSpec::Cells(5)));
+                assert!(img.params.inline);
+            }
+            _ => panic!("Expected Image"),
+        }
     }
 
     #[test]
     fn test_osc1337_st_terminator() {
         let mut scanner = Osc1337Scanner::new();
         let seq = format!("\x1b]1337;File=inline=1;width=20px;preserveAspectRatio=1:{TINY_PNG_B64}\x1b\\");
-        let (clean, images) = scanner.process(seq.as_bytes());
-        assert!(clean.is_empty());
-        assert_eq!(images.len(), 1);
-        assert_eq!(images[0].params.width, Some(LengthSpec::Pixels(20.0)));
-        assert!(images[0].params.preserve_aspect_ratio);
+        let events = scanner.process(seq.as_bytes());
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            OscScannerEvent::Image(img) => {
+                assert_eq!(img.params.width, Some(LengthSpec::Pixels(20.0)));
+                assert!(img.params.preserve_aspect_ratio);
+            }
+            _ => panic!("Expected Image"),
+        }
     }
 
     #[test]
@@ -443,9 +512,12 @@ mod tests {
 
         // Feed byte by byte
         for &b in bytes {
-            let (clean, imgs) = scanner.process(&[b]);
-            all_clean.extend_from_slice(&clean);
-            all_images.extend(imgs);
+            for ev in scanner.process(&[b]) {
+                match ev {
+                    OscScannerEvent::Bytes(b) => all_clean.extend_from_slice(&b),
+                    OscScannerEvent::Image(img) => all_images.push(img),
+                }
+            }
         }
 
         assert_eq!(all_clean, b"BeforeAfter");
@@ -453,51 +525,79 @@ mod tests {
     }
 
     #[test]
+    fn test_stream_event_order() {
+        let mut scanner = Osc1337Scanner::new();
+        let seq = format!("\x1b[2J\x1b[3J\x1b[1;1H\x1b]1337;File=inline=1:{TINY_PNG_B64}\x07\x1b[6n");
+        let events = scanner.process(seq.as_bytes());
+        assert_eq!(events.len(), 3);
+        match &events[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[2J\x1b[3J\x1b[1;1H"),
+            _ => panic!("Expected Bytes first"),
+        }
+        match &events[1] {
+            OscScannerEvent::Image(_) => {}
+            _ => panic!("Expected Image second"),
+        }
+        match &events[2] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[6n"),
+            _ => panic!("Expected Bytes third"),
+        }
+    }
+
+    #[test]
     fn test_whitespace_in_payload() {
         let mut scanner = Osc1337Scanner::new();
         let multiline_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk\r\nYAAAAAYAAjCB0C8AAAAASUVORK5CYII=\n";
         let seq = format!("\x1b]1337;File=inline=1:{multiline_b64}\x07");
-        let (clean, images) = scanner.process(seq.as_bytes());
-        assert!(clean.is_empty());
-        assert_eq!(images.len(), 1);
+        let events = scanner.process(seq.as_bytes());
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            OscScannerEvent::Image(_) => {}
+            _ => panic!("Expected Image"),
+        }
     }
 
     #[test]
     fn test_inline_zero_not_rendered() {
         let mut scanner = Osc1337Scanner::new();
         let seq = format!("\x1b]1337;File=inline=0:{TINY_PNG_B64}\x07");
-        let (clean, images) = scanner.process(seq.as_bytes());
-        assert!(clean.is_empty());
-        assert!(images.is_empty());
+        let events = scanner.process(seq.as_bytes());
+        assert!(events.is_empty());
     }
 
     #[test]
     fn test_oversized_payload_does_not_panic() {
         let mut scanner = Osc1337Scanner::new();
         let header = b"\x1b]1337;File=inline=1:";
-        let (clean1, _) = scanner.process(header);
-        assert!(clean1.is_empty());
+        let ev1 = scanner.process(header);
+        assert!(ev1.is_empty());
 
         // Feed dummy data > 32 MB
         let big_chunk = vec![b'A'; 1024 * 1024];
         for _ in 0..33 {
-            let (clean, _) = scanner.process(&big_chunk);
-            assert!(clean.is_empty());
+            let ev = scanner.process(&big_chunk);
+            assert!(ev.is_empty());
         }
 
         let term = b"\x07Normal Text";
-        let (clean2, images) = scanner.process(term);
-        assert_eq!(clean2, b"Normal Text");
-        assert!(images.is_empty());
+        let ev2 = scanner.process(term);
+        assert_eq!(ev2.len(), 1);
+        match &ev2[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"Normal Text"),
+            _ => panic!("Expected Bytes"),
+        }
     }
 
     #[test]
     fn test_malformed_garbage() {
         let mut scanner = Osc1337Scanner::new();
         let garbage = b"\x1b]1337;File=broken:NOT_BASE64!@#$\x07\x1b[31mDone";
-        let (clean, images) = scanner.process(garbage);
-        assert_eq!(clean, b"\x1b[31mDone");
-        assert!(images.is_empty());
+        let events = scanner.process(garbage);
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[31mDone"),
+            _ => panic!("Expected Bytes"),
+        }
     }
 
     #[test]
@@ -514,5 +614,16 @@ mod tests {
         assert_eq!(cols, 30);
         // pixel width = 30 * 10 = 300px. Aspect 2:1 -> pixel height = 150px. rows = 150 / 20 = 7.5 -> 8
         assert_eq!(rows, 8);
+    }
+
+    #[test]
+    fn test_do_not_move_cursor_param() {
+        let params = parse_params("inline=1;doNotMoveCursor=1");
+        assert!(params.inline);
+        assert!(params.do_not_move_cursor);
+
+        let params2 = parse_params("inline=1;doNotMoveCursor=0");
+        assert!(params2.inline);
+        assert!(!params2.do_not_move_cursor);
     }
 }
