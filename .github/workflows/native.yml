@@ -18,6 +18,8 @@ jobs:
         working-directory: atlas-native
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -188,16 +190,46 @@ jobs:
       - name: Build Inno Setup Installer & Zip Distribution
         shell: pwsh
         working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # 1. Determine version from atlas-native/Cargo.toml
+          # 1. Determine base version from atlas-native/Cargo.toml
           $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
-          $version = "0.1.1"
+          $version = "0.1.4"
           if (Test-Path $cargoFile) {
             $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
             if ($match) {
               $version = $match.Matches[0].Groups[1].Value
             }
           }
+
+          if ($env:GITHUB_REF -match '^refs/tags/v?(\d+\.\d+\.\d+)') {
+            $version = $matches[1]
+          } elseif ($env:GITHUB_REF -eq 'refs/heads/main') {
+            $tagExists = $false
+            try {
+              gh release view "v$version" *> $null
+              if ($LASTEXITCODE -eq 0) { $tagExists = $true }
+            } catch {}
+
+            if ($tagExists) {
+              try {
+                $releases = gh release list --limit 100 --json tagName | ConvertFrom-Json
+                $maxPatch = 0
+                foreach ($r in $releases) {
+                  if ($r.tagName -match '^v?0\.1\.(\d+)$') {
+                    $p = [int]$matches[1]
+                    if ($p -gt $maxPatch) { $maxPatch = $p }
+                  }
+                }
+                $version = "0.1.$($maxPatch + 1)"
+                Write-Output "Tag v$version already exists; auto-incremented version to $version"
+              } catch {
+                $version = "$version.$env:GITHUB_RUN_NUMBER"
+              }
+            }
+          }
+          Write-Output "APP_VERSION=$version" >> $env:GITHUB_ENV
           Write-Output "Packaging Atlas Terminal v$version"
 
           # 2. Run Inno Setup compiler
@@ -284,34 +316,41 @@ jobs:
           $files = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $_.FullName }
           gh release upload $tag $files --clobber
 
-      - name: Publish rolling release (on main push)
-        # Stable public URL:
-        # https://github.com/akrram0/atlas-terminal/releases/download/native-latest/atlas-native.exe
+      - name: Publish GitHub Release (on main push)
         if: success() && github.ref == 'refs/heads/main'
-        continue-on-error: true
         shell: pwsh
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $version = $env:APP_VERSION
+          if (-not $version) {
+            $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
+            $version = "0.1.4"
+            if (Test-Path $cargoFile) {
+              $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
+              if ($match) { $version = $match.Matches[0].Groups[1].Value }
+            }
+          }
+          $tag = "v$version"
+          Write-Output "Publishing dedicated GitHub Release: $tag"
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "Atlas Terminal $tag" --generate-notes --latest
+          } else {
+            gh release edit $tag --title "Atlas Terminal $tag" --latest
+          }
+
+          $files = @()
+          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $files += $_.FullName }
           $releaseExe = if (Test-Path "$env:GITHUB_WORKSPACE\target\release\atlas-native.exe") {
             "$env:GITHUB_WORKSPACE\target\release\atlas-native.exe"
           } else {
-            "$env:GITHUB_WORKSPACE\atlas-native\target\release\atlas-native.exe"
+            "$env:GITHUB_WORKSPACE\target\release\atlas-terminal.exe"
           }
-          $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
-          $version = "0.1.1"
-          if (Test-Path $cargoFile) {
-            $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
-            if ($match) {
-              $version = $match.Matches[0].Groups[1].Value
-            }
+          if (Test-Path $releaseExe) {
+            $files += $releaseExe
           }
-          gh release view native-latest *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create native-latest --title "Atlas Terminal v$version" --notes "Rolling Windows build of Atlas Terminal (GPUI + alacritty_terminal). The installer and exe are updated on every push to main."
-          }
-          $files = @($releaseExe)
-          Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $files += $_.FullName }
-          gh release upload native-latest $files --clobber
-          gh release edit native-latest --title "Atlas Terminal v$version" --latest
+          gh release upload $tag $files --clobber
+          gh release edit $tag --title "Atlas Terminal $tag" --latest
