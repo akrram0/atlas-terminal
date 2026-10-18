@@ -577,12 +577,12 @@ impl AtlasView {
                     }
 
                     // 2. Theme crossfade interpolation (zero-flash smooth transition)
-                    if let Some((from, to, ref mut t)) = view.theme_transition {
+                    if let Some((ref from, ref to, ref mut t)) = view.theme_transition {
                         *t = (*t + dt * 6.5).min(1.0);
-                        view.theme = Theme::interpolate(&from, &to, *t);
+                        view.theme = Theme::interpolate(from, to, *t);
                         needs_paint = true;
                         if *t >= 1.0 {
-                            view.theme = to;
+                            view.theme = to.clone();
                             view.theme_transition = None;
                         }
                     }
@@ -4694,7 +4694,7 @@ impl Element for TerminalElement {
         self.session.borrow_mut().grid_bounds = Some((left, top, cell_width, cell_height));
 
         // Snapshot the grid into paint-ready rows (no borrows outlive this block).
-        let (rows, cursor_cell, cursor_shape) = {
+        let (rows, cursor_cell, cursor_shape, selection_range, offset) = {
             let session = self.session.borrow();
             let content = session.term.renderable_content();
             let offset = content.display_offset as i32;
@@ -4792,7 +4792,7 @@ impl Element for TerminalElement {
                 });
                 row.text.push_str(&text);
             }
-            (rows, cursor_cell, cursor_shape)
+            (rows, cursor_cell, cursor_shape, selection_range, offset)
         };
 
         let total_rows = rows.len();
