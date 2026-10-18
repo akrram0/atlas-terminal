@@ -92,10 +92,10 @@ Get the latest release for Windows (x64):
 ```
 ┌────────────────────────────────────────────────────────┐
 │                   Atlas Terminal UI                    │
-│   (Tabs · Command Palette · Settings · Custom Titlebar) │
+│  (Tabs · Command Palette · Settings · Custom Titlebar) │
 ├────────────────────────────────────────────────────────┤
 │                      GPUI 0.2.2                        │
-│      (DirectX DirectComposition · DirectWrite · 240Hz)  │
+│     (DirectX DirectComposition · DirectWrite · 240Hz)  │
 ├──────────────────────────┬─────────────────────────────┤
 │   alacritty_terminal     │        portable-pty         │
 │  (VTE parser, cell grid, │   (Windows ConPTY process   │
