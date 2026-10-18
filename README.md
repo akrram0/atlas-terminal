@@ -19,7 +19,7 @@
   <img src="https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/Engine-GPUI%20DirectX-7C3AED" alt="GPUI">
   <img src="https://img.shields.io/badge/Display-Up%20to%20240Hz-success" alt="240Hz">
-  <img src="https://img.shields.io/badge/License-MIT%2FApache--2.0-blue" alt="License">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License: MIT"></a>
 </p>
 
 ---
@@ -155,4 +155,4 @@ cargo run --release
 
 ## License
 
-Distributed under the MIT or Apache-2.0 License.
+This project is licensed under the [MIT License](LICENSE).

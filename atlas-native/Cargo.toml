@@ -4,6 +4,7 @@ version = "0.1.15"
 edition = "2024"
 publish = false
 description = "Atlas Terminal — native GPU shell (GPUI + alacritty_terminal)"
+license = "MIT"
 
 [[bin]]
 name = "atlas-terminal"
