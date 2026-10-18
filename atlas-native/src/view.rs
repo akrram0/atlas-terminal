@@ -42,6 +42,27 @@ use crate::workspace::{
     SplitAxis, Tab,
 };
 
+#[derive(Debug, Clone)]
+pub enum UpdateDownloadState {
+    Idle,
+    Downloading {
+        version: String,
+        received_bytes: u64,
+        total_bytes: u64,
+        percent: f32,
+    },
+    Verifying {
+        version: String,
+    },
+    ReadyToRestart {
+        version: String,
+        installer_path: std::path::PathBuf,
+    },
+    Failed {
+        version: String,
+        error: String,
+    },
+}
 
 pub struct AtlasView {
     pub(crate) tabs: Vec<Tab>,
@@ -113,6 +134,8 @@ pub struct AtlasView {
     pub(crate) available_update: Option<ReleaseInfo>,
     pub(crate) update_panel_open: bool,
     pub(crate) update_panel_closing: bool,
+    pub(crate) update_download_state: UpdateDownloadState,
+    pub(crate) update_cancel_token: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub(crate) app_settings: AppSettingsFile,
     pub(crate) settings_tab: SettingsTab,
     pub(crate) recording_shortcut: Option<String>,
@@ -226,6 +249,8 @@ impl AtlasView {
             available_update: None,
             update_panel_open: false,
             update_panel_closing: false,
+            update_download_state: UpdateDownloadState::Idle,
+            update_cancel_token: None,
             app_settings: app_settings.clone(),
             settings_tab: SettingsTab::General,
             recording_shortcut: None,
@@ -1333,6 +1358,132 @@ impl AtlasView {
         self.dismiss_update_panel(cx);
     }
 
+    pub(crate) fn start_download_update(&mut self, cx: &mut Context<Self>) {
+        let Some(info) = self.available_update.clone() else {
+            return;
+        };
+
+        if matches!(self.update_download_state, UpdateDownloadState::Downloading { .. }) {
+            return;
+        }
+
+        let installer_url = match info.installer_url.as_deref() {
+            Some(u) => u.to_string(),
+            None => {
+                self.update_download_state = UpdateDownloadState::Failed {
+                    version: info.version.clone(),
+                    error: "No installer asset found in release".to_string(),
+                };
+                cx.notify();
+                return;
+            }
+        };
+
+        let cancel_token = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.update_cancel_token = Some(cancel_token.clone());
+        self.update_download_state = UpdateDownloadState::Downloading {
+            version: info.version.clone(),
+            received_bytes: 0,
+            total_bytes: info.file_size.unwrap_or(0),
+            percent: 0.0,
+        };
+        cx.notify();
+
+        let installer_name = info
+            .installer_name
+            .clone()
+            .unwrap_or_else(|| format!("AtlasTerminal-Setup-{}.exe", info.version));
+        let dest_path = updater::updates_dir().join(&installer_name);
+
+        let (progress_tx, progress_rx) = smol::channel::unbounded::<updater::DownloadProgress>();
+        let (result_tx, result_rx) = smol::channel::bounded::<Result<std::path::PathBuf, String>>(1);
+
+        let dest_clone = dest_path.clone();
+        let sha256_url = info.sha256_url.clone();
+
+        std::thread::spawn(move || {
+            let res = updater::download_and_verify_installer(
+                &installer_url,
+                sha256_url.as_deref(),
+                &dest_clone,
+                cancel_token,
+                move |prog| {
+                    let _ = progress_tx.send_blocking(prog);
+                },
+            );
+            let _ = result_tx.send_blocking(res);
+        });
+
+        cx.spawn(async move |this, cx| {
+            while let Ok(prog) = progress_rx.recv().await {
+                let _ = this.update(cx, |view, cx| {
+                    if let UpdateDownloadState::Downloading { ref version, .. } = view.update_download_state {
+                        let ver = version.clone();
+                        view.update_download_state = UpdateDownloadState::Downloading {
+                            version: ver,
+                            received_bytes: prog.received_bytes,
+                            total_bytes: prog.total_bytes,
+                            percent: prog.percent,
+                        };
+                        cx.notify();
+                    }
+                });
+            }
+
+            if let Ok(res) = result_rx.recv().await {
+                let _ = this.update(cx, |view, cx| {
+                    view.update_cancel_token = None;
+                    let ver = view
+                        .available_update
+                        .as_ref()
+                        .map(|u| u.version.clone())
+                        .unwrap_or_default();
+                    match res {
+                        Ok(path) => {
+                            view.update_download_state = UpdateDownloadState::ReadyToRestart {
+                                version: ver,
+                                installer_path: path,
+                            };
+                        }
+                        Err(err) => {
+                            view.update_download_state = UpdateDownloadState::Failed {
+                                version: ver,
+                                error: err,
+                            };
+                        }
+                    }
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    pub(crate) fn cancel_download_update(&mut self, cx: &mut Context<Self>) {
+        if let Some(token) = self.update_cancel_token.take() {
+            token.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        self.update_download_state = UpdateDownloadState::Idle;
+        cx.notify();
+    }
+
+    pub(crate) fn apply_update_and_restart(&mut self, cx: &mut Context<Self>) {
+        if let UpdateDownloadState::ReadyToRestart { ref installer_path, .. } = self.update_download_state {
+            if let Err(e) = updater::apply_update_and_restart(installer_path) {
+                let ver = self
+                    .available_update
+                    .as_ref()
+                    .map(|u| u.version.clone())
+                    .unwrap_or_default();
+                self.update_download_state = UpdateDownloadState::Failed {
+                    version: ver,
+                    error: e,
+                };
+                cx.notify();
+            }
+        }
+    }
+
     /// Focus whatever is on top: the settings page when it is open, the
     /// terminal otherwise. Overlay dismissal returns keys here.
     pub(crate) fn focus_main(&self, window: &mut Window) {
@@ -1959,33 +2110,52 @@ impl Render for AtlasView {
                 a: 0.28,
                 ..tb.accent
             };
-            let ver = update.version.clone();
-            bar = bar.child(
-                div()
-                    .id(ElementId::named_usize("topbar-update-badge", 0))
-                    .h(px(24.0))
-                    .px(px(9.0))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .rounded(px(6.0))
-                    .bg(badge_bg)
-                    .border_1()
-                    .border_color(badge_border)
-                    .text_color(badge_ink)
-                    .hover(move |s| s.opacity(0.85))
-                    .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(badge_ink))
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(format!("v{ver}")),
-                    )
-                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        view.toggle_update_panel(cx);
-                    })),
-            );
+            let (label, show_dot) = match &self.update_download_state {
+                UpdateDownloadState::Downloading { percent, .. } => {
+                    (format!("Downloading {}%", (percent * 100.0) as u32), false)
+                }
+                UpdateDownloadState::Verifying { .. } => {
+                    ("Verifying…".to_string(), false)
+                }
+                UpdateDownloadState::ReadyToRestart { .. } => {
+                    ("Restart to Apply".to_string(), true)
+                }
+                UpdateDownloadState::Failed { .. } => {
+                    ("Update Error".to_string(), true)
+                }
+                _ => (format!("v{}", update.version), true),
+            };
+            let mut badge = div()
+                .id(ElementId::named_usize("topbar-update-badge", 0))
+                .h(px(24.0))
+                .px(px(9.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .rounded(px(6.0))
+                .bg(badge_bg)
+                .border_1()
+                .border_color(badge_border)
+                .text_color(badge_ink)
+                .hover(move |s| s.opacity(0.85));
+
+            if show_dot {
+                badge = badge.child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(badge_ink));
+            }
+
+            badge = badge
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .child(label),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    view.toggle_update_panel(cx);
+                }));
+
+            bar = bar.child(badge);
         } else if self.is_checking_updates {
             bar = bar.child(
                 div()

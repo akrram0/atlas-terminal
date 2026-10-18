@@ -19,8 +19,8 @@ use crate::config::{
 };
 use crate::icons;
 use crate::theme::Theme;
-use crate::updater;
-use crate::view::AtlasView;
+use crate::updater::{self, format_bytes};
+use crate::view::{AtlasView, UpdateDownloadState};
 use super::animation::{ease_apple_snappy, BODY_IN_MS};
 use super::controls::{pill_button, stepper, toggle_pill};
 
@@ -1090,9 +1090,9 @@ impl AtlasView {
 
         let is_checking = self.is_checking_updates;
         let status_line = if is_checking {
-            "Checking for updatesâ€¦".to_string()
+            "Checking for updates…".to_string()
         } else if let Some(ref msg) = self.manual_status_message {
-            format!("{msg} Â· Last checked: {last_checked_text}")
+            format!("{msg} · Last checked: {last_checked_text}")
         } else {
             format!("Last checked: {last_checked_text}")
         };
@@ -1109,20 +1109,207 @@ impl AtlasView {
                     .text_color(sc_label)
                     .child(status_line),
             )
-            .child(pill_button(
-                if is_checking {
-                    "Checking…".to_string()
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .children(if let Some(ref update) = self.available_update {
+                        if matches!(self.update_download_state, UpdateDownloadState::Idle) {
+                            let ver = update.version.clone();
+                            Some(pill_button(
+                                format!("Download v{ver}"),
+                                369,
+                                true,
+                                theme,
+                                |view, cx| {
+                                    view.start_download_update(cx);
+                                },
+                                cx,
+                            ))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    })
+                    .child(pill_button(
+                        if is_checking {
+                            "Checking…".to_string()
+                        } else {
+                            "Check now".to_string()
+                        },
+                        370,
+                        false,
+                        theme,
+                        |view, cx| {
+                            view.check_updates_manual(cx);
+                        },
+                        cx,
+                    )),
+            );
+
+        let update_status_card = match &self.update_download_state {
+            UpdateDownloadState::Downloading {
+                version,
+                received_bytes,
+                total_bytes,
+                percent,
+            } => {
+                let pct = percent.clamp(0.0, 1.0);
+                let pct_int = (pct * 100.0) as u32;
+                let detail = if *total_bytes > 0 {
+                    format!(
+                        "{} / {} ({}%)",
+                        format_bytes(*received_bytes),
+                        format_bytes(*total_bytes),
+                        pct_int
+                    )
                 } else {
-                    "Check now".to_string()
-                },
-                370,
-                false,
-                theme,
-                |view, cx| {
-                    view.check_updates_manual(cx);
-                },
-                cx,
-            ));
+                    format!("{} ({}%)", format_bytes(*received_bytes), pct_int)
+                };
+                Some(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.0))
+                        .p(px(8.0))
+                        .rounded(px(6.0))
+                        .bg(theme.panel_bg)
+                        .border_1()
+                        .border_color(theme.hairline)
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(sc_label)
+                                        .child(format!("Downloading v{version}…")),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(theme.accent)
+                                        .child(detail),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .h(px(5.0))
+                                .rounded(px(2.5))
+                                .bg(theme.elevated_bg)
+                                .overflow_hidden()
+                                .child(
+                                    div()
+                                        .h_full()
+                                        .w(px((200.0 * pct).max(6.0)))
+                                        .rounded(px(2.5))
+                                        .bg(theme.accent),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .justify_end()
+                                .child(pill_button(
+                                    "Cancel".to_string(),
+                                    371,
+                                    false,
+                                    theme,
+                                    |view, cx| {
+                                        view.cancel_download_update(cx);
+                                    },
+                                    cx,
+                                )),
+                        ),
+                )
+            }
+            UpdateDownloadState::ReadyToRestart { version, .. } => {
+                let ver = version.clone();
+                Some(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .p(px(8.0))
+                        .rounded(px(6.0))
+                        .bg(Rgba {
+                            a: 0.12,
+                            ..theme.accent
+                        })
+                        .border_1()
+                        .border_color(Rgba {
+                            a: 0.25,
+                            ..theme.accent
+                        })
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(sc_label)
+                                .child(format!("v{ver} is verified and ready to apply!")),
+                        )
+                        .child(pill_button(
+                            "Restart to Apply".to_string(),
+                            372,
+                            true,
+                            theme,
+                            |view, cx| {
+                                view.apply_update_and_restart(cx);
+                            },
+                            cx,
+                        )),
+                )
+            }
+            UpdateDownloadState::Failed { error, .. } => {
+                let err = error.clone();
+                Some(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .p(px(8.0))
+                        .rounded(px(6.0))
+                        .bg(Rgba {
+                            a: 0.12,
+                            ..rgb(0xE05252)
+                        })
+                        .border_1()
+                        .border_color(Rgba {
+                            a: 0.25,
+                            ..rgb(0xE05252)
+                        })
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .text_color(rgb(0xE05252))
+                                .child(format!("Update error: {err}")),
+                        )
+                        .child(pill_button(
+                            "Retry".to_string(),
+                            373,
+                            false,
+                            theme,
+                            |view, cx| {
+                                view.start_download_update(cx);
+                            },
+                            cx,
+                        )),
+                )
+            }
+            _ => None,
+        };
 
         let link_hot = theme.chrome_fg_active;
         let pkg_version = env!("CARGO_PKG_VERSION");
@@ -1313,6 +1500,7 @@ impl AtlasView {
                     .child(section("UPDATES"))
                     .child(auto_check_row)
                     .child(interval_row)
+                    .children(update_status_card)
                     .child(check_row),
             )
             .child(about);
