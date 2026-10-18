@@ -195,7 +195,7 @@ impl Session {
             match slave.spawn_command(cmd) {
                 Ok(spawned) => {
                     child = Some(spawned);
-                    shell_used = *shell;
+                    shell_used = shell.clone();
                     break;
                 }
                 Err(_) => continue,
