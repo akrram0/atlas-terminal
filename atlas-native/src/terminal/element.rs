@@ -114,14 +114,13 @@ impl Element for TerminalElement {
         let test_line = text_system.shape_line("0123456789".into(), font_size, &[test_run], None);
         let measured_advance = f32::from(test_line.width) / 10.0;
         let cell_width = if measured_advance > 2.0 {
-            measured_advance.round()
+            measured_advance
         } else {
-            (text_system
+            text_system
                 .em_advance(font_id, font_size)
                 .map(f32::from)
                 .unwrap_or(7.8)
-                .max(1.0))
-            .round()
+                .max(1.0)
         };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
 
@@ -296,24 +295,13 @@ impl Element for TerminalElement {
             let mut span_bg = default_bg;
             let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
                 if span_bg != default_bg && col > span_start {
-                    let mut quad = fill(
+                    let quad = fill(
                         Bounds::from_corners(
                             point(px(x(span_start)), px(y0)),
                             point(px(x(col)), px(y1)),
                         ),
                         span_bg,
                     );
-                    let is_bottom = row_index + 1 >= total_rows;
-                    let is_left = span_start == 0;
-                    let is_right = col >= cols;
-                    if is_bottom && (is_left || is_right) {
-                        quad.corner_radii = Corners {
-                            top_left: px(0.0),
-                            top_right: px(0.0),
-                            bottom_left: if is_left { px(13.0) } else { px(0.0) },
-                            bottom_right: if is_right { px(13.0) } else { px(0.0) },
-                        };
-                    }
                     window.paint_quad(quad);
                 }
             };

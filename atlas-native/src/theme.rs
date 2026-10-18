@@ -136,20 +136,20 @@ impl Theme {
         }
     }
 
-    /// Neutral matte charcoal: the chrome is #141413, the canvas #1C1C1A with
-    /// subtle borders, ivory ink, warm accent. Zeron aesthetic.
+    /// Cohesive dark surface: #12141C outer bar, #1C1F2A sheet/tab pill,
+    /// #8F96A8 muted text, #E6E9F0 active text.
     pub fn dark() -> Self {
         Self {
-            bg: rgb(0x1C1C1A),
-            fg: rgb(0xE8E4DC),
+            bg: rgb(0x1C1F2A),
+            fg: rgb(0xE6E9F0),
             cursor: rgb(0xD08A5C),
-            panel_bg: rgb(0x141413),
-            elevated_bg: rgb(0x222220),
+            panel_bg: rgb(0x12141C),
+            elevated_bg: rgb(0x1C1F2A),
             elevated_border: rgba(0xFFFFFF18),
-            chrome_fg: rgb(0x8A867E),
-            chrome_fg_active: rgb(0xF0ECE4),
-            faint_fg: rgb(0x66625A),
-            hairline: rgba(0xFFFFFF12),
+            chrome_fg: rgb(0x8F96A8),
+            chrome_fg_active: rgb(0xE6E9F0),
+            faint_fg: rgb(0x6C7486),
+            hairline: rgba(0xFFFFFF10),
             card_hover: rgba(0xFFFFFF10),
             card_active: rgba(0xE08A6226),
             accent: rgb(0xE08A62),
@@ -157,22 +157,22 @@ impl Theme {
             sheet_border: rgba(0xFFFFFF14),
             soft_bg: rgba(0xFFFFFF0F),
             ansi: [
-                rgb(0x262320), // 0 black
+                rgb(0x12141C), // 0 black
                 rgb(0xD06055), // 1 red
                 rgb(0x9BAF7C), // 2 green
                 rgb(0xD9A755), // 3 yellow
                 rgb(0x82A7D0), // 4 blue
                 rgb(0xC98A9A), // 5 magenta
                 rgb(0x7DB8B0), // 6 cyan
-                rgb(0xD8D2C6), // 7 white
-                rgb(0x7A7468), // 8 bright black
+                rgb(0xE6E9F0), // 7 white
+                rgb(0x6C7486), // 8 bright black
                 rgb(0xE07A6E), // 9 bright red
                 rgb(0xB3C795), // 10 bright green
                 rgb(0xEBC070), // 11 bright yellow
                 rgb(0x9BBDDE), // 12 bright blue
                 rgb(0xDBA6B2), // 13 bright magenta
                 rgb(0x93CBC3), // 14 bright cyan
-                rgb(0xF2EEE6), // 15 bright white
+                rgb(0xF2F4F8), // 15 bright white
             ],
         }
     }

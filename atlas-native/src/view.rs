@@ -124,6 +124,7 @@ pub struct AtlasView {
     pub(crate) cursor_blink: bool,
     pub(crate) window_was_active: bool,
     pub(crate) mouse_down_pane: Option<usize>,
+    pub(crate) last_mouse_btn: Option<u8>,
     pub(crate) settings_scroll_handle: ScrollHandle,
     pub(crate) settings_scroll_pos: f32,
     pub(crate) settings_scroll_target: f32,
@@ -235,6 +236,7 @@ impl AtlasView {
             cursor_blink,
             window_was_active: true,
             mouse_down_pane: None,
+            last_mouse_btn: None,
             settings_scroll_handle: ScrollHandle::new(),
             settings_scroll_pos: 0.0,
             settings_scroll_target: 0.0,
@@ -993,6 +995,20 @@ impl AtlasView {
         }
     }
 
+    pub fn grid_coords_from_mouse(&self, mouse_pos: gpui::Point<Pixels>, pane_ix: usize) -> Option<(usize, usize)> {
+        let tab = self.tabs.get(self.active)?;
+        let pane = tab.panes.get(pane_ix)?;
+        let session = pane.session.borrow();
+        let (left, top, cell_width, cell_height) = session.grid_bounds?;
+        let mx = f32::from(mouse_pos.x);
+        let my = f32::from(mouse_pos.y);
+        let cols = session.cols.max(1);
+        let rows = session.rows.max(1);
+        let col = (((mx - left) / cell_width).floor() as isize + 1).clamp(1, cols as isize) as usize;
+        let row = (((my - top) / cell_height).floor() as isize + 1).clamp(1, rows as isize) as usize;
+        Some((col, row))
+    }
+
     pub fn point_from_mouse(&self, mouse_pos: gpui::Point<Pixels>, pane_ix: usize) -> Option<Point> {
         let tab = self.tabs.get(self.active)?;
         let pane = tab.panes.get(pane_ix)?;
@@ -1034,6 +1050,16 @@ impl AtlasView {
             self.paste(cx);
             cx.notify();
         }
+    }
+
+    pub(crate) fn is_mouse_reporting(pane: &Pane) -> bool {
+        let mode = *pane.session.borrow().term.mode();
+        mode.intersects(
+            TermMode::MOUSE_REPORT_CLICK
+                | TermMode::MOUSE_DRAG
+                | TermMode::MOUSE_MOTION
+                | TermMode::SGR_MOUSE,
+        ) || mode.contains(TermMode::ALT_SCREEN)
     }
 
 
@@ -1597,15 +1623,58 @@ impl Render for AtlasView {
             self.update_panel_closing = false;
         }
         let theme = self.theme.clone();
-        let zoomed = crate::rounded_corners::is_zoomed();
-        let outer_radius = if zoomed { 0.0 } else { self.corner_radius };
-        let inner_radius = if zoomed { 0.0 } else { (self.corner_radius - 1.0).max(0.0) };
+        let _zoomed = crate::rounded_corners::is_zoomed();
 
-        // ---- Pill top bar --------------------------------------------
-        // Workspace pill Â· horizontal pill tabs Â· drag gap Â· settings /
-        // palette / new-tab icons Â· native window controls. The gap reports
-        // itself as caption slot 0 so presses there start the native move.
-        let tb = theme.clone();
+        // Detect dominant background of the active terminal session
+        let active_bg = if let Some(tab) = self.tabs.get(self.active) {
+            if let Some(pane) = tab.panes.get(tab.active_pane) {
+                let sess = pane.session.borrow();
+                let over = *sess.term.colors();
+                let rows = sess.rows;
+                let last_row = if rows > 0 { rows.saturating_sub(1) } else { 0 };
+                let c0 = sess.term.grid()[alacritty_terminal::index::Line(0)][alacritty_terminal::index::Column(0)].bg;
+                let c_last = sess.term.grid()[alacritty_terminal::index::Line(last_row as i32)][alacritty_terminal::index::Column(0)].bg;
+                let candidate = if c0 != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
+                    c0
+                } else if c_last != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
+                    c_last
+                } else {
+                    alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background)
+                };
+                theme.resolve(candidate, false, &over)
+            } else {
+                theme.bg
+            }
+        } else {
+            theme.bg
+        };
+
+        let is_sheet_dark = {
+            let lum = active_bg.r * 0.299 + active_bg.g * 0.587 + active_bg.b * 0.114;
+            lum < 0.5
+        };
+
+        // Cohesive dark surface when terminal sheet is dark:
+        // #12141C outer bar, #1C1F2A active tab pill, #8F96A8 muted text/icons, #E6E9F0 active text
+        let tb = if is_sheet_dark {
+            Theme {
+                panel_bg: rgb(0x12141C),
+                elevated_bg: rgb(0x1C1F2A),
+                chrome_fg: rgb(0x8F96A8),
+                chrome_fg_active: rgb(0xE6E9F0),
+                hairline: rgba(0xFFFFFF10),
+                card_hover: rgba(0xFFFFFF10),
+                card_active: rgba(0xE08A6226),
+                faint_fg: rgb(0x6C7486),
+                soft_bg: rgba(0xFFFFFF0F),
+                elevated_border: rgba(0xFFFFFF18),
+                accent: rgb(0xE08A62),
+                ..theme.clone()
+            }
+        } else {
+            theme.clone()
+        };
+
         let mut bar = div()
             .flex()
             .flex_row()
@@ -1617,9 +1686,6 @@ impl Render for AtlasView {
             .bg(tb.panel_bg)
             .border_b_1()
             .border_color(tb.hairline);
-        if !zoomed {
-            bar = bar.rounded_t(px(inner_radius));
-        }
 
         // Workspace pill (26Ã—20): a 6%-ink translucent fill with the quiet
         // sidebar mark from the reference chrome. Opens the new-tab profile
@@ -2023,9 +2089,6 @@ impl Render for AtlasView {
                     crate::rounded_corners::window_button(index);
                     cx.notify();
                 }));
-            if is_close && !zoomed {
-                btn = btn.rounded_tr(px(inner_radius));
-            }
             bar = bar.child(btn);
         }
 
@@ -2073,13 +2136,6 @@ impl Render for AtlasView {
                     let keystroke = event.keystroke.clone();
                     view.handle_key(&keystroke, window, cx);
                 }))
-                .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
-                    let lines = match event.delta {
-                        gpui::ScrollDelta::Lines(delta) => delta.y as f32,
-                        gpui::ScrollDelta::Pixels(delta) => f32::from(delta.y) / 18.0,
-                    };
-                    view.scroll_smooth(lines, cx);
-                }))
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|view, _: &MouseDownEvent, window, _cx| {
@@ -2091,9 +2147,8 @@ impl Render for AtlasView {
                 SplitAxis::Rows => area.flex_col(),
             };
 
-            // One padded cell per visible pane with a hairline divider
-            // between; maximizing hides the inactive panes without killing
-            // their shells.
+            // One cell per visible pane with a hairline divider between;
+            // maximizing hides the inactive panes without killing their shells.
             let visible: Vec<usize> = if tab.maximized && tab.panes.len() > 1 {
                 vec![tab.active_pane]
             } else {
@@ -2115,14 +2170,6 @@ impl Render for AtlasView {
                             .bg(theme.hairline),
                     });
                 }
-                let container_bg = if self.opacity < 1.0 {
-                    Rgba {
-                        a: self.opacity,
-                        ..theme.panel_bg
-                    }
-                } else {
-                    theme.panel_bg
-                };
 
                 let pane_down = pane_ix;
                 let pane_move = pane_ix;
@@ -2139,9 +2186,7 @@ impl Render for AtlasView {
                     .min_h(px(0.0))
                     .opacity(pane.pane_expansion)
                     .overflow_hidden()
-                    .bg(container_bg)
-                    .px(px(10.0))
-                    .py(px(10.0));
+                    .bg(active_bg);
                 if tab.panes.len() > 1 {
                     cell = cell
                         .border_1()
@@ -2163,6 +2208,18 @@ impl Render for AtlasView {
                                 }
                             }
                             window.focus(&view.focus);
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_down) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
+                                            let seq = format!("\x1b[<0;{col};{row}M");
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            view.last_mouse_btn = Some(0);
+                                        }
+                                        return;
+                                    }
+                                }
+                            }
                             if let Some(pt) = view.point_from_mouse(event.position, pane_down) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_down) {
@@ -2174,7 +2231,133 @@ impl Render for AtlasView {
                             }
                         }),
                     )
+                    .on_mouse_down(
+                        MouseButton::Middle,
+                        cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                if tab.active_pane != pane_down {
+                                    tab.active_pane = pane_down;
+                                    cx.notify();
+                                }
+                            }
+                            window.focus(&view.focus);
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_down) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
+                                            let seq = format!("\x1b[<1;{col};{row}M");
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            view.last_mouse_btn = Some(1);
+                                        }
+                                    }
+                                }
+                            }
+                        }),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                if tab.active_pane != pane_rc {
+                                    tab.active_pane = pane_rc;
+                                    cx.notify();
+                                }
+                            }
+                            window.focus(&view.focus);
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_rc) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_rc) {
+                                            let seq = format!("\x1b[<2;{col};{row}M");
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            view.last_mouse_btn = Some(2);
+                                        }
+                                        return;
+                                    }
+                                }
+                            }
+                            view.handle_terminal_right_click(window, cx);
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |view, event: &MouseUpEvent, window, cx| {
+                            view.mouse_down_pane = None;
+                            view.last_mouse_btn = None;
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_up) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
+                                            let seq = format!("\x1b[<0;{col};{row}m");
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        }
+                                        return;
+                                    }
+                                    let selected_text = {
+                                        let sess = pane.session.borrow();
+                                        sess.term.selection_to_string()
+                                    };
+                                    if let Some(text) = selected_text {
+                                        if !text.is_empty() && view.app_settings.copy_on_select {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                        }
+                                    }
+                                }
+                            }
+                            window.focus(&view.focus);
+                            cx.notify();
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Middle,
+                        cx.listener(move |view, event: &MouseUpEvent, _window, _cx| {
+                            view.last_mouse_btn = None;
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_up) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
+                                            let seq = format!("\x1b[<1;{col};{row}m");
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        }
+                                    }
+                                }
+                            }
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Right,
+                        cx.listener(move |view, event: &MouseUpEvent, _window, _cx| {
+                            view.last_mouse_btn = None;
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_up) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
+                                            let seq = format!("\x1b[<2;{col};{row}m");
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        }
+                                    }
+                                }
+                            }
+                        }),
+                    )
                     .on_mouse_move(cx.listener(move |view, event: &MouseMoveEvent, _window, cx| {
+                        if let Some(tab) = view.tabs.get(view.active) {
+                            if let Some(pane) = tab.panes.get(pane_move) {
+                                if Self::is_mouse_reporting(pane) {
+                                    let mode = *pane.session.borrow().term.mode();
+                                    let is_motion = mode.contains(TermMode::MOUSE_MOTION);
+                                    let is_drag = mode.contains(TermMode::MOUSE_DRAG);
+                                    if is_motion || (is_drag && view.last_mouse_btn.is_some()) {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_move) {
+                                            let btn_val = view.last_mouse_btn.unwrap_or(3);
+                                            let seq = format!("\x1b[<{};{col};{row}M", btn_val + 32);
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        }
+                                    }
+                                    return;
+                                }
+                            }
+                        }
                         if view.mouse_down_pane == Some(pane_move) {
                             if let Some(pt) = view.point_from_mouse(event.position, pane_move) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
@@ -2189,40 +2372,34 @@ impl Render for AtlasView {
                             }
                         }
                     }))
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(move |view, _event: &MouseUpEvent, window, cx| {
-                            view.mouse_down_pane = None;
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(p) = tab.panes.get(pane_up) {
-                                    let selected_text = {
-                                        let sess = p.session.borrow();
-                                        sess.term.selection_to_string()
+                    .on_scroll_wheel(cx.listener(move |view, event: &ScrollWheelEvent, _window, cx| {
+                        if let Some(tab) = view.tabs.get(view.active) {
+                            if let Some(pane) = tab.panes.get(pane_down) {
+                                if Self::is_mouse_reporting(pane) {
+                                    let delta_y = match event.delta {
+                                        gpui::ScrollDelta::Lines(delta) => delta.y,
+                                        gpui::ScrollDelta::Pixels(delta) => {
+                                            let dy = f32::from(delta.y);
+                                            if dy.abs() < 0.1 { 0.0 } else if dy > 0.0 { 1.0 } else { -1.0 }
+                                        }
                                     };
-                                    if let Some(text) = selected_text {
-                                        if !text.is_empty() && view.app_settings.copy_on_select {
-                                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                                    if delta_y != 0.0 {
+                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
+                                            let btn = if delta_y > 0.0 { 64 } else { 65 };
+                                            let seq = format!("\x1b[<{btn};{col};{row}M");
+                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
                                         }
                                     }
+                                    return;
                                 }
                             }
-                            window.focus(&view.focus);
-                            cx.notify();
-                        }),
-                    )
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(move |view, _event: &MouseDownEvent, window, cx| {
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                tab.active_pane = pane_rc;
-                            }
-                            window.focus(&view.focus);
-                            view.handle_terminal_right_click(window, cx);
-                        }),
-                    );
-                if !zoomed {
-                    cell = cell.rounded_b(px(inner_radius));
-                }
+                        }
+                        let lines = match event.delta {
+                            gpui::ScrollDelta::Lines(delta) => delta.y as f32,
+                            gpui::ScrollDelta::Pixels(delta) => f32::from(delta.y) / 18.0,
+                        };
+                        view.scroll_smooth(lines, cx);
+                    }));
                 cell = match axis {
                     SplitAxis::Columns => cell.h(relative(1.0)),
                     SplitAxis::Rows => cell.w(relative(1.0)),
@@ -2306,35 +2483,43 @@ impl Render for AtlasView {
                 |el, delta| el.opacity(delta),
             );
 
-        let container_bg = if self.opacity < 1.0 {
-            Rgba {
-                a: self.opacity,
-                ..theme.panel_bg
-            }
+        let sheet = if self.settings_open {
+            div()
+                .id(ElementId::named_usize("terminal-sheet", 0))
+                .flex()
+                .flex_col()
+                .flex_1()
+                .w(relative(1.0))
+                .h(relative(1.0))
+                .min_w(px(0.0))
+                .min_h(px(0.0))
+                .mx(px(6.0))
+                .mb(px(6.0))
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .bg(theme.elevated_bg)
+                .child(body)
         } else {
-            theme.panel_bg
+            div()
+                .id(ElementId::named_usize("terminal-sheet", 0))
+                .flex()
+                .flex_col()
+                .flex_1()
+                .w(relative(1.0))
+                .h(relative(1.0))
+                .min_w(px(0.0))
+                .min_h(px(0.0))
+                .mx(px(6.0))
+                .mb(px(6.0))
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .bg(active_bg)
+                .px(px(10.0))
+                .py(px(8.0))
+                .child(body)
         };
 
-        // The floating sheet holds the active terminal body (or settings page).
-        // It stretches edge-to-edge beneath the top tab bar.
-        let mut sheet = div()
-            .id(ElementId::named_usize("terminal-sheet", 0))
-            .flex()
-            .flex_col()
-            .flex_1()
-            .w(relative(1.0))
-            .h(relative(1.0))
-            .min_w(px(0.0))
-            .min_h(px(0.0))
-            .bg(container_bg)
-            .overflow_hidden()
-            .child(body);
-
-        if !zoomed {
-            sheet = sheet.rounded_b(px(inner_radius));
-        }
-
-        let mut container = div()
+        let container = div()
             .id(ElementId::named_usize("terminal-container", 0))
             .relative()
             .flex()
@@ -2344,18 +2529,8 @@ impl Render for AtlasView {
             .h(relative(1.0))
             .min_w(px(0.0))
             .min_h(px(0.0))
-            .bg(container_bg)
+            .bg(tb.panel_bg)
             .overflow_hidden()
-            .shadow_lg();
-
-        if !zoomed {
-            container = container
-                .rounded(px(outer_radius))
-                .border_1()
-                .border_color(rgba(0xFFFFFF1A));
-        }
-
-        container = container
             .child(bar)
             .child(sheet);
 
@@ -2365,8 +2540,9 @@ impl Render for AtlasView {
             .flex_col()
             .w(relative(1.0))
             .h(relative(1.0))
+            .bg(tb.panel_bg)
             .font_family("Segoe UI")
-            .text_color(theme.fg)
+            .text_color(tb.chrome_fg_active)
             .child(container);
         // Overlays paint last: each is a dim click-catcher plus its panel, in
         // stacking order (profile menu, palette, rename dialog). The
