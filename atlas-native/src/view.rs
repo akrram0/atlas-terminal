@@ -65,7 +65,7 @@ pub struct AtlasView {
     pub(crate) settings_open: bool,
     /// Workspace (new-tab profile) menu visibility.
     pub(crate) profile_menu: bool,
-    /// Command palette (Ctrl+Shift+P / top-bar search icon).
+    /// Command palette (Ctrl+K / top-bar search icon).
     pub(crate) palette_open: bool,
     pub(crate) palette_query: String,
     pub(crate) palette_index: usize,
@@ -1486,7 +1486,7 @@ impl AtlasView {
                         }
                     }
                 }
-                if chord == self.get_shortcut(ACTION_PALETTE) {
+                if chord == self.get_shortcut(ACTION_PALETTE) || chord == "ctrl+k" || chord == "ctrl+shift+p" {
                     self.open_palette(window, cx);
                     return;
                 }

@@ -65,6 +65,19 @@ impl AtlasView {
     }
 
     pub fn settings_page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let lum = 0.2126 * theme.elevated_bg.r + 0.7152 * theme.elevated_bg.g + 0.0722 * theme.elevated_bg.b;
+        let is_dark = lum < 0.45;
+        let sc_title = if is_dark { rgb(0xFFFFFF) } else { rgb(0x0F172A) };
+        let sc_section = theme.accent;
+        let sc_label = if is_dark { rgb(0xE2E8F0) } else { rgb(0x1E293B) };
+        let sc_desc = if is_dark { rgb(0x94A3B8) } else { rgb(0x475569) };
+        let sc_back_bg = if is_dark { rgba(0xFFFFFF0F) } else { rgba(0x0000000C) };
+        let sc_back_border = if is_dark { rgba(0xFFFFFF20) } else { rgba(0x00000018) };
+        let sc_back_fg = if is_dark { rgb(0xE2E8F0) } else { rgb(0x1E293B) };
+        let sc_nav_idle_fg = if is_dark { rgb(0x94A3B8) } else { rgb(0x64748B) };
+        let sc_nav_active_fg = if is_dark { rgb(0xFFFFFF) } else { rgb(0x0F172A) };
+        let sc_nav_active_bg = if is_dark { rgba(0xFFFFFF18) } else { rgba(0x00000012) };
+
         let card = || {
             div()
                 .flex()
@@ -81,8 +94,8 @@ impl AtlasView {
         let section = |label: &'static str| -> AnyElement {
             div()
                 .text_size(px(11.0))
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(theme.faint_fg)
+                .font_weight(FontWeight::BOLD)
+                .text_color(sc_section)
                 .child(label)
                 .into_any_element()
         };
@@ -90,7 +103,8 @@ impl AtlasView {
             div()
                 .w(px(110.0))
                 .text_size(px(12.5))
-                .text_color(theme.chrome_fg)
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(sc_label)
                 .child(label)
                 .into_any_element()
         };
@@ -127,8 +141,8 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(14.0))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(sc_title)
                             .child("Settings"),
                     ),
             );
@@ -136,15 +150,12 @@ impl AtlasView {
         for (nav_idx, &(tab, label, icon)) in nav_items.iter().enumerate() {
             let is_active = self.settings_tab == tab;
             let item_fg = if is_active {
-                theme.chrome_fg_active
+                sc_nav_active_fg
             } else {
-                theme.chrome_fg
+                sc_nav_idle_fg
             };
             let item_bg = if is_active {
-                Rgba {
-                    a: 0.14,
-                    ..theme.chrome_fg_active
-                }
+                sc_nav_active_bg
             } else {
                 rgba(0x00000000)
             };
@@ -167,7 +178,7 @@ impl AtlasView {
                         div()
                             .text_size(px(13.0))
                             .font_weight(if is_active {
-                                FontWeight::MEDIUM
+                                FontWeight::SEMIBOLD
                             } else {
                                 FontWeight::NORMAL
                             })
@@ -327,13 +338,14 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
                             .child("Windows 11 Acrylic blur"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("System backdrop acrylic blur (Windows 11 DWM)"),
                     ),
             )
@@ -409,7 +421,7 @@ impl AtlasView {
             .child(
                 div()
                     .text_size(px(11.5))
-                    .text_color(theme.faint_fg)
+                    .text_color(sc_desc)
                     .child(self.registry.preset(self.theme_id).description),
             );
 
@@ -544,13 +556,14 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
                             .child("Cursor blinking"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("Animate cursor breathing and blinking when idle"),
                     ),
             )
@@ -573,7 +586,7 @@ impl AtlasView {
             .child(
                 div()
                     .text_size(px(12.0))
-                    .text_color(theme.faint_fg)
+                    .text_color(sc_desc)
                     .mb(px(4.0))
                     .child("Color theme, typography, window geometry, and terminal caret"),
             )
@@ -643,7 +656,7 @@ impl AtlasView {
                     div()
                         .text_size(px(13.0))
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(theme.chrome_fg_active)
+                        .text_color(sc_label)
                         .child(action_display_name(action)),
                 );
 
@@ -665,21 +678,27 @@ impl AtlasView {
 
             let keycap_bg = if is_recording {
                 Rgba {
-                    a: 0.2,
+                    a: 0.22,
                     ..theme.accent
                 }
+            } else if is_dark {
+                rgba(0xFFFFFF12)
             } else {
-                theme.soft_bg
+                rgba(0x0000000A)
             };
             let keycap_border = if is_recording {
                 theme.accent
+            } else if is_dark {
+                rgba(0xFFFFFF22)
             } else {
-                theme.hairline
+                rgba(0x00000018)
             };
             let keycap_fg = if is_recording {
                 theme.accent
+            } else if is_dark {
+                rgb(0xF1F5F9)
             } else {
-                theme.chrome_fg_active
+                rgb(0x0F172A)
             };
 
             let mut right_col = div().flex().flex_row().items_center().gap(px(6.0));
@@ -717,9 +736,9 @@ impl AtlasView {
                     .justify_center()
                     .rounded(px(5.0))
                     .text_size(px(11.0))
-                    .text_color(theme.faint_fg)
+                    .text_color(sc_desc)
                     .hover(move |s| {
-                        s.bg(theme.card_hover).text_color(theme.chrome_fg_active)
+                        s.bg(theme.card_hover).text_color(sc_label)
                     })
                     .child("Reset")
                     .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
@@ -786,7 +805,7 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("Click a binding to rebind. Press Esc to cancel."),
                     )
                     .child(pill_button(
@@ -841,7 +860,7 @@ impl AtlasView {
             .child(
                 div()
                     .text_size(px(11.5))
-                    .text_color(theme.faint_fg)
+                    .text_color(sc_desc)
                     .child(if self.app_settings.default_shell.eq_ignore_ascii_case("opencode") {
                         "Launches the OpenCode AI agent CLI in the tab workspace"
                     } else if self.app_settings.default_shell.eq_ignore_ascii_case("wsl") {
@@ -943,13 +962,14 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
                             .child("Confirm before closing active process"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("Ask before closing tabs with running commands"),
                     ),
             )
@@ -979,13 +999,14 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
                             .child("Copy on select"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("Automatically copy selected terminal text to clipboard"),
                     ),
             )
@@ -1015,13 +1036,14 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
                             .child("Check for updates automatically"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("Background check every interval and on focus; silent when offline"),
                     ),
             )
@@ -1084,12 +1106,12 @@ impl AtlasView {
             .child(
                 div()
                     .text_size(px(11.5))
-                    .text_color(theme.chrome_fg)
+                    .text_color(sc_label)
                     .child(status_line),
             )
             .child(pill_button(
                 if is_checking {
-                    "Checkingâ€¦".to_string()
+                    "Checking…".to_string()
                 } else {
                     "Check now".to_string()
                 },
@@ -1125,15 +1147,16 @@ impl AtlasView {
                             .child(
                                 div()
                                     .text_size(px(13.0))
-                                    .text_color(theme.chrome_fg_active)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(sc_title)
                                     .child(format!("Atlas Terminal {pkg_version}")),
                             ),
                     )
                     .child(
                         div()
                             .text_size(px(11.5))
-                            .text_color(theme.chrome_fg)
-                            .child("Native GPUI renderer Â· alacritty_terminal Â· no webview, no HTML"),
+                            .text_color(sc_desc)
+                            .child("Native GPUI renderer · alacritty_terminal · no webview, no HTML"),
                     )
                     .child(
                         div()
@@ -1164,13 +1187,14 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
                             .child("settings.json (User Configuration)"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("Inspect or edit raw JSON settings directly in your preferred editor"),
                     ),
             )
@@ -1219,13 +1243,14 @@ impl AtlasView {
                     .child(
                         div()
                             .text_size(px(12.5))
-                            .text_color(theme.chrome_fg_active)
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
                             .child("Restore default configuration"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(theme.faint_fg)
+                            .text_color(sc_desc)
                             .child("Reset theme, shortcuts, fonts, and window styling to defaults"),
                     ),
             )
@@ -1258,7 +1283,7 @@ impl AtlasView {
             .child(
                 div()
                     .text_size(px(12.0))
-                    .text_color(theme.faint_fg)
+                    .text_color(sc_desc)
                     .mb(px(4.0))
                     .child("Shell profiles, session startup, and application updates"),
             )
@@ -1317,7 +1342,7 @@ impl AtlasView {
                 div()
                     .text_size(px(18.0))
                     .font_weight(FontWeight::BOLD)
-                    .text_color(theme.chrome_fg_active)
+                    .text_color(sc_title)
                     .child(match self.settings_tab {
                         SettingsTab::General => "General",
                         SettingsTab::Appearance => "Appearance",
@@ -1334,9 +1359,11 @@ impl AtlasView {
                     .items_center()
                     .gap(px(6.0))
                     .rounded(px(6.0))
-                    .bg(Rgba { a: 0.08, ..theme.chrome_fg })
+                    .border_1()
+                    .border_color(sc_back_border)
+                    .bg(sc_back_bg)
                     .hover(move |s| s.bg(theme.card_hover))
-                    .text_color(theme.chrome_fg)
+                    .text_color(sc_back_fg)
                     .child(icons::icon(icons::CHEVRON_LEFT).size(px(13.0)))
                     .child(
                         div()

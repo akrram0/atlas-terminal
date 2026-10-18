@@ -56,7 +56,7 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_OPEN_SETTINGS.to_string(), "ctrl+,".to_string());
     m.insert(ACTION_ZOOM_IN.to_string(), "ctrl+=".to_string());
     m.insert(ACTION_ZOOM_OUT.to_string(), "ctrl+-".to_string());
-    m.insert(ACTION_PALETTE.to_string(), "ctrl+shift+p".to_string());
+    m.insert(ACTION_PALETTE.to_string(), "ctrl+k".to_string());
     m.insert(ACTION_FULLSCREEN.to_string(), "f11".to_string());
     m.insert(ACTION_CLEAR_SCROLLBACK.to_string(), "ctrl+shift+k".to_string());
     m.insert(ACTION_FOCUS_NEXT_PANE.to_string(), "alt+right".to_string());

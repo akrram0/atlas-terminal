@@ -14,7 +14,7 @@ terminal grid itself are all drawn from Rust code on the GPU.
 
 Get the latest release for Windows (x64):
 
-* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.12.exe)**
+* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.13.exe)**
 * 🗜️ **[Download Portable (.zip)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
 * 🚀 **[All Releases & Changelog](https://github.com/akrram0/atlas-terminal/releases)**
 
@@ -42,7 +42,7 @@ palette and the cursor (light / dark).
 - **Profiles** — PowerShell and Ubuntu (WSL). The status bar and breadcrumb
   track each pane's live working directory and git branch; WSL paths are read
   from the shell title (`/mnt/c/…`) and mapped back for git lookups.
-- **Command palette** — `Ctrl+Shift+P`, the titlebar search pill or the pane
+- **Command palette** — `Ctrl+K` (or `Ctrl+Shift+P`), the titlebar search pill or the pane
   `⋯` menu. New / close / split tabs and panes, rename, theme, settings,
   sidebar, font size — typed filtering, ↑/↓ + Enter.
 - **Settings page** — an in-app page, not a popup: light/dark theme, font
