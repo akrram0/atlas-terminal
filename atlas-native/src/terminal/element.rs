@@ -91,6 +91,9 @@ impl Element for TerminalElement {
         (window.request_layout(style, [], cx), ())
     }
 
+    pub const PAD_X: f32 = 10.0;
+    pub const PAD_Y: f32 = 8.0;
+
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
@@ -124,8 +127,10 @@ impl Element for TerminalElement {
         };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
 
-        let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;
-        let rows = (f32::from(bounds.size.height) / cell_height).floor().max(1.0) as usize;
+        let avail_w = (f32::from(bounds.size.width) - Self::PAD_X * 2.0).max(cell_width);
+        let avail_h = (f32::from(bounds.size.height) - Self::PAD_Y * 2.0).max(cell_height);
+        let cols = (avail_w / cell_width).floor().max(1.0) as usize;
+        let rows = (avail_h / cell_height).floor().max(1.0) as usize;
         self.session.borrow_mut().resize(cols, rows);
     }
 
@@ -170,12 +175,12 @@ impl Element for TerminalElement {
                 .max(1.0)
         };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
-        let cols = (f32::from(bounds.size.width) / cell_width).floor().max(1.0) as usize;
+        let avail_w = (f32::from(bounds.size.width) - Self::PAD_X * 2.0).max(cell_width);
+        let cols = (avail_w / cell_width).floor().max(1.0) as usize;
 
-        // Integer pixel snapping: rounded cell sizes + whole-pixel origin
-        // keep every quad boundary crisp.
-        let left = f32::from(bounds.left()).round();
-        let top = f32::from(bounds.top()).round();
+        // Integer pixel snapping: rounded cell sizes + whole-pixel origin with padding
+        let left = (f32::from(bounds.left()) + Self::PAD_X).round();
+        let top = (f32::from(bounds.top()) + Self::PAD_Y).round();
 
         // Store active grid dimensions for mouse selection hit testing
         self.session.borrow_mut().grid_bounds = Some((left, top, cell_width, cell_height));
@@ -362,24 +367,13 @@ impl Element for TerminalElement {
                             b: theme.accent.b,
                             a: 0.38,
                         };
-                        let mut quad = fill(
+                        let quad = fill(
                             Bounds::from_corners(
                                 point(px(x(sel_c0)), px(y0)),
                                 point(px(x(sel_c1 + 1)), px(y1)),
                             ),
                             sel_bg,
                         );
-                        let is_bottom = row_index + 1 >= total_rows;
-                        let is_left = sel_c0 == 0;
-                        let is_right = sel_c1 + 1 >= cols;
-                        if is_bottom && (is_left || is_right) {
-                            quad.corner_radii = Corners {
-                                top_left: px(0.0),
-                                top_right: px(0.0),
-                                bottom_left: if is_left { px(13.0) } else { px(0.0) },
-                                bottom_right: if is_right { px(13.0) } else { px(0.0) },
-                            };
-                        }
                         window.paint_quad(quad);
                     }
                 }

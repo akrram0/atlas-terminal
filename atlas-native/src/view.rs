@@ -125,6 +125,7 @@ pub struct AtlasView {
     pub(crate) window_was_active: bool,
     pub(crate) mouse_down_pane: Option<usize>,
     pub(crate) last_mouse_btn: Option<u8>,
+    pub(crate) last_mouse_cell: Option<(usize, usize)>,
     pub(crate) settings_scroll_handle: ScrollHandle,
     pub(crate) settings_scroll_pos: f32,
     pub(crate) settings_scroll_target: f32,
@@ -237,6 +238,7 @@ impl AtlasView {
             window_was_active: true,
             mouse_down_pane: None,
             last_mouse_btn: None,
+            last_mouse_cell: None,
             settings_scroll_handle: ScrollHandle::new(),
             settings_scroll_pos: 0.0,
             settings_scroll_target: 0.0,
@@ -1057,9 +1059,48 @@ impl AtlasView {
         mode.intersects(
             TermMode::MOUSE_REPORT_CLICK
                 | TermMode::MOUSE_DRAG
-                | TermMode::MOUSE_MOTION
-                | TermMode::SGR_MOUSE,
-        ) || mode.contains(TermMode::ALT_SCREEN)
+                | TermMode::MOUSE_MOTION,
+        )
+    }
+
+    pub(crate) fn detect_pane_bg(pane: &Pane, theme: &Theme) -> Rgba {
+        let sess = pane.session.borrow();
+        let over = *sess.term.colors();
+        let (default_bg, _, _) = theme.defaults(&over);
+        let rows = sess.rows;
+        let cols = sess.cols;
+        if rows < 3 || cols < 3 {
+            return default_bg;
+        }
+
+        let grid = sess.term.grid();
+        let mut counts: Vec<(alacritty_terminal::vte::ansi::Color, usize)> = Vec::new();
+
+        // Sample 25 points across the middle of the grid, avoiding top and bottom rows
+        let row_samples = [0.2, 0.35, 0.5, 0.65, 0.8];
+        let col_samples = [0.15, 0.3, 0.5, 0.7, 0.85];
+
+        for &rf in &row_samples {
+            let r = ((rf * rows as f32) as usize).clamp(1, rows.saturating_sub(2));
+            let line = Line(r as i32);
+            for &cf in &col_samples {
+                let c = ((cf * cols as f32) as usize).clamp(1, cols.saturating_sub(2));
+                let color = grid[line][Column(c)].bg;
+                if let Some(entry) = counts.iter_mut().find(|(col, _)| *col == color) {
+                    entry.1 += 1;
+                } else {
+                    counts.push((color, 1));
+                }
+            }
+        }
+
+        if let Some((most_frequent_color, count)) = counts.into_iter().max_by_key(|(_, count)| *count) {
+            if count >= 6 && most_frequent_color != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
+                return theme.resolve(most_frequent_color, false, &over);
+            }
+        }
+
+        default_bg
     }
 
 
@@ -1625,23 +1666,10 @@ impl Render for AtlasView {
         let theme = self.theme.clone();
         let zoomed = crate::rounded_corners::is_zoomed();
 
-        // Detect dominant background of the active terminal session
+        // Detect dominant background of the active terminal session via robust histogram sampling
         let active_bg = if let Some(tab) = self.tabs.get(self.active) {
             if let Some(pane) = tab.panes.get(tab.active_pane) {
-                let sess = pane.session.borrow();
-                let over = *sess.term.colors();
-                let rows = sess.rows;
-                let last_row = if rows > 0 { rows.saturating_sub(1) } else { 0 };
-                let c0 = sess.term.grid()[alacritty_terminal::index::Line(0)][alacritty_terminal::index::Column(0)].bg;
-                let c_last = sess.term.grid()[alacritty_terminal::index::Line(last_row as i32)][alacritty_terminal::index::Column(0)].bg;
-                let candidate = if c0 != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
-                    c0
-                } else if c_last != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
-                    c_last
-                } else {
-                    alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background)
-                };
-                theme.resolve(candidate, false, &over)
+                Self::detect_pane_bg(pane, &theme)
             } else {
                 theme.bg
             }
@@ -1649,31 +1677,8 @@ impl Render for AtlasView {
             theme.bg
         };
 
-        let is_sheet_dark = {
-            let lum = active_bg.r * 0.299 + active_bg.g * 0.587 + active_bg.b * 0.114;
-            lum < 0.5
-        };
-
-        // Cohesive dark surface when terminal sheet is dark:
-        // #12141C outer bar, #1C1F2A active tab pill, #8F96A8 muted text/icons, #E6E9F0 active text
-        let tb = if is_sheet_dark {
-            Theme {
-                panel_bg: rgb(0x12141C),
-                elevated_bg: rgb(0x1C1F2A),
-                chrome_fg: rgb(0x8F96A8),
-                chrome_fg_active: rgb(0xE6E9F0),
-                hairline: rgba(0xFFFFFF10),
-                card_hover: rgba(0xFFFFFF10),
-                card_active: rgba(0xE08A6226),
-                faint_fg: rgb(0x6C7486),
-                soft_bg: rgba(0xFFFFFF0F),
-                elevated_border: rgba(0xFFFFFF18),
-                accent: rgb(0xE08A62),
-                ..theme.clone()
-            }
-        } else {
-            theme.clone()
-        };
+        // Window chrome and top tab bar use the cohesive application theme
+        let tb = theme.clone();
 
         let mut bar = div()
             .flex()
@@ -2208,15 +2213,21 @@ impl Render for AtlasView {
                                 }
                             }
                             window.focus(&view.focus);
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_down) {
-                                    if Self::is_mouse_reporting(pane) {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
-                                            let seq = format!("\x1b[<0;{col};{row}M");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            view.last_mouse_btn = Some(0);
+                            if !event.modifiers.shift {
+                                if let Some(tab) = view.tabs.get(view.active) {
+                                    if let Some(pane) = tab.panes.get(pane_down) {
+                                        if Self::is_mouse_reporting(pane) {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
+                                                let mut btn = 0;
+                                                if event.modifiers.alt { btn += 8; }
+                                                if event.modifiers.control { btn += 16; }
+                                                let seq = format!("\x1b[<{btn};{col};{row}M");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                                view.last_mouse_btn = Some(0);
+                                                view.last_mouse_cell = Some((col, row));
+                                            }
+                                            return;
                                         }
-                                        return;
                                     }
                                 }
                             }
@@ -2241,17 +2252,25 @@ impl Render for AtlasView {
                                 }
                             }
                             window.focus(&view.focus);
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_down) {
-                                    if Self::is_mouse_reporting(pane) {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
-                                            let seq = format!("\x1b[<1;{col};{row}M");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            view.last_mouse_btn = Some(1);
+                            if !event.modifiers.shift {
+                                if let Some(tab) = view.tabs.get(view.active) {
+                                    if let Some(pane) = tab.panes.get(pane_down) {
+                                        if Self::is_mouse_reporting(pane) {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
+                                                let mut btn = 1;
+                                                if event.modifiers.alt { btn += 8; }
+                                                if event.modifiers.control { btn += 16; }
+                                                let seq = format!("\x1b[<{btn};{col};{row}M");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                                view.last_mouse_btn = Some(1);
+                                                view.last_mouse_cell = Some((col, row));
+                                            }
+                                            return;
                                         }
                                     }
                                 }
                             }
+                            view.paste(cx);
                         }),
                     )
                     .on_mouse_down(
@@ -2264,15 +2283,21 @@ impl Render for AtlasView {
                                 }
                             }
                             window.focus(&view.focus);
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_rc) {
-                                    if Self::is_mouse_reporting(pane) {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_rc) {
-                                            let seq = format!("\x1b[<2;{col};{row}M");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            view.last_mouse_btn = Some(2);
+                            if !event.modifiers.shift {
+                                if let Some(tab) = view.tabs.get(view.active) {
+                                    if let Some(pane) = tab.panes.get(pane_rc) {
+                                        if Self::is_mouse_reporting(pane) {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_rc) {
+                                                let mut btn = 2;
+                                                if event.modifiers.alt { btn += 8; }
+                                                if event.modifiers.control { btn += 16; }
+                                                let seq = format!("\x1b[<{btn};{col};{row}M");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                                view.last_mouse_btn = Some(2);
+                                                view.last_mouse_cell = Some((col, row));
+                                            }
+                                            return;
                                         }
-                                        return;
                                     }
                                 }
                             }
@@ -2284,15 +2309,25 @@ impl Render for AtlasView {
                         cx.listener(move |view, event: &MouseUpEvent, window, cx| {
                             view.mouse_down_pane = None;
                             view.last_mouse_btn = None;
+                            view.last_mouse_cell = None;
+                            if !event.modifiers.shift {
+                                if let Some(tab) = view.tabs.get(view.active) {
+                                    if let Some(pane) = tab.panes.get(pane_up) {
+                                        if Self::is_mouse_reporting(pane) {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
+                                                let mut btn = 0;
+                                                if event.modifiers.alt { btn += 8; }
+                                                if event.modifiers.control { btn += 16; }
+                                                let seq = format!("\x1b[<{btn};{col};{row}m");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            }
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
                             if let Some(tab) = view.tabs.get(view.active) {
                                 if let Some(pane) = tab.panes.get(pane_up) {
-                                    if Self::is_mouse_reporting(pane) {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
-                                            let seq = format!("\x1b[<0;{col};{row}m");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                        }
-                                        return;
-                                    }
                                     let selected_text = {
                                         let sess = pane.session.borrow();
                                         sess.term.selection_to_string()
@@ -2312,12 +2347,18 @@ impl Render for AtlasView {
                         MouseButton::Middle,
                         cx.listener(move |view, event: &MouseUpEvent, _window, _cx| {
                             view.last_mouse_btn = None;
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_up) {
-                                    if Self::is_mouse_reporting(pane) {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
-                                            let seq = format!("\x1b[<1;{col};{row}m");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                            view.last_mouse_cell = None;
+                            if !event.modifiers.shift {
+                                if let Some(tab) = view.tabs.get(view.active) {
+                                    if let Some(pane) = tab.panes.get(pane_up) {
+                                        if Self::is_mouse_reporting(pane) {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
+                                                let mut btn = 1;
+                                                if event.modifiers.alt { btn += 8; }
+                                                if event.modifiers.control { btn += 16; }
+                                                let seq = format!("\x1b[<{btn};{col};{row}m");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            }
                                         }
                                     }
                                 }
@@ -2328,12 +2369,18 @@ impl Render for AtlasView {
                         MouseButton::Right,
                         cx.listener(move |view, event: &MouseUpEvent, _window, _cx| {
                             view.last_mouse_btn = None;
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_up) {
-                                    if Self::is_mouse_reporting(pane) {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
-                                            let seq = format!("\x1b[<2;{col};{row}m");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                            view.last_mouse_cell = None;
+                            if !event.modifiers.shift {
+                                if let Some(tab) = view.tabs.get(view.active) {
+                                    if let Some(pane) = tab.panes.get(pane_up) {
+                                        if Self::is_mouse_reporting(pane) {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
+                                                let mut btn = 2;
+                                                if event.modifiers.alt { btn += 8; }
+                                                if event.modifiers.control { btn += 16; }
+                                                let seq = format!("\x1b[<{btn};{col};{row}m");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            }
                                         }
                                     }
                                 }
@@ -2341,20 +2388,30 @@ impl Render for AtlasView {
                         }),
                     )
                     .on_mouse_move(cx.listener(move |view, event: &MouseMoveEvent, _window, cx| {
-                        if let Some(tab) = view.tabs.get(view.active) {
-                            if let Some(pane) = tab.panes.get(pane_move) {
-                                if Self::is_mouse_reporting(pane) {
-                                    let mode = *pane.session.borrow().term.mode();
-                                    let is_motion = mode.contains(TermMode::MOUSE_MOTION);
-                                    let is_drag = mode.contains(TermMode::MOUSE_DRAG);
-                                    if is_motion || (is_drag && view.last_mouse_btn.is_some()) {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_move) {
-                                            let btn_val = view.last_mouse_btn.unwrap_or(3);
-                                            let seq = format!("\x1b[<{};{col};{row}M", btn_val + 32);
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                        if !event.modifiers.shift {
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_move) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        let mode = *pane.session.borrow().term.mode();
+                                        let is_motion = mode.contains(TermMode::MOUSE_MOTION);
+                                        let is_drag = mode.contains(TermMode::MOUSE_DRAG);
+                                        if is_motion || (is_drag && view.last_mouse_btn.is_some()) {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_move) {
+                                                if view.last_mouse_cell == Some((col, row)) {
+                                                    return;
+                                                }
+                                                view.last_mouse_cell = Some((col, row));
+
+                                                let btn_val = view.last_mouse_btn.unwrap_or(3);
+                                                let mut cb = btn_val + 32;
+                                                if event.modifiers.alt { cb += 8; }
+                                                if event.modifiers.control { cb += 16; }
+                                                let seq = format!("\x1b[<{cb};{col};{row}M");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            }
                                         }
+                                        return;
                                     }
-                                    return;
                                 }
                             }
                         }
@@ -2373,24 +2430,29 @@ impl Render for AtlasView {
                         }
                     }))
                     .on_scroll_wheel(cx.listener(move |view, event: &ScrollWheelEvent, _window, cx| {
-                        if let Some(tab) = view.tabs.get(view.active) {
-                            if let Some(pane) = tab.panes.get(pane_down) {
-                                if Self::is_mouse_reporting(pane) {
-                                    let delta_y = match event.delta {
-                                        gpui::ScrollDelta::Lines(delta) => delta.y,
-                                        gpui::ScrollDelta::Pixels(delta) => {
-                                            let dy = f32::from(delta.y);
-                                            if dy.abs() < 0.1 { 0.0 } else if dy > 0.0 { 1.0 } else { -1.0 }
+                        if !event.modifiers.shift {
+                            if let Some(tab) = view.tabs.get(view.active) {
+                                if let Some(pane) = tab.panes.get(pane_down) {
+                                    if Self::is_mouse_reporting(pane) {
+                                        let delta_y = match event.delta {
+                                            gpui::ScrollDelta::Lines(delta) => delta.y,
+                                            gpui::ScrollDelta::Pixels(delta) => {
+                                                let dy = f32::from(delta.y);
+                                                if dy.abs() < 0.1 { 0.0 } else if dy > 0.0 { 1.0 } else { -1.0 }
+                                            }
+                                        };
+                                        if delta_y != 0.0 {
+                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
+                                                let btn = if delta_y > 0.0 { 64 } else { 65 };
+                                                let mut cb = btn;
+                                                if event.modifiers.alt { cb += 8; }
+                                                if event.modifiers.control { cb += 16; }
+                                                let seq = format!("\x1b[<{cb};{col};{row}M");
+                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            }
                                         }
-                                    };
-                                    if delta_y != 0.0 {
-                                        if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
-                                            let btn = if delta_y > 0.0 { 64 } else { 65 };
-                                            let seq = format!("\x1b[<{btn};{col};{row}M");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                        }
+                                        return;
                                     }
-                                    return;
                                 }
                             }
                         }
@@ -2514,8 +2576,6 @@ impl Render for AtlasView {
                 .rounded(px(10.0))
                 .overflow_hidden()
                 .bg(active_bg)
-                .px(px(10.0))
-                .py(px(8.0))
                 .child(body)
         };
 
