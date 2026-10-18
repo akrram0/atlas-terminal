@@ -6,6 +6,7 @@
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::Dimensions;
@@ -13,6 +14,20 @@ use alacritty_terminal::term::{Config, Term};
 use alacritty_terminal::vte::ansi::Processor;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
 use smol::channel::{bounded, Receiver, Sender};
+
+use crate::image_osc::{compute_image_grid_size, Osc1337Scanner};
+
+/// An inline graphic placed on the terminal grid.
+#[derive(Clone)]
+pub struct PlacedImage {
+    pub id: usize,
+    pub image: Arc<gpui::RenderImage>,
+    pub anchor_line: i32,
+    pub col: usize,
+    pub cols: usize,
+    pub rows: usize,
+}
+
 
 /// Minimal grid dimensions for `Term`.
 pub struct TermSize {
@@ -74,6 +89,8 @@ pub struct Session {
     pub parser: Processor,
     pub cols: usize,
     pub rows: usize,
+    pub cell_width: f32,
+    pub cell_height: f32,
     /// Grid size the pseudo-console most recently accepted. Kept separately
     /// from `cols`/`rows` so a rejected ConPTY resize is retried instead of
     /// silently leaving the child on a stale grid.
@@ -87,6 +104,10 @@ pub struct Session {
     pub pid: Option<u32>,
     /// Last painted grid layout: (left, top, cell_width, cell_height).
     pub grid_bounds: Option<(f32, f32, f32, f32)>,
+    /// Active inline images anchored to the terminal scrollback grid.
+    pub placed_images: Vec<PlacedImage>,
+    next_image_id: usize,
+    osc_scanner: Osc1337Scanner,
     writer: Option<Box<dyn Write + Send>>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
@@ -105,11 +126,13 @@ impl Session {
         profile: Profile,
     ) -> anyhow::Result<(Session, Receiver<SessionMsg>)> {
         let pty_system = native_pty_system();
+        let pixel_width = (cols as f32 * 8.0).round() as u16;
+        let pixel_height = (rows as f32 * 16.0).round() as u16;
         let pair = pty_system.openpty(PtySize {
             rows: rows as u16,
             cols: cols as u16,
-            pixel_width: 0,
-            pixel_height: 0,
+            pixel_width,
+            pixel_height,
         })?;
 
         let PtyPair { master, slave } = pair;
@@ -259,11 +282,16 @@ impl Session {
                 parser,
                 cols,
                 rows,
+                cell_width: 8.0,
+                cell_height: 16.0,
                 pty_cols: cols,
                 pty_rows: rows,
                 shell: shell_used.to_string(),
                 pid,
                 grid_bounds: None,
+                placed_images: Vec::new(),
+                next_image_id: 1,
+                osc_scanner: Osc1337Scanner::new(),
                 writer: Some(writer),
                 master,
                 child,
@@ -272,9 +300,63 @@ impl Session {
         ))
     }
 
-    /// Feed PTY bytes into the terminal state machine.
+    /// Feed PTY bytes into the terminal state machine, intercepting inline images.
     pub fn feed(&mut self, bytes: &[u8]) {
-        self.parser.advance(&mut self.term, bytes);
+        // Clear placed images on full screen/scrollback reset (ED 3: \x1b[3J or RIS: \x1bc)
+        if bytes.windows(4).any(|w| w == b"\x1b[3J") || bytes.windows(2).any(|w| w == b"\x1bc") {
+            self.placed_images.clear();
+        }
+
+        let (clean_bytes, decoded_images) = self.osc_scanner.process(bytes);
+
+        for decoded in decoded_images {
+            let (img_cols, img_rows) = compute_image_grid_size(
+                decoded.pixel_width,
+                decoded.pixel_height,
+                &decoded.params,
+                self.cell_width,
+                self.cell_height,
+                self.cols,
+                self.rows,
+            );
+
+            let (cursor_col, cursor_line) = {
+                let cursor = self.term.renderable_content().cursor;
+                (cursor.point.column.0, cursor.point.line.0)
+            };
+            let history = self.term.history_size() as i32;
+            let anchor_line = history + cursor_line;
+
+            let id = self.next_image_id;
+            self.next_image_id += 1;
+
+            self.placed_images.push(PlacedImage {
+                id,
+                image: decoded.render_image,
+                anchor_line,
+                col: cursor_col,
+                cols: img_cols,
+                rows: img_rows,
+            });
+
+            // Advance cursor below the image so that shell prompt, command output,
+            // and scrollback wrap naturally underneath the image, matching iTerm2 behavior.
+            let mut advance_bytes = Vec::with_capacity(img_rows);
+            for _ in 0..img_rows {
+                advance_bytes.push(b'\n');
+            }
+            self.parser.advance(&mut self.term, &advance_bytes);
+        }
+
+        if !clean_bytes.is_empty() {
+            self.parser.advance(&mut self.term, &clean_bytes);
+        }
+
+        // Prune images whose anchor line has scrolled past the maximum scrollback limit (10,000 lines)
+        let cur_history = self.term.history_size() as i32;
+        self.placed_images.retain(|img| {
+            img.anchor_line >= cur_history - 10_000
+        });
     }
 
     /// Send bytes to the shell.
@@ -294,21 +376,25 @@ impl Session {
     /// ours — output then wraps at the stale width while the UI shows the
     /// new one. `prepaint` calls this every frame, so a failed resize heals
     /// on the next paint.
-    pub fn resize(&mut self, cols: usize, rows: usize) {
+    pub fn resize(&mut self, cols: usize, rows: usize, cell_width: f32, cell_height: f32) {
         if cols == 0 || rows == 0 {
             return;
         }
+        self.cell_width = cell_width;
+        self.cell_height = cell_height;
         if self.cols != cols || self.rows != rows {
             self.cols = cols;
             self.rows = rows;
             self.term.resize(TermSize { cols, rows });
         }
+        let p_width = (cols as f32 * cell_width).round() as u16;
+        let p_height = (rows as f32 * cell_height).round() as u16;
         if self.pty_cols != cols || self.pty_rows != rows {
             let size = PtySize {
                 rows: rows as u16,
                 cols: cols as u16,
-                pixel_width: 0,
-                pixel_height: 0,
+                pixel_width: p_width,
+                pixel_height: p_height,
             };
             if self.master.resize(size).is_ok() {
                 self.pty_cols = cols;

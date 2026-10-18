@@ -5,6 +5,7 @@
 mod config;
 mod cwd;
 mod icons;
+pub mod image_osc;
 mod keymap;
 mod session;
 mod terminal;

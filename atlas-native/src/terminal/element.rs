@@ -10,7 +10,7 @@ use alacritty_terminal::index::Line;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::{
-    App, Bounds, Corners, Element, ElementId, Font, GlobalElementId, InspectorElementId,
+    App, Bounds, ContentMask, Corners, Element, ElementId, Font, GlobalElementId, InspectorElementId,
     IntoElement, LayoutId, Pixels, Rgba, StrikethroughStyle, Style, TextRun, UnderlineStyle,
     Window, fill, point, px, relative, rgba,
 };
@@ -134,7 +134,7 @@ impl Element for TerminalElement {
         let avail_h = (f32::from(bounds.size.height) - Self::PAD_Y * 2.0).max(cell_height);
         let cols = (avail_w / cell_width).floor().max(1.0) as usize;
         let rows = (avail_h / cell_height).floor().max(1.0) as usize;
-        self.session.borrow_mut().resize(cols, rows);
+        self.session.borrow_mut().resize(cols, rows, cell_width, cell_height);
     }
 
     fn paint(
@@ -189,7 +189,7 @@ impl Element for TerminalElement {
         self.session.borrow_mut().grid_bounds = Some((left, top, cell_width, cell_height));
 
         // Snapshot the grid into paint-ready rows (no borrows outlive this block).
-        let (rows, cursor_cell, cursor_shape, selection_range, offset) = {
+        let (rows, cursor_cell, cursor_shape, selection_range, offset, placed_images, cur_history) = {
             let session = self.session.borrow();
             let content = session.term.renderable_content();
             let offset = content.display_offset as i32;
@@ -207,6 +207,8 @@ impl Element for TerminalElement {
             );
 
             let selection_range = session.term.selection.as_ref().and_then(|s| s.to_range(&session.term));
+            let placed_images = session.placed_images.clone();
+            let cur_history = session.term.history_size() as i32;
             let mut rows: Vec<Row> = Vec::new();
             for indexed in content.display_iter {
                 let point = indexed.point;
@@ -287,7 +289,7 @@ impl Element for TerminalElement {
                 });
                 row.text.push_str(&text);
             }
-            (rows, cursor_cell, cursor_shape, selection_range, offset)
+            (rows, cursor_cell, cursor_shape, selection_range, offset, placed_images, cur_history)
         };
 
         let total_rows = rows.len();
@@ -382,6 +384,43 @@ impl Element for TerminalElement {
                     }
                 }
             }
+        }
+
+        // --------------------------------------------------------------------
+        // Inline Images (OSC 1337 iTerm2 protocol)
+        // Painted on GPU after background/selection quads and before text/cursor.
+        // --------------------------------------------------------------------
+        if !placed_images.is_empty() {
+            let num_screen_rows = rows.len().max(1);
+            window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                for img in &placed_images {
+                    let grid_line = img.anchor_line - cur_history;
+                    let screen_row = grid_line + offset;
+
+                    let img_bottom_row = screen_row + img.rows as i32;
+                    if img_bottom_row <= 0 || screen_row >= num_screen_rows as i32 {
+                        continue;
+                    }
+
+                    let img_x = left + cell_width * img.col as f32;
+                    let img_y = top + cell_height * screen_row as f32 + self.subpixel_y;
+                    let img_w = cell_width * img.cols as f32;
+                    let img_h = cell_height * img.rows as f32;
+
+                    let image_bounds = Bounds::from_corners(
+                        point(px(img_x), px(img_y)),
+                        point(px(img_x + img_w), px(img_y + img_h)),
+                    );
+
+                    let _ = window.paint_image(
+                        image_bounds,
+                        Corners::default(),
+                        img.image.clone(),
+                        0,
+                        false,
+                    );
+                }
+            });
         }
 
         // Smooth kinetic cursor with organic breathing alpha

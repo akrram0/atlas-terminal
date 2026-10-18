@@ -838,6 +838,27 @@ impl AtlasView {
                             }
                         }
                         SessionMsg::Event(Event::Exit) => pane.exited = true,
+                        SessionMsg::Event(Event::TextAreaSizeRequest(formatter)) => {
+                            let (cols, rows, cell_w, cell_h) = {
+                                let s = pane.session.borrow();
+                                (
+                                    s.cols as u16,
+                                    s.rows as u16,
+                                    s.cell_width.round().max(1.0) as u16,
+                                    s.cell_height.round().max(1.0) as u16,
+                                )
+                            };
+                            let reply = formatter(alacritty_terminal::event::WindowSize {
+                                num_lines: rows,
+                                num_cols: cols,
+                                cell_width: cell_w,
+                                cell_height: cell_h,
+                            });
+                            pane.session.borrow_mut().write_bytes(reply.as_bytes());
+                        }
+                        SessionMsg::Event(Event::PtyWrite(s)) => {
+                            pane.session.borrow_mut().write_bytes(s.as_bytes());
+                        }
                         SessionMsg::Event(Event::ColorRequest(index, formatter)) => {
                             // OSC 4/10/11/12 colour query (`\e]11;?`): answer
                             // with what is actually on screen â€” the current
