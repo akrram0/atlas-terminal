@@ -5,10 +5,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::Line;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::vte::ansi::CursorShape;
-use gpui::prelude::*;
 use gpui::{
     App, Bounds, Corners, Element, ElementId, Font, GlobalElementId, InspectorElementId,
     IntoElement, LayoutId, Pixels, Rgba, StrikethroughStyle, Style, TextRun, UnderlineStyle,

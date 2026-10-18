@@ -5,17 +5,18 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
-use alacritty_terminal::grid::Scroll;
+use alacritty_terminal::event::Event;
+use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Context, Corners,
+    Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent, Keystroke,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Render, Rgba, ScrollHandle,
-    ScrollWheelEvent, SharedString, Window, canvas, div, fill, point, px, relative, rgb, rgba,
+    ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{
@@ -30,7 +31,7 @@ use crate::keymap;
 use crate::session::{Profile, Session, SessionMsg};
 use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};
-use crate::ui::animation::{ease_apple_snappy, ease_out_cubic, BODY_IN_MS, OVERLAY_IN_MS, OVERLAY_OUT_MS};
+use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, OVERLAY_OUT_MS};
 use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_NEW_TAB,
     HOVER_MARK_WINDOW,
@@ -897,7 +898,7 @@ impl AtlasView {
 
     /// Apply a registry preset and keep every mirror in sync (settings pills
     /// and the keyboard shortcut both land here).
-    fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
+    pub(crate) fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
         self.theme_id = index.min(self.registry.len() - 1);
         let target = self.registry.preset(self.theme_id).theme.clone();
         self.theme_transition = Some((self.theme.clone(), target, 0.0));

@@ -6,11 +6,11 @@ use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontFallbacks, FontWeight,
-    IntoElement, KeyDownEvent, Rgba, SharedString, Window, div, px, relative, rgb, rgba,
+    IntoElement, KeyDownEvent, Rgba, SharedString, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{
-    action_display_name, default_shortcuts, format_keystroke_chord, load_app_settings,
+    action_display_name, default_shortcuts, format_keystroke_chord,
     pretty_shortcut, save_app_settings, SettingsTab, ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB,
     ACTION_COPY, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN,
     ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE,
@@ -18,7 +18,6 @@ use crate::config::{
     ACTION_ZOOM_OUT,
 };
 use crate::icons;
-use crate::session::Profile;
 use crate::theme::Theme;
 use crate::updater;
 use crate::view::AtlasView;
