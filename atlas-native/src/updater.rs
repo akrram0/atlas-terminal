@@ -1431,6 +1431,11 @@ fn parse_github_release(
     }
 
     if is_newer_version(&detected_version, current_version) {
+        if installer_url.is_none() {
+            // CI may still be compiling and uploading release assets.
+            // Don't advertise an update until the executable installer is actually ready.
+            return UpdateCheckResult::UpToDate { etag: None, reset_epoch };
+        }
         UpdateCheckResult::UpdateAvailable(ReleaseInfo {
             version: detected_version,
             title,

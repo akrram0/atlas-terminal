@@ -392,7 +392,11 @@ impl AtlasView {
                             .text_color(rgb(0xFFFFFF))
                             .child("Retry Download")
                             .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                                view.start_download_update(cx);
+                                if view.available_update.as_ref().and_then(|u| u.installer_url.as_ref()).is_none() {
+                                    view.check_updates_manual(cx);
+                                } else {
+                                    view.start_download_update(cx);
+                                }
                             })),
                     );
 

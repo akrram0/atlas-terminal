@@ -1425,11 +1425,8 @@ impl AtlasView {
         let installer_url = match info.installer_url.as_deref() {
             Some(u) => u.to_string(),
             None => {
-                self.update_download_state = UpdateDownloadState::Failed {
-                    version: info.version.clone(),
-                    error: "No installer asset found in release".to_string(),
-                };
-                cx.notify();
+                // Installer asset may have finished uploading since last check; trigger fresh check
+                self.trigger_update_check(true, cx);
                 return;
             }
         };
