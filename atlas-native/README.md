@@ -1,6 +1,15 @@
-# Atlas Native — High-Performance GPU Terminal Engine
+<p align="center">
+  <img src="../assets/app-icon.png" alt="Atlas Terminal Logo" width="100" height="100">
+</p>
 
-The core native implementation of Atlas Terminal. **Zero webview, zero CSS, zero HTML.** Everything — titlebar, tab pills, split panes, terminal cell grid, cursor gliding, and dialogs — is rendered directly on DirectX via GPUI.
+<h1 align="center">Atlas Native</h1>
+
+<p align="center">
+  <strong>The high-performance GPU terminal engine powering Atlas Terminal on Windows.</strong>
+</p>
+<p align="center">
+  <em>DirectX via GPUI · 240Hz Adaptive Motion · Zero Webview / Electron · SGR Mouse Reporting</em>
+</p>
 
 <p align="center">
   <img src="../assets/screenshots/atlas-light-fastfetch.png" alt="Atlas Terminal - Light / Paper Theme" width="49%">
