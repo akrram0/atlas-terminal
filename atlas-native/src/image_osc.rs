@@ -260,14 +260,7 @@ impl Osc1337Scanner {
 
 /// Parse parameter key=value list from OSC 1337 File=...
 pub fn parse_params(params_str: &str) -> ImageParams {
-    let mut params = ImageParams {
-        name: None,
-        size: None,
-        inline: false,
-        width: None,
-        height: None,
-        preserve_aspect_ratio: true, // Default in iTerm2 is 1 (preserve)
-    };
+    let mut params = ImageParams::default();
 
     for pair in params_str.split(';') {
         let pair = pair.trim();

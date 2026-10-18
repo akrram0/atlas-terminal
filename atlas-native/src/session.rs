@@ -355,16 +355,10 @@ impl Session {
                     // Advance cursor below the image so that shell prompt, command output,
                     // and scrollback wrap naturally underneath the image, matching iTerm2 behavior.
                     if !decoded.params.do_not_move_cursor {
-                        let mut advance_bytes = Vec::with_capacity(img_rows + 16);
+                        let mut advance_bytes = Vec::with_capacity(img_rows);
                         for _ in 0..img_rows {
                             advance_bytes.push(b'\n');
                         }
-                        // Advance column to cursor_col + img_cols so Device Status Report
-                        // CPR queries (\e[6n) report the true image dimensions to fastfetch.
-                        let target_col = (cursor_col + img_cols).min(self.cols.saturating_sub(1));
-                        let col_seq = format!("\x1b[{}G", target_col + 1);
-                        advance_bytes.extend_from_slice(col_seq.as_bytes());
-
                         self.parser.advance(&mut self.term, &advance_bytes);
                     }
                 }
