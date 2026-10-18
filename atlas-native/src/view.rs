@@ -2074,7 +2074,7 @@ impl Render for AtlasView {
             } else {
                 button_theme.chrome_fg
             };
-            let mut btn = div()
+            let btn = div()
                 .id(ElementId::named_usize("window-control", index))
                 .w(px(46.0))
                 .h(relative(1.0))

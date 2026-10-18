@@ -57,6 +57,11 @@ struct Row {
     runs: Vec<Run>,
 }
 
+impl TerminalElement {
+    pub const PAD_X: f32 = 10.0;
+    pub const PAD_Y: f32 = 8.0;
+}
+
 impl IntoElement for TerminalElement {
     type Element = Self;
 
@@ -90,9 +95,6 @@ impl Element for TerminalElement {
         style.flex_grow = 1.0;
         (window.request_layout(style, [], cx), ())
     }
-
-    pub const PAD_X: f32 = 10.0;
-    pub const PAD_Y: f32 = 8.0;
 
     fn prepaint(
         &mut self,
