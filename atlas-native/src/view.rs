@@ -2193,7 +2193,11 @@ impl Render for AtlasView {
                     .min_h(px(0.0))
                     .opacity(pane.pane_expansion)
                     .overflow_hidden()
-                    .bg(active_bg);
+                    .bg(if tab.panes.len() > 1 && !is_focused_pane {
+                        Rgba { a: 0.05, ..theme.chrome_fg }
+                    } else {
+                        rgba(0x00000000)
+                    });
                 if tab.panes.len() > 1 {
                     cell = cell
                         .border_1()
@@ -2507,6 +2511,7 @@ impl Render for AtlasView {
                     cell = cell.child(TerminalElement {
                         session: pane.session.clone(),
                         theme: theme.clone(),
+                        active_bg,
                         font: self.font.clone(),
                         font_size: self.font_size,
                         line_height: self.line_height,

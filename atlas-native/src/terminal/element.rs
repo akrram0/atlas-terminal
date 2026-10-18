@@ -23,6 +23,7 @@ use super::procedural::{CharClass, char_class, procedural_cell};
 pub struct TerminalElement {
     pub session: Rc<RefCell<Session>>,
     pub theme: Theme,
+    pub active_bg: Rgba,
     pub font: Font,
     pub font_size: f32,
     pub line_height: f32,
@@ -299,9 +300,10 @@ impl Element for TerminalElement {
             // highlight strips (prompt rows) paint as a single seamless rectangle.
             let mut col = 0usize;
             let mut span_start = 0usize;
-            let mut span_bg = default_bg;
+            let active_bg = self.active_bg;
+            let mut span_bg = active_bg;
             let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
-                if span_bg != default_bg && col > span_start {
+                if span_bg != default_bg && span_bg != active_bg && col > span_start {
                     let quad = fill(
                         Bounds::from_corners(
                             point(px(x(span_start)), px(y0)),
