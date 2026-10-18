@@ -749,6 +749,12 @@ fn main() {
         }
         let aumid: Vec<u16> = "Atlas.Terminal\0".encode_utf16().collect();
         let _ = SetCurrentProcessExplicitAppUserModelID(aumid.as_ptr());
+
+        #[link(name = "winmm")]
+        unsafe extern "system" {
+            fn timeBeginPeriod(uPeriod: u32) -> u32;
+        }
+        let _ = timeBeginPeriod(1);
     }
 
     init_user_data();

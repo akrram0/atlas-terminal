@@ -29,6 +29,7 @@ pub fn stepper(
     let fg = if dark { rgb(0xE2E8F0) } else { rgb(0x1E293B) };
     let btn_bg = if dark { rgba(0xFFFFFF0D) } else { rgba(0x00000008) };
     let border_c = if dark { rgba(0xFFFFFF18) } else { rgba(0x00000014) };
+    let active_press_bg = if dark { rgba(0xFFFFFF22) } else { rgba(0x0000001A) };
     div()
         .flex()
         .flex_row()
@@ -47,6 +48,7 @@ pub fn stepper(
                 .border_1()
                 .border_color(border_c)
                 .hover(move |s| s.bg(hover_bg))
+                .active(move |s| s.bg(active_press_bg).opacity(0.82))
                 .child(icons::icon(icons::MINUS).size(px(10.0)).text_color(fg))
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                     on_dec(view, cx);
@@ -82,6 +84,7 @@ pub fn stepper(
                 .border_1()
                 .border_color(border_c)
                 .hover(move |s| s.bg(hover_bg))
+                .active(move |s| s.bg(active_press_bg).opacity(0.82))
                 .child(icons::icon(icons::PLUS).size(px(10.0)).text_color(fg))
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                     on_inc(view, cx);
@@ -121,6 +124,7 @@ pub fn toggle_pill(
         .border_color(if enabled { active_border } else { idle_border })
         .bg(if enabled { active_bg } else { idle_bg })
         .hover(move |s| s.bg(hover_bg))
+        .active(move |s| s.opacity(0.82))
         .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
             on_toggle(view, cx);
         }));
@@ -149,6 +153,16 @@ pub fn pill_button(
 ) -> AnyElement {
     let dark = is_dark(theme);
     let hover_bg = theme.card_hover;
+    let active_press_bg = if active {
+        Rgba {
+            a: 0.35,
+            ..theme.accent
+        }
+    } else if dark {
+        rgba(0xFFFFFF1C)
+    } else {
+        rgba(0x00000016)
+    };
     let (bg, border_color, fg) = if active {
         (
             Rgba {
@@ -187,6 +201,7 @@ pub fn pill_button(
         .font_weight(if active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
         .text_color(fg)
         .hover(move |style| style.bg(if active { bg } else { hover_bg }))
+        .active(move |style| style.bg(active_press_bg).opacity(0.82))
         .child(label)
         .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
             on_click(view, cx);

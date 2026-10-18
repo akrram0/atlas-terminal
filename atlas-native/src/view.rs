@@ -278,9 +278,10 @@ impl AtlasView {
         // auto-hiding scrollbar transitions, settings kinetic scroll, and tab/pane collapses.
         let motion_ticker = cx.spawn(async move |this, cx| {
             let mut last_tick = std::time::Instant::now();
+            let mut next_sleep_ms = 4u64;
             loop {
                 cx.background_executor()
-                    .timer(std::time::Duration::from_millis(16))
+                    .timer(std::time::Duration::from_millis(next_sleep_ms))
                     .await;
                 let now = std::time::Instant::now();
                 let dt = (now - last_tick).as_secs_f32().min(0.05);
@@ -288,6 +289,7 @@ impl AtlasView {
 
                 let alive = this.update(cx, |view, cx| {
                     let mut needs_paint = false;
+                    let mut active_motion = false;
 
                     // 1. Organic cursor breathing (soft sinusoidal alpha when idle)
                     // Pauses when settings or modal overlays are open to prevent wasted redraws
@@ -308,6 +310,7 @@ impl AtlasView {
 
                     // 2. Theme crossfade interpolation (zero-flash smooth transition)
                     if let Some((ref from, ref to, ref mut t)) = view.theme_transition {
+                        active_motion = true;
                         *t = (*t + dt * 7.0).min(1.0);
                         view.theme = Theme::interpolate(from, to, EASE_OUT.eval(*t));
                         needs_paint = true;
@@ -336,6 +339,7 @@ impl AtlasView {
                         let target = view.palette_index as f32;
                         let diff = target - view.palette_anim_index;
                         if diff.abs() > 0.005 {
+                            active_motion = true;
                             let factor = (1.0 - (-28.0 * dt).exp()).clamp(0.0, 1.0);
                             view.palette_anim_index += diff * factor;
                             needs_paint = true;
@@ -347,11 +351,13 @@ impl AtlasView {
                     // 4. Floating auto-hiding scrollbar fade
                     let scroll_idle = view.last_scroll_time.elapsed().as_millis();
                     if scroll_idle < 650 {
+                        active_motion = true;
                         if view.scrollbar_opacity < 1.0 {
                             view.scrollbar_opacity = (view.scrollbar_opacity + dt * 10.0).min(1.0);
                             needs_paint = true;
                         }
                     } else if view.scrollbar_opacity > 0.0 {
+                        active_motion = true;
                         view.scrollbar_opacity = (view.scrollbar_opacity - dt * 3.5).max(0.0);
                         needs_paint = true;
                     }
@@ -360,6 +366,7 @@ impl AtlasView {
                     let mut tabs_to_remove = Vec::new();
                     for (i, tab) in view.tabs.iter_mut().enumerate() {
                         if tab.closing {
+                            active_motion = true;
                             tab.close_progress = (tab.close_progress + dt * 8.0).min(1.0);
                             needs_paint = true;
                             if tab.close_progress >= 1.0 {
@@ -386,6 +393,7 @@ impl AtlasView {
                                 let d_col = tgt_col - cur_col;
                                 let d_row = tgt_row - cur_row;
                                 if d_col.abs() > 0.01 || d_row.abs() > 0.01 {
+                                    active_motion = true;
                                     // Snappy Apple spring deceleration (~70ms)
                                     let factor = (1.0 - (-28.0 * dt).exp()).clamp(0.0, 1.0);
                                     let next_col = if d_col.abs() < 0.03 {
@@ -405,12 +413,14 @@ impl AtlasView {
                                 }
                             }
                             if pane.closing {
+                                active_motion = true;
                                 pane.pane_expansion = (pane.pane_expansion - dt * 10.0).max(0.0);
                                 needs_paint = true;
                                 if pane.pane_expansion <= 0.0 {
                                     panes_to_remove.push(p_ix);
                                 }
                             } else if pane.pane_expansion < 1.0 {
+                                active_motion = true;
                                 pane.pane_expansion = (pane.pane_expansion + dt * 10.0).min(1.0);
                                 needs_paint = true;
                             }
@@ -432,9 +442,10 @@ impl AtlasView {
                     // 7. Terminal smooth kinetic scrolling (unified into ticker)
                     if let Some((session, pos, target)) = view.scroll_anim.clone() {
                         view.last_scroll_time = std::time::Instant::now();
+                        active_motion = true;
                         let diff = target - pos;
-                        let factor = (1.0 - (-24.0 * dt).exp()).clamp(0.0, 1.0);
-                        let next = if diff.abs() < 0.04 {
+                        let factor = (1.0 - (-18.0 * dt).exp()).clamp(0.0, 1.0);
+                        let next = if diff.abs() < 0.02 {
                             target
                         } else {
                             pos + diff * factor
@@ -447,7 +458,7 @@ impl AtlasView {
                         };
                         let mut guard = session.borrow_mut();
                         let current = guard.term.renderable_content().display_offset as i32;
-                        let target_int = next.floor() as i32;
+                        let target_int = next.ceil() as i32;
                         let delta = target_int - current;
                         if delta != 0 {
                             guard.term.scroll_display(Scroll::Delta(delta));
@@ -462,8 +473,9 @@ impl AtlasView {
                             view.settings_scroll_target = max_y;
                         }
                         let diff = view.settings_scroll_target - view.settings_scroll_pos;
-                        if diff.abs() > 0.5 {
-                            let factor = (1.0 - (-24.0 * dt).exp()).clamp(0.0, 1.0);
+                        if diff.abs() > 0.4 {
+                            active_motion = true;
+                            let factor = (1.0 - (-18.0 * dt).exp()).clamp(0.0, 1.0);
                             view.settings_scroll_pos += diff * factor;
                             view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(-view.settings_scroll_pos)));
                             needs_paint = true;
@@ -477,9 +489,20 @@ impl AtlasView {
                     if needs_paint {
                         cx.notify();
                     }
+
+                    (active_motion, should_breathe)
                 });
-                if alive.is_err() {
-                    break;
+                match alive {
+                    Ok((active_motion, should_breathe)) => {
+                        next_sleep_ms = if active_motion {
+                            4
+                        } else if should_breathe {
+                            16
+                        } else {
+                            33
+                        };
+                    }
+                    Err(_) => break,
                 }
             }
         });
@@ -884,7 +907,9 @@ impl AtlasView {
         if lines == 0.0 {
             return;
         }
-        self.last_scroll_time = std::time::Instant::now();
+        let now = std::time::Instant::now();
+        let elapsed = now.duration_since(self.last_scroll_time).as_millis();
+        self.last_scroll_time = now;
         self.scrollbar_opacity = 1.0;
         let Some(pane) = self.active_pane() else {
             return;
@@ -893,16 +918,25 @@ impl AtlasView {
         let current = session.borrow().term.renderable_content().display_offset as f32;
         let max = session.borrow().term.history_size() as f32;
 
+        let boost = if elapsed < 45 {
+            1.6
+        } else if elapsed < 80 {
+            1.25
+        } else {
+            1.0
+        };
+        let delta = lines * boost;
+
         let same_pane = match &self.scroll_anim {
             Some((bound, _, _)) => Rc::ptr_eq(bound, &session),
             None => false,
         };
         if same_pane {
             if let Some((_, _, target)) = self.scroll_anim.as_mut() {
-                *target = (*target + lines).clamp(0.0, max);
+                *target = (*target + delta).clamp(0.0, max);
             }
         } else {
-            self.scroll_anim = Some((session, current, (current + lines).clamp(0.0, max)));
+            self.scroll_anim = Some((session, current, (current + delta).clamp(0.0, max)));
         }
         cx.notify();
     }
@@ -1934,6 +1968,7 @@ impl Render for AtlasView {
             if !tab.closing {
                 pill = pill
                     .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
+                    .active(move |style| style.opacity(0.82))
                     .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
                         if !*hovered && view.hover_tab == Some(ix) {
                             view.hover_tab = None;
@@ -1989,6 +2024,7 @@ impl Render for AtlasView {
                         .justify_center()
                         .rounded(px(4.0))
                         .hover(move |style| style.bg(tb.card_hover))
+                        .active(move |style| style.opacity(0.75))
                         .child(
                             icons::icon(icons::CLOSE)
                                 .size(px(10.0))
@@ -2054,6 +2090,7 @@ impl Render for AtlasView {
                         .justify_center()
                         .rounded(px(4.0))
                         .hover(move |style| style.bg(tb.card_hover))
+                        .active(move |style| style.opacity(0.75))
                         .child(
                             icons::icon(icons::CLOSE)
                                 .size(px(10.0))
@@ -2086,6 +2123,7 @@ impl Render for AtlasView {
                 .justify_center()
                 .rounded(px(6.0))
                 .hover(move |style| style.bg(plus_hover))
+                .active(move |style| style.opacity(0.78))
                 .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
                     set_hover_mark(view, HOVER_MARK_NEW_TAB, *hovered, cx);
                 }))
@@ -2138,7 +2176,8 @@ impl Render for AtlasView {
                 .border_1()
                 .border_color(badge_border)
                 .text_color(badge_ink)
-                .hover(move |s| s.opacity(0.85));
+                .hover(move |s| s.opacity(0.85))
+                .active(move |s| s.opacity(0.75));
 
             if show_dot {
                 badge = badge.child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(badge_ink));
@@ -2180,6 +2219,7 @@ impl Render for AtlasView {
                     .justify_center()
                     .rounded(px(6.0))
                     .hover(move |s| s.bg(top_btn_hover))
+                    .active(move |s| s.opacity(0.78))
                     .child(icons::icon(icons::REFRESH).size(px(15.0)).text_color(tb.chrome_fg))
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                         view.toggle_update_panel(cx);
@@ -2197,6 +2237,7 @@ impl Render for AtlasView {
                 .justify_center()
                 .rounded(px(6.0))
                 .hover(move |s| s.bg(top_btn_hover))
+                .active(move |s| s.opacity(0.78))
                 .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(tb.chrome_fg))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = !view.settings_open;
@@ -2254,6 +2295,7 @@ impl Render for AtlasView {
                 .items_center()
                 .justify_center()
                 .hover(move |style| style.bg(hover_bg))
+                .active(move |style| style.opacity(0.80))
                 .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
                     set_hover_mark(view, hover_id, *hovered, cx);
                 }))
@@ -2663,7 +2705,7 @@ impl Render for AtlasView {
                     let cell_height = (self.font_size * self.line_height).round().max(1.0);
                     let subpixel_y = if let Some((bound, pos, _)) = &self.scroll_anim {
                         if Rc::ptr_eq(bound, &pane.session) {
-                            (pos - pos.floor()) * cell_height
+                            (pos - pos.ceil()) * cell_height
                         } else {
                             0.0
                         }

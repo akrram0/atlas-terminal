@@ -14,7 +14,7 @@ terminal grid itself are all drawn from Rust code on the GPU.
 
 Get the latest release for Windows (x64):
 
-* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.14.exe)**
+* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.15.exe)**
 * 🗜️ **[Download Portable (.zip)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
 * 🚀 **[All Releases & Changelog](https://github.com/akrram0/atlas-terminal/releases)**
 
