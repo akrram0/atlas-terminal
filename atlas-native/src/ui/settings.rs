@@ -100,16 +100,16 @@ impl AtlasView {
                 .into_any_element()
         };
 
-        // --- Left Sidebar (220px) ---
+        // --- Left Sidebar (150px) ---
         let nav_items = [
+            (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance", icons::SLIDERS),
             (SettingsTab::Shortcuts, "Shortcuts", icons::KEYBOARD),
-            (SettingsTab::General, "General", icons::TERMINAL),
         ];
 
         let mut sidebar = div()
             .id(ElementId::named_usize("settings-sidebar-scroll", 0))
-            .w(px(170.0))
+            .w(px(150.0))
             .flex_shrink_0()
             .h(relative(1.0))
             .min_h(px(0.0))
@@ -195,6 +195,7 @@ impl AtlasView {
             "Consolas",
             "Fira Code",
             "JetBrains Mono",
+            "Segoe UI",
         ];
         let mut font_family_row = div()
             .flex()
@@ -417,6 +418,68 @@ impl AtlasView {
                     .child(self.registry.preset(self.theme_id).description),
             );
 
+        let palette_swatch = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(row_label("Active colors"))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap(px(6.0))
+                    .items_center()
+                    .child(
+                        div()
+                            .w(px(24.0))
+                            .h(px(24.0))
+                            .rounded(px(5.0))
+                            .bg(theme.bg)
+                            .border_1()
+                            .border_color(theme.elevated_border),
+                    )
+                    .child(
+                        div()
+                            .w(px(24.0))
+                            .h(px(24.0))
+                            .rounded(px(5.0))
+                            .bg(theme.panel_bg)
+                            .border_1()
+                            .border_color(theme.elevated_border),
+                    )
+                    .child(
+                        div()
+                            .w(px(24.0))
+                            .h(px(24.0))
+                            .rounded(px(5.0))
+                            .bg(theme.elevated_bg)
+                            .border_1()
+                            .border_color(theme.elevated_border),
+                    )
+                    .child(
+                        div()
+                            .w(px(24.0))
+                            .h(px(24.0))
+                            .rounded(px(5.0))
+                            .bg(theme.accent),
+                    )
+                    .child(
+                        div()
+                            .w(px(24.0))
+                            .h(px(24.0))
+                            .rounded(px(5.0))
+                            .bg(theme.fg),
+                    )
+                    .child(
+                        div()
+                            .w(px(24.0))
+                            .h(px(24.0))
+                            .rounded(px(5.0))
+                            .bg(theme.chrome_fg),
+                    ),
+            );
+
         let cursor_row = div()
             .flex()
             .flex_row()
@@ -524,7 +587,8 @@ impl AtlasView {
                     .child(section("THEME & COLOR SCHEME"))
                     .child(mode_row)
                     .child(theme_row)
-                    .child(theme_desc_row),
+                    .child(theme_desc_row)
+                    .child(palette_swatch),
             )
             .child(
                 card()
@@ -548,29 +612,9 @@ impl AtlasView {
             );
 
         // --- Shortcuts Tab ---
-        let actions = [
-            ACTION_NEW_TAB,
-            ACTION_CLOSE_TAB,
-            ACTION_SPLIT_HORIZONTAL,
-            ACTION_SPLIT_VERTICAL,
-            ACTION_FOCUS_NEXT_PANE,
-            ACTION_FOCUS_PREV_PANE,
-            ACTION_NEXT_TAB,
-            ACTION_PREV_TAB,
-            ACTION_COPY,
-            ACTION_PASTE,
-            ACTION_PALETTE,
-            ACTION_FULLSCREEN,
-            ACTION_CLEAR_SCROLLBACK,
-            ACTION_OPEN_SETTINGS,
-            ACTION_ZOOM_IN,
-            ACTION_ZOOM_OUT,
-        ];
-
-        let mut shortcuts_list = card().child(section("KEYBOARD SHORTCUTS"));
         let def_map = default_shortcuts();
 
-        for (idx, &action) in actions.iter().enumerate() {
+        let render_shortcut_row = |idx: usize, action: &'static str| -> AnyElement {
             let current_chord = self.get_shortcut(action);
             let default_chord = def_map.get(action).cloned().unwrap_or_default();
             let is_recording = self.recording_shortcut.as_deref() == Some(action);
@@ -619,7 +663,7 @@ impl AtlasView {
             row = row.child(left_col);
 
             let keycap_text = if is_recording {
-                "Press key comboâ€¦".to_string()
+                "Press key combo…".to_string()
             } else {
                 pretty_shortcut(&current_chord)
             };
@@ -693,8 +737,44 @@ impl AtlasView {
                 right_col = right_col.child(reset_btn);
             }
 
-            row = row.child(right_col);
-            shortcuts_list = shortcuts_list.child(row);
+            row.child(right_col).into_any_element()
+        };
+
+        let tab_window_actions = [
+            ACTION_NEW_TAB,
+            ACTION_CLOSE_TAB,
+            ACTION_NEXT_TAB,
+            ACTION_PREV_TAB,
+            ACTION_PALETTE,
+            ACTION_OPEN_SETTINGS,
+            ACTION_FULLSCREEN,
+        ];
+        let mut tab_window_card = card().child(section("TABS & WINDOWS"));
+        for (i, &act) in tab_window_actions.iter().enumerate() {
+            tab_window_card = tab_window_card.child(render_shortcut_row(i, act));
+        }
+
+        let split_pane_actions = [
+            ACTION_SPLIT_VERTICAL,
+            ACTION_SPLIT_HORIZONTAL,
+            ACTION_FOCUS_NEXT_PANE,
+            ACTION_FOCUS_PREV_PANE,
+        ];
+        let mut split_pane_card = card().child(section("SPLITS & PANES"));
+        for (i, &act) in split_pane_actions.iter().enumerate() {
+            split_pane_card = split_pane_card.child(render_shortcut_row(100 + i, act));
+        }
+
+        let terminal_selection_actions = [
+            ACTION_COPY,
+            ACTION_PASTE,
+            ACTION_CLEAR_SCROLLBACK,
+            ACTION_ZOOM_IN,
+            ACTION_ZOOM_OUT,
+        ];
+        let mut terminal_selection_card = card().child(section("TERMINAL & SELECTION"));
+        for (i, &act) in terminal_selection_actions.iter().enumerate() {
+            terminal_selection_card = terminal_selection_card.child(render_shortcut_row(200 + i, act));
         }
 
         let shortcuts_view = div()
@@ -727,13 +807,16 @@ impl AtlasView {
                         cx,
                     )),
             )
-            .child(shortcuts_list);
+            .child(tab_window_card)
+            .child(split_pane_card)
+            .child(terminal_selection_card);
 
         // --- General Tab ---
-        let shells = ["PowerShell", "Command Prompt", "WSL", "Git Bash"];
+        let shells = ["PowerShell", "WSL", "OpenCode", "Command Prompt", "Git Bash"];
         let mut default_shell_row = div()
             .flex()
             .flex_row()
+            .flex_wrap()
             .items_center()
             .gap(px(6.0))
             .child(row_label("Default shell"));
@@ -753,6 +836,25 @@ impl AtlasView {
                 cx,
             ));
         }
+
+        let shell_desc_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(div().w(px(110.0)).flex_shrink_0())
+            .child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(theme.faint_fg)
+                    .child(if self.app_settings.default_shell.eq_ignore_ascii_case("opencode") {
+                        "Launches the OpenCode AI agent CLI in the tab workspace"
+                    } else if self.app_settings.default_shell.eq_ignore_ascii_case("wsl") {
+                        "Launches the default Linux distribution via Windows Subsystem for Linux"
+                    } else {
+                        "Default shell profile spawned when opening new tabs and panes"
+                    }),
+            );
 
         let start_dirs = [("home", "User home (~)"), ("current", "Current directory")];
         let mut start_dir_row = div()
@@ -1051,6 +1153,109 @@ impl AtlasView {
                     ),
             );
 
+        let config_file = crate::user_data_dir().join("settings.json");
+        let config_dir = crate::user_data_dir();
+
+        let raw_config_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(theme.chrome_fg_active)
+                            .child("settings.json (User Configuration)"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.faint_fg)
+                            .child("Inspect or edit raw JSON settings directly in your preferred editor"),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap(px(6.0))
+                    .child(pill_button(
+                        "Open File".to_string(),
+                        380,
+                        false,
+                        theme,
+                        move |_view, _cx| {
+                            let path_str = config_file.to_string_lossy().to_string();
+                            let _ = std::process::Command::new("cmd")
+                                .args(["/c", "start", "", &path_str])
+                                .spawn();
+                        },
+                        cx,
+                    ))
+                    .child(pill_button(
+                        "Open Folder".to_string(),
+                        381,
+                        false,
+                        theme,
+                        move |_view, _cx| {
+                            let _ = std::process::Command::new("explorer")
+                                .arg(&config_dir)
+                                .spawn();
+                        },
+                        cx,
+                    )),
+            );
+
+        let reset_defaults_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(theme.chrome_fg_active)
+                            .child("Restore default configuration"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme.faint_fg)
+                            .child("Reset theme, shortcuts, fonts, and window styling to defaults"),
+                    ),
+            )
+            .child(pill_button(
+                "Reset All Settings".to_string(),
+                382,
+                false,
+                theme,
+                |view, cx| {
+                    view.app_settings = crate::config::AppSettingsFile::default();
+                    view.theme_mode = view.app_settings.theme_mode.clone();
+                    view.font_family = view.app_settings.font_family.clone();
+                    view.font_size = view.app_settings.font_size;
+                    view.line_height = view.app_settings.line_height;
+                    view.corner_radius = view.app_settings.corner_radius;
+                    view.opacity = view.app_settings.opacity;
+                    view.blur_enabled = view.app_settings.blur_enabled;
+                    view.cursor_style = None;
+                    view.cursor_blink = view.app_settings.cursor_blink;
+                    view.sync_and_save_settings();
+                    cx.notify();
+                },
+                cx,
+            ));
+
         let general_view = div()
             .flex()
             .flex_col()
@@ -1066,8 +1271,15 @@ impl AtlasView {
                 card()
                     .child(section("SHELL & ENVIRONMENT"))
                     .child(default_shell_row)
+                    .child(shell_desc_row)
                     .child(start_dir_row)
                     .child(scroll_row),
+            )
+            .child(
+                card()
+                    .child(section("USER FREEDOM & CONFIG"))
+                    .child(raw_config_row)
+                    .child(reset_defaults_row),
             )
             .child(
                 card()
@@ -1089,9 +1301,9 @@ impl AtlasView {
             .flex()
             .flex_col()
             .child(match self.settings_tab {
+                SettingsTab::General => general_view.into_any_element(),
                 SettingsTab::Appearance => appearance_view.into_any_element(),
                 SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
-                SettingsTab::General => general_view.into_any_element(),
             })
             .with_animation(
                 ElementId::named_usize("settings-tab-pane", self.settings_tab as usize),
@@ -1112,9 +1324,9 @@ impl AtlasView {
                     .font_weight(FontWeight::BOLD)
                     .text_color(theme.chrome_fg_active)
                     .child(match self.settings_tab {
+                        SettingsTab::General => "General",
                         SettingsTab::Appearance => "Appearance",
                         SettingsTab::Shortcuts => "Keyboard Shortcuts",
-                        SettingsTab::General => "General",
                     }),
             )
             .child(
@@ -1162,11 +1374,11 @@ impl AtlasView {
                 cx.stop_propagation();
             }))
             .p(px(16.0))
-            .pb(px(60.0))
+            .pb(px(80.0))
             .child(
                 div()
                     .w(relative(1.0))
-                    .max_w(px(720.0))
+                    .max_w(px(680.0))
                     .min_w(px(0.0))
                     .child(content_header)
                     .child(content_body),

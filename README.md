@@ -4,15 +4,20 @@ A native, GPU-accelerated terminal emulator for Windows — **no webview, no CSS
 no HTML**. Window chrome, tabs, split panes, the command palette and the
 terminal grid itself are all drawn from Rust code on the GPU.
 
+[![CI & Release Pipeline](https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml/badge.svg)](https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml)
+[![Latest Release](https://img.shields.io/github/v/release/akrram0/atlas-terminal?color=C05A28&logo=github)](https://github.com/akrram0/atlas-terminal/releases/latest)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
 ![Rust](https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white)
 ![gpui](https://img.shields.io/badge/UI-gpui%200.2-7C3AED)
 
 ## Download
 
-`atlas-native.exe` — rolling POC build, replaced on every push to `main`:
+Get the latest release for Windows (x64):
 
-**https://github.com/akrram0/atlas-terminal/releases/download/native-latest/atlas-native.exe**
+* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.7.exe)**
+* 🗜️ **[Download Portable (.zip)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
+* 🚀 **[All Releases & Changelog](https://github.com/akrram0/atlas-terminal/releases)**
+
 
 ## Stack
 

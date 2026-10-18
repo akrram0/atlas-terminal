@@ -120,9 +120,9 @@ pub fn pretty_shortcut(chord: &str) -> String {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsTab {
+    General,
     Appearance,
     Shortcuts,
-    General,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,6 +233,36 @@ fn default_interval_mins() -> u32 {
     60
 }
 
+impl Default for AppSettingsFile {
+    fn default() -> Self {
+        Self {
+            theme_mode: default_theme_mode(),
+            theme: default_theme_name(),
+            font_family: default_font_family(),
+            font_size: default_font_size(),
+            line_height: default_line_height(),
+            corner_radius: default_corner_radius(),
+            opacity: default_opacity(),
+            blur_enabled: default_blur(),
+            cursor_shape: default_cursor_shape(),
+            cursor_blink: default_cursor_blink(),
+            shortcuts: default_shortcuts(),
+            default_shell: default_shell(),
+            start_directory: default_start_dir(),
+            scrollback_lines: default_scrollback(),
+            confirm_close_process: default_confirm_close(),
+            copy_on_select: default_copy_on_select(),
+            startup_mode: default_startup_mode(),
+            auto_check_updates: default_auto_check(),
+            update_check_interval_mins: default_interval_mins(),
+            last_check_time: None,
+            etag: None,
+            last_seen_version: None,
+            skipped_version: None,
+        }
+    }
+}
+
 pub fn load_app_settings() -> AppSettingsFile {
     let settings_path = crate::user_data_dir().join("settings.json");
     if let Ok(content) = std::fs::read_to_string(&settings_path) {
@@ -240,31 +270,7 @@ pub fn load_app_settings() -> AppSettingsFile {
             return s;
         }
     }
-    AppSettingsFile {
-        theme_mode: default_theme_mode(),
-        theme: default_theme_name(),
-        font_family: default_font_family(),
-        font_size: default_font_size(),
-        line_height: default_line_height(),
-        corner_radius: default_corner_radius(),
-        opacity: default_opacity(),
-        blur_enabled: default_blur(),
-        cursor_shape: default_cursor_shape(),
-        cursor_blink: default_cursor_blink(),
-        shortcuts: default_shortcuts(),
-        default_shell: default_shell(),
-        start_directory: default_start_dir(),
-        scrollback_lines: default_scrollback(),
-        confirm_close_process: default_confirm_close(),
-        copy_on_select: default_copy_on_select(),
-        startup_mode: default_startup_mode(),
-        auto_check_updates: default_auto_check(),
-        update_check_interval_mins: default_interval_mins(),
-        last_check_time: None,
-        etag: None,
-        last_seen_version: None,
-        skipped_version: None,
-    }
+    AppSettingsFile::default()
 }
 
 pub fn save_app_settings(s: &AppSettingsFile) {

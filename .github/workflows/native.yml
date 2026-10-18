@@ -1,4 +1,4 @@
-name: atlas-native (GPUI POC)
+name: CI & Release Pipeline
 
 permissions:
   contents: write

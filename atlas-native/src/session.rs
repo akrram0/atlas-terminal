@@ -65,6 +65,8 @@ pub enum Profile {
     Wsl,
     /// Git for Windows bash.
     GitBash,
+    /// OpenCode CLI session.
+    OpenCode,
 }
 
 pub struct Session {
@@ -117,6 +119,7 @@ impl Session {
             Profile::Cmd => &["cmd.exe"],
             Profile::Wsl => &["wsl.exe"],
             Profile::GitBash => &["bash.exe", "C:\\Program Files\\Git\\bin\\bash.exe"],
+            Profile::OpenCode => &["opencode.exe", "opencode.cmd", "opencode", "cmd.exe"],
         };
         let mut child: Option<Box<dyn Child + Send + Sync>> = None;
         let mut shell_used = *candidates.last().unwrap_or(&"powershell.exe");
@@ -141,6 +144,12 @@ impl Session {
                 Profile::GitBash => {
                     cmd.arg("--login");
                     cmd.arg("-i");
+                }
+                Profile::OpenCode => {
+                    if *shell == "cmd.exe" {
+                        cmd.arg("/k");
+                        cmd.arg("opencode");
+                    }
                 }
             }
             // Terminal identity every CLI tool reads for colour, locale and

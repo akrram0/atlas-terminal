@@ -20,6 +20,7 @@ use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 pub enum Command {
     NewTab,
     NewTabWsl,
+    NewTabOpenCode,
     SplitPane,
     SplitPaneDown,
     MaximizePane,
@@ -37,9 +38,10 @@ pub enum Command {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 16] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 17] = [
     (Command::NewTab, icons::PLUS, "New tab", "Ctrl Shift N"),
-    (Command::NewTabWsl, icons::TERMINAL, "New Ubuntu (WSL) tab", ""),
+    (Command::NewTabWsl, icons::UBUNTU, "New Ubuntu (WSL) tab", ""),
+    (Command::NewTabOpenCode, icons::OPENCODE_MARK, "New OpenCode tab", ""),
     (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right", "Ctrl Shift D"),
     (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down", "Ctrl Shift E"),
     (
@@ -191,6 +193,10 @@ impl AtlasView {
                 self.new_tab(Profile::Wsl, cx);
                 window.focus(&self.focus);
             }
+            Command::NewTabOpenCode => {
+                self.new_tab(Profile::OpenCode, cx);
+                window.focus(&self.focus);
+            }
             Command::SplitPane => {
                 self.settings_open = false;
                 self.split_active(SplitAxis::Columns, cx);
@@ -236,6 +242,7 @@ impl AtlasView {
             }
             Command::OpenSettings => {
                 self.settings_open = true;
+                self.settings_tab = SettingsTab::General;
                 self.profile_menu = false;
                 self.settings_scroll_pos = 0.0;
                 self.settings_scroll_target = 0.0;

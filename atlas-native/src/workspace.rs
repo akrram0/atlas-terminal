@@ -230,7 +230,7 @@ pub fn session_icon(title: &str, profile: Profile) -> &'static str {
         icons::CURSOR_MARK
     } else if lower.contains("antigravity") || lower.contains("agy") {
         icons::ANTIGRAVITY_MARK
-    } else if lower.contains("opencode") || lower.contains("open-code") {
+    } else if matches!(profile, Profile::OpenCode) || lower.contains("opencode") || lower.contains("open-code") {
         icons::OPENCODE_MARK
     } else if matches!(profile, Profile::Wsl) || lower.contains("ubuntu") || lower.contains("wsl") {
         icons::UBUNTU
@@ -252,6 +252,7 @@ pub fn profile_title(profile: Profile) -> String {
         Profile::Cmd => "Command Prompt".to_string(),
         Profile::Wsl => "Ubuntu".to_string(),
         Profile::GitBash => "Git Bash".to_string(),
+        Profile::OpenCode => "OpenCode".to_string(),
     }
 }
 

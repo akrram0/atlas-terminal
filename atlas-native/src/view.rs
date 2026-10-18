@@ -214,7 +214,7 @@ impl AtlasView {
             update_panel_open: false,
             update_panel_closing: false,
             app_settings: app_settings.clone(),
-            settings_tab: SettingsTab::Appearance,
+            settings_tab: SettingsTab::General,
             recording_shortcut: None,
             font_family,
             line_height,
@@ -977,6 +977,7 @@ impl AtlasView {
             "cmd" | "command prompt" => Profile::Cmd,
             "wsl" | "ubuntu" => Profile::Wsl,
             "git bash" | "bash" => Profile::GitBash,
+            "opencode" => Profile::OpenCode,
             _ => Profile::PowerShell,
         }
     }
@@ -1351,6 +1352,7 @@ impl AtlasView {
             if chord == self.get_shortcut(ACTION_OPEN_SETTINGS) {
                 self.settings_open = !self.settings_open;
                 if self.settings_open {
+                    self.settings_tab = SettingsTab::General;
                     self.settings_scroll_pos = 0.0;
                     self.settings_scroll_target = 0.0;
                     self.settings_scroll_handle.set_offset(gpui::Point::default());
@@ -1895,6 +1897,7 @@ impl Render for AtlasView {
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = !view.settings_open;
                     if view.settings_open {
+                        view.settings_tab = SettingsTab::General;
                         view.settings_scroll_pos = 0.0;
                         view.settings_scroll_target = 0.0;
                         view.settings_scroll_handle.set_offset(gpui::Point::default());

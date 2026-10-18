@@ -87,10 +87,11 @@ pub fn caption_spacer(slot: usize) -> impl IntoElement {
 
 /// Profile picker behind the workspace pill, anchored under the top bar.
 pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
-    let entries: [(&'static str, Profile); 4] = [
+    let entries: [(&'static str, Profile); 5] = [
         ("PowerShell", Profile::PowerShell),
-        ("Command Prompt", Profile::Cmd),
         ("Ubuntu (WSL)", Profile::Wsl),
+        ("OpenCode", Profile::OpenCode),
+        ("Command Prompt", Profile::Cmd),
         ("Git Bash", Profile::GitBash),
     ];
     let item_hover = theme.card_hover;
