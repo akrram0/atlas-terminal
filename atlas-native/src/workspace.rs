@@ -98,8 +98,11 @@ pub fn title_path(raw: &str) -> Option<String> {
 /// directory — `~` while it sits in the home folder — so the folder mark and
 /// the words agree (never the raw shell name like "PowerShell").
 pub fn dir_label(pane: &Pane) -> Option<String> {
-    let raw = title_path(&pane.title)
-        .or_else(|| pane.cwd.as_ref().map(|dir| dir.display().to_string()))?;
+    let raw = if matches!(pane.profile, Profile::Wsl) {
+        title_path(&pane.title).or_else(|| pane.cwd.as_ref().map(|dir| dir.display().to_string()))
+    } else {
+        pane.cwd.as_ref().map(|dir| dir.display().to_string()).or_else(|| title_path(&pane.title))
+    }?;
     let trimmed = raw.trim_end_matches(['\\', '/']);
     if trimmed.is_empty() || trimmed == "~" {
         return Some("~".to_string());
@@ -142,7 +145,16 @@ pub fn git_cwd(pane: &Pane) -> Option<PathBuf> {
 }
 
 pub fn format_path_condensed(raw_path: &str) -> String {
-    let normalized = raw_path.replace('\\', "/");
+    let normalized = if let Some(rest) = raw_path.strip_prefix("/mnt/") {
+        let bytes = rest.as_bytes();
+        if bytes.len() >= 2 && bytes[1] == b'/' && bytes[0].is_ascii_alphabetic() {
+            format!("{}:/{}", (bytes[0] as char).to_ascii_uppercase(), &rest[2..])
+        } else {
+            raw_path.replace('\\', "/")
+        }
+    } else {
+        raw_path.replace('\\', "/")
+    };
     let trimmed = normalized.trim_end_matches('/');
     if trimmed.is_empty() {
         return "~".to_string();
@@ -154,6 +166,7 @@ pub fn format_path_condensed(raw_path: &str) -> String {
             "~".to_string()
         } else if trimmed.len() > home_trimmed.len()
             && trimmed[..home_trimmed.len()].eq_ignore_ascii_case(home_trimmed)
+            && trimmed.as_bytes().get(home_trimmed.len()) == Some(&b'/')
         {
             format!("~{}", &trimmed[home_trimmed.len()..])
         } else {
@@ -186,11 +199,14 @@ pub fn format_path_condensed(raw_path: &str) -> String {
 pub fn format_tab_title(pane: &Pane) -> String {
     let p_name = profile_title(pane.profile);
     let cmd = tab_name(&pane.title, "");
-    let path = pane
-        .cwd
-        .as_ref()
-        .map(|d| d.display().to_string())
-        .or_else(|| title_path(&pane.title));
+    let path = if matches!(pane.profile, Profile::Wsl) {
+        title_path(&pane.title).or_else(|| pane.cwd.as_ref().map(|d| d.display().to_string()))
+    } else {
+        pane.cwd
+            .as_ref()
+            .map(|d| d.display().to_string())
+            .or_else(|| title_path(&pane.title))
+    };
 
     if !cmd.is_empty() && cmd != p_name {
         return cmd;

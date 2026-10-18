@@ -127,6 +127,8 @@ pub enum SettingsTab {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettingsFile {
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: String,
     #[serde(default = "default_theme_name")]
     pub theme: String,
     #[serde(default = "default_font_family")]
@@ -176,8 +178,11 @@ pub struct AppSettingsFile {
     pub skipped_version: Option<String>,
 }
 
+fn default_theme_mode() -> String {
+    "auto".to_string()
+}
 fn default_theme_name() -> String {
-    "dark".to_string()
+    "atlas".to_string()
 }
 fn default_font_family() -> String {
     "Cascadia Code".to_string()

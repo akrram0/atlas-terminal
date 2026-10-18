@@ -56,6 +56,9 @@ pub struct AtlasView {
     pub(crate) font: Font,
     /// Active preset index into `registry` (settings pills + Ctrl+Shift+T).
     pub(crate) theme_id: usize,
+    /// Color mode: "auto" (system sync), "dark", "light"
+    pub(crate) theme_mode: String,
+    pub(crate) last_theme_check: std::time::Instant,
     /// Named theme presets: neutral matte charcoal (default) and Warm Paper.
     pub(crate) registry: ThemeRegistry,
     /// Settings page visibility (replaces the terminal sheet).
@@ -133,9 +136,11 @@ impl AtlasView {
         window.focus(&focus);
         let registry = ThemeRegistry::standard();
         let app_settings = load_app_settings();
-        let theme_id = (0..registry.len())
-            .find(|&i| registry.preset(i).name.eq_ignore_ascii_case(&app_settings.theme))
+        let theme_mode = app_settings.theme_mode.clone();
+        let theme_id = registry
+            .find_by_name_or_id(&app_settings.theme)
             .unwrap_or(0);
+        let (initial_theme, is_dark) = registry.resolve(theme_id, &theme_mode);
         let cursor_style = match app_settings.cursor_shape.as_str() {
             "block" => Some(CursorShape::Block),
             "bar" => Some(CursorShape::Beam),
@@ -162,10 +167,12 @@ impl AtlasView {
             next_id: 1,
             next_epoch: 1,
             focus,
-            theme: registry.preset(theme_id).theme.clone(),
+            theme: initial_theme,
             theme_transition: None,
             font,
             theme_id,
+            theme_mode,
+            last_theme_check: std::time::Instant::now(),
             registry,
             settings_open: false,
             profile_menu: false,
@@ -221,7 +228,7 @@ impl AtlasView {
             settings_scroll_pos: 0.0,
             settings_scroll_target: 0.0,
         };
-        crate::rounded_corners::set_dark_mode(theme_id == 0);
+        crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_blur(blur_enabled);
         let default_shell_prof = view.get_default_profile();
         view.new_tab_with_cwd(default_shell_prof, initial_dir, cx);
@@ -267,6 +274,20 @@ impl AtlasView {
                         if *t >= 1.0 {
                             view.theme = to.clone();
                             view.theme_transition = None;
+                        }
+                    }
+
+                    // Auto dark/light system sync check (checks Windows registry every 1.5 seconds)
+                    if view.theme_mode == "auto" && view.last_theme_check.elapsed().as_millis() > 1500 {
+                        view.last_theme_check = std::time::Instant::now();
+                        let (target, is_dark) = view.registry.resolve(view.theme_id, &view.theme_mode);
+                        if (view.theme.bg.r - target.bg.r).abs() > 0.05
+                            || (view.theme.bg.g - target.bg.g).abs() > 0.05
+                            || (view.theme.bg.b - target.bg.b).abs() > 0.05
+                        {
+                            view.theme_transition = Some((view.theme.clone(), target, 0.0));
+                            crate::rounded_corners::set_dark_mode(is_dark);
+                            needs_paint = true;
                         }
                     }
 
@@ -919,9 +940,18 @@ impl AtlasView {
     /// and the keyboard shortcut both land here).
     pub(crate) fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
         self.theme_id = index.min(self.registry.len() - 1);
-        let target = self.registry.preset(self.theme_id).theme.clone();
+        let (target, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
         self.theme_transition = Some((self.theme.clone(), target, 0.0));
-        crate::rounded_corners::set_dark_mode(self.theme_id == 0);
+        crate::rounded_corners::set_dark_mode(is_dark);
+        self.sync_and_save_settings();
+        cx.notify();
+    }
+
+    pub(crate) fn set_theme_mode(&mut self, mode: &str, cx: &mut Context<Self>) {
+        self.theme_mode = mode.to_string();
+        let (target, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
+        self.theme_transition = Some((self.theme.clone(), target, 0.0));
+        crate::rounded_corners::set_dark_mode(is_dark);
         self.sync_and_save_settings();
         cx.notify();
     }

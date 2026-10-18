@@ -316,30 +316,278 @@ fn from_rgb(rgb_: Rgb) -> Rgba {
     }
 }
 
-/// The named theme presets (settings pills + Ctrl+Shift+T cycle). Index 0 is
-/// the boot default.
+#[cfg(windows)]
+pub fn is_system_light_mode() -> bool {
+    use std::ptr::null_mut;
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn RegOpenKeyExW(
+            hkey: *mut core::ffi::c_void,
+            sub_key: *const u16,
+            options: u32,
+            sam_desired: u32,
+            result: *mut *mut core::ffi::c_void,
+        ) -> i32;
+        fn RegQueryValueExW(
+            hkey: *mut core::ffi::c_void,
+            value_name: *const u16,
+            reserved: *mut u32,
+            type_: *mut u32,
+            data: *mut u8,
+            cb_data: *mut u32,
+        ) -> i32;
+        fn RegCloseKey(hkey: *mut core::ffi::c_void) -> i32;
+    }
+    const HKEY_CURRENT_USER: *mut core::ffi::c_void = 0x80000001u32 as usize as *mut core::ffi::c_void;
+    const KEY_READ: u32 = 0x20019;
+
+    let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
+        .encode_utf16()
+        .collect();
+    let val_name: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
+
+    unsafe {
+        let mut key: *mut core::ffi::c_void = null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut key) == 0 {
+            let mut val: u32 = 0;
+            let mut size: u32 = std::mem::size_of::<u32>() as u32;
+            let mut val_type: u32 = 0;
+            let res = RegQueryValueExW(
+                key,
+                val_name.as_ptr(),
+                null_mut(),
+                &mut val_type,
+                &mut val as *mut u32 as *mut u8,
+                &mut size,
+            );
+            let _ = RegCloseKey(key);
+            if res == 0 {
+                return val != 0;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(not(windows))]
+pub fn is_system_light_mode() -> bool {
+    false
+}
+
+impl Theme {
+    pub fn tokyo_night_dark() -> Self {
+        Self {
+            bg: rgb(0x1A1B26),
+            fg: rgb(0xC0CAF5),
+            cursor: rgb(0x7AA2F7),
+            panel_bg: rgb(0x16161E),
+            elevated_bg: rgb(0x24283B),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x7982A9),
+            chrome_fg_active: rgb(0xC0CAF5),
+            faint_fg: rgb(0x565F89),
+            hairline: rgba(0xFFFFFF12),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x7AA2F726),
+            accent: rgb(0x7AA2F7),
+            good: rgb(0x9ECE6A),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x15161E), rgb(0xF7768E), rgb(0x9ECE6A), rgb(0xE0AF68),
+                rgb(0x7AA2F7), rgb(0xBB9AF7), rgb(0x7DCFFF), rgb(0xA9B1D6),
+                rgb(0x414868), rgb(0xF7768E), rgb(0x9ECE6A), rgb(0xE0AF68),
+                rgb(0x7AA2F7), rgb(0xBB9AF7), rgb(0x7DCFFF), rgb(0xC0CAF5),
+            ],
+        }
+    }
+
+    pub fn tokyo_night_light() -> Self {
+        Self {
+            bg: rgb(0xE1E2E7),
+            fg: rgb(0x3760BF),
+            cursor: rgb(0x2E7DE9),
+            panel_bg: rgb(0xD5D6DB),
+            elevated_bg: rgb(0xEBEDF2),
+            elevated_border: rgba(0x00000014),
+            chrome_fg: rgb(0x6172B0),
+            chrome_fg_active: rgb(0x3760BF),
+            faint_fg: rgb(0x8990B3),
+            hairline: rgba(0x00000014),
+            card_hover: rgba(0x0000000D),
+            card_active: rgba(0x2E7DE91E),
+            accent: rgb(0x2E7DE9),
+            good: rgb(0x587539),
+            sheet_border: rgba(0x00000014),
+            soft_bg: rgba(0x0000000F),
+            ansi: [
+                rgb(0x0F0F14), rgb(0x8C4351), rgb(0x485E30), rgb(0x8F5E15),
+                rgb(0x2E7DE9), rgb(0x7847BD), rgb(0x166775), rgb(0x4F5B66),
+                rgb(0x68707F), rgb(0xB15C6B), rgb(0x587539), rgb(0x9D6A1F),
+                rgb(0x3B8BF2), rgb(0x8C5ECF), rgb(0x217E8F), rgb(0xE1E2E7),
+            ],
+        }
+    }
+
+    pub fn catppuccin_dark() -> Self {
+        Self {
+            bg: rgb(0x24273A),
+            fg: rgb(0xCAD3F5),
+            cursor: rgb(0xF5A97F),
+            panel_bg: rgb(0x1E2030),
+            elevated_bg: rgb(0x363A4F),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x8087A2),
+            chrome_fg_active: rgb(0xCAD3F5),
+            faint_fg: rgb(0x5B6078),
+            hairline: rgba(0xFFFFFF12),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0xF5A97F26),
+            accent: rgb(0xF5A97F),
+            good: rgb(0xA6DA95),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x494D64), rgb(0xED8796), rgb(0xA6DA95), rgb(0xEED49F),
+                rgb(0x8AADF4), rgb(0xF5BDE6), rgb(0x8BD5CA), rgb(0xB8C0E0),
+                rgb(0x5B6078), rgb(0xED8796), rgb(0xA6DA95), rgb(0xEED49F),
+                rgb(0x8AADF4), rgb(0xF5BDE6), rgb(0x8BD5CA), rgb(0xCAD3F5),
+            ],
+        }
+    }
+
+    pub fn catppuccin_light() -> Self {
+        Self {
+            bg: rgb(0xEFF1F5),
+            fg: rgb(0x4C4F69),
+            cursor: rgb(0xEA76CB),
+            panel_bg: rgb(0xE6E9EF),
+            elevated_bg: rgb(0xDCE0E8),
+            elevated_border: rgba(0x00000014),
+            chrome_fg: rgb(0x7C7F93),
+            chrome_fg_active: rgb(0x4C4F69),
+            faint_fg: rgb(0x9CA0B0),
+            hairline: rgba(0x00000014),
+            card_hover: rgba(0x0000000D),
+            card_active: rgba(0xEA76CB1E),
+            accent: rgb(0xEA76CB),
+            good: rgb(0x40A02B),
+            sheet_border: rgba(0x00000014),
+            soft_bg: rgba(0x0000000F),
+            ansi: [
+                rgb(0x5C5F77), rgb(0xD20F39), rgb(0x40A02B), rgb(0xDF8E1D),
+                rgb(0x1E66F5), rgb(0xEA76CB), rgb(0x179299), rgb(0xACB0BE),
+                rgb(0x6C6F85), rgb(0xD20F39), rgb(0x40A02B), rgb(0xDF8E1D),
+                rgb(0x1E66F5), rgb(0xEA76CB), rgb(0x179299), rgb(0x4C4F69),
+            ],
+        }
+    }
+
+    pub fn nord_dark() -> Self {
+        Self {
+            bg: rgb(0x2E3440),
+            fg: rgb(0xECEFF4),
+            cursor: rgb(0x88C0D0),
+            panel_bg: rgb(0x242933),
+            elevated_bg: rgb(0x3B4252),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x9099AB),
+            chrome_fg_active: rgb(0xECEFF4),
+            faint_fg: rgb(0x4C566A),
+            hairline: rgba(0xFFFFFF12),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x88C0D026),
+            accent: rgb(0x88C0D0),
+            good: rgb(0xA3BE8C),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x3B4252), rgb(0xBF616A), rgb(0xA3BE8C), rgb(0xEBCB8B),
+                rgb(0x81A1C1), rgb(0xB48EAD), rgb(0x88C0D0), rgb(0xE5E9F0),
+                rgb(0x4C566A), rgb(0xBF616A), rgb(0xA3BE8C), rgb(0xEBCB8B),
+                rgb(0x81A1C1), rgb(0xB48EAD), rgb(0x8FBCBB), rgb(0xECEFF4),
+            ],
+        }
+    }
+
+    pub fn nord_light() -> Self {
+        Self {
+            bg: rgb(0xECEFF4),
+            fg: rgb(0x2E3440),
+            cursor: rgb(0x5E81AC),
+            panel_bg: rgb(0xE5E9F0),
+            elevated_bg: rgb(0xD8DEE9),
+            elevated_border: rgba(0x00000014),
+            chrome_fg: rgb(0x4C566A),
+            chrome_fg_active: rgb(0x2E3440),
+            faint_fg: rgb(0x7B88A1),
+            hairline: rgba(0x00000014),
+            card_hover: rgba(0x0000000D),
+            card_active: rgba(0x5E81AC1E),
+            accent: rgb(0x5E81AC),
+            good: rgb(0x608E46),
+            sheet_border: rgba(0x00000014),
+            soft_bg: rgba(0x0000000F),
+            ansi: [
+                rgb(0x2E3440), rgb(0x9E3B44), rgb(0x608E46), rgb(0x9F7C2C),
+                rgb(0x5E81AC), rgb(0x84557A), rgb(0x497F87), rgb(0x768297),
+                rgb(0x4C566A), rgb(0xB34852), rgb(0x72A355), rgb(0xB28C33),
+                rgb(0x6E93C0), rgb(0x98668E), rgb(0x55929B), rgb(0x2E3440),
+            ],
+        }
+    }
+}
+
+pub struct Preset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub dark: Theme,
+    pub light: Theme,
+}
+
+impl Preset {
+    /// Legacy theme reference for code expecting `preset.theme`.
+    pub fn theme(&self) -> &Theme {
+        &self.dark
+    }
+}
+
 pub struct ThemeRegistry {
     presets: Vec<Preset>,
 }
 
-pub struct Preset {
-    /// Label shown on the settings pill.
-    pub name: &'static str,
-    pub theme: Theme,
-}
-
 impl ThemeRegistry {
-    /// The shipped presets: Dark (matte charcoal, default), Paper (warm cream).
     pub fn standard() -> Self {
         Self {
             presets: vec![
                 Preset {
-                    name: "Dark",
-                    theme: Theme::dark(),
+                    id: "atlas",
+                    name: "Atlas Default",
+                    description: "Warm paper light mode & sleek matte dark mode with terracotta rust accents.",
+                    dark: Theme::dark(),
+                    light: Theme::cream(),
                 },
                 Preset {
-                    name: "Paper",
-                    theme: Theme::cream(),
+                    id: "tokyo_night",
+                    name: "Tokyo Night",
+                    description: "Modern neon palette inspired by the glowing lights of downtown Tokyo.",
+                    dark: Theme::tokyo_night_dark(),
+                    light: Theme::tokyo_night_light(),
+                },
+                Preset {
+                    id: "catppuccin",
+                    name: "Catppuccin",
+                    description: "Soothing pastel palette with gentle lavender and peach accents.",
+                    dark: Theme::catppuccin_dark(),
+                    light: Theme::catppuccin_light(),
+                },
+                Preset {
+                    id: "nord",
+                    name: "Nord",
+                    description: "Arctic, north-bluish palette engineered for optimal contrast and clean readability.",
+                    dark: Theme::nord_dark(),
+                    light: Theme::nord_light(),
                 },
             ],
         }
@@ -353,7 +601,33 @@ impl ThemeRegistry {
         &self.presets[index.min(self.presets.len() - 1)]
     }
 
-    /// Next preset in the cycle.
+    pub fn find_by_name_or_id(&self, key: &str) -> Option<usize> {
+        let key_lower = key.to_ascii_lowercase();
+        // Support legacy mappings: "dark" -> atlas, "paper" -> atlas
+        if key_lower == "dark" || key_lower == "paper" || key_lower == "cream" {
+            return Some(0);
+        }
+        self.presets.iter().position(|p| {
+            p.id.eq_ignore_ascii_case(key)
+                || p.name.eq_ignore_ascii_case(key)
+                || key_lower.contains(&p.id)
+        })
+    }
+
+    pub fn resolve(&self, preset_idx: usize, mode: &str) -> (Theme, bool) {
+        let preset = self.preset(preset_idx);
+        let is_light = match mode.to_ascii_lowercase().as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => is_system_light_mode(),
+        };
+        if is_light {
+            (preset.light.clone(), false)
+        } else {
+            (preset.dark.clone(), true)
+        }
+    }
+
     pub fn next(&self, index: usize) -> usize {
         (index + 1) % self.presets.len()
     }

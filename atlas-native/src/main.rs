@@ -161,6 +161,13 @@ pub(crate) mod rounded_corners {
     const SM_CXSIZEFRAME: i32 = 32;
     const SM_CXPADDEDBORDER: i32 = 92;
 
+    const WM_SETICON: u32 = 0x0080;
+    const ICON_SMALL: usize = 0;
+    const ICON_BIG: usize = 1;
+    const IMAGE_ICON: u32 = 1;
+    const LR_SHARED: u32 = 0x8000;
+    const LR_DEFAULTSIZE: u32 = 0x0040;
+
     // DWM window attributes and policies.
     const DWMWA_NCRENDERING_POLICY: u32 = 2;
     const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
@@ -226,6 +233,15 @@ pub(crate) mod rounded_corners {
             lparam: Lparam,
         ) -> Lresult;
         fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> Lresult;
+        fn SendMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> Lresult;
+        fn LoadImageW(
+            hinst: Hwnd,
+            name: *const u16,
+            type_: u32,
+            cx: i32,
+            cy: i32,
+            fu_load: u32,
+        ) -> Hwnd;
         fn SetWindowPos(
             hwnd: Hwnd,
             insert_after: Hwnd,
@@ -243,6 +259,11 @@ pub(crate) mod rounded_corners {
         fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
         fn GetForegroundWindow() -> Hwnd;
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetModuleHandleW(lp_module_name: *const u16) -> Hwnd;
     }
 
     #[link(name = "dwmapi")]
@@ -670,6 +691,18 @@ pub(crate) mod rounded_corners {
                             core::mem::size_of::<i32>() as u32,
                         );
 
+                        // 6b. Explicitly set window icon (big and small) from embedded resource #1
+                        let hmodule = GetModuleHandleW(std::ptr::null());
+                        let icon_res = 1usize as *const u16;
+                        let hicon_big = LoadImageW(hmodule, icon_res, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
+                        let hicon_small = LoadImageW(hmodule, icon_res, IMAGE_ICON, 16, 16, LR_SHARED);
+                        if !hicon_big.is_null() {
+                            let _ = SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big as isize);
+                        }
+                        if !hicon_small.is_null() {
+                            let _ = SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small as isize);
+                        }
+
                         // 7. Diagnostics: with the ring gone the client should
                         //    match the window size.
                         let mut client_rect = Rect::default();
@@ -708,6 +741,16 @@ mod rounded_corners {
 }
 
 fn main() {
+    #[cfg(windows)]
+    unsafe {
+        #[link(name = "shell32")]
+        unsafe extern "system" {
+            fn SetCurrentProcessExplicitAppUserModelID(AppID: *const u16) -> i32;
+        }
+        let aumid: Vec<u16> = "Atlas.Terminal\0".encode_utf16().collect();
+        let _ = SetCurrentProcessExplicitAppUserModelID(aumid.as_ptr());
+    }
+
     init_user_data();
     // Fresh log per launch. Release builds have no console
     // (windows_subsystem), so this file is how startup and panics stay visible.

@@ -34,7 +34,8 @@ impl AtlasView {
             Some(CursorShape::HollowBlock) => "hollow".to_string(),
             Some(CursorShape::Hidden) => "hidden".to_string(),
         };
-        self.app_settings.theme = self.registry.preset(self.theme_id).name.to_string();
+        self.app_settings.theme_mode = self.theme_mode.clone();
+        self.app_settings.theme = self.registry.preset(self.theme_id).id.to_string();
         self.app_settings.font_family = self.font_family.clone();
         self.app_settings.font_size = self.font_size;
         self.app_settings.line_height = self.line_height;
@@ -50,7 +51,8 @@ impl AtlasView {
         self.app_settings.last_seen_version = self.updater_settings.last_seen_version.clone();
         self.app_settings.skipped_version = self.updater_settings.skipped_version.clone();
 
-        crate::rounded_corners::set_dark_mode(self.theme_id == 0);
+        let (_, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
+        crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_blur(self.blur_enabled);
         save_app_settings(&self.app_settings);
     }
@@ -351,6 +353,38 @@ impl AtlasView {
                 cx,
             ));
 
+        let mode_row = div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap(px(6.0))
+            .child(row_label("Color mode"))
+            .child(pill_button(
+                "Auto (System)".to_string(),
+                118,
+                self.theme_mode == "auto",
+                theme,
+                |view, cx| view.set_theme_mode("auto", cx),
+                cx,
+            ))
+            .child(pill_button(
+                "Dark".to_string(),
+                119,
+                self.theme_mode == "dark",
+                theme,
+                |view, cx| view.set_theme_mode("dark", cx),
+                cx,
+            ))
+            .child(pill_button(
+                "Warm Light".to_string(),
+                120,
+                self.theme_mode == "light",
+                theme,
+                |view, cx| view.set_theme_mode("light", cx),
+                cx,
+            ));
+
         let mut theme_row = div()
             .flex()
             .flex_row()
@@ -362,13 +396,26 @@ impl AtlasView {
             let is_sel = self.theme_id == index;
             theme_row = theme_row.child(pill_button(
                 self.registry.preset(index).name.to_string(),
-                120 + index,
+                121 + index,
                 is_sel,
                 theme,
                 move |view, cx| view.set_theme(index, cx),
                 cx,
             ));
         }
+
+        let theme_desc_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(div().w(px(110.0)).flex_shrink_0())
+            .child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(theme.faint_fg)
+                    .child(self.registry.preset(self.theme_id).description),
+            );
 
         let cursor_row = div()
             .flex()
@@ -470,7 +517,14 @@ impl AtlasView {
                     .text_size(px(12.0))
                     .text_color(theme.faint_fg)
                     .mb(px(4.0))
-                    .child("Font typography, window geometry, backdrop blur, and color palette"),
+                    .child("Color theme, typography, window geometry, and terminal caret"),
+            )
+            .child(
+                card()
+                    .child(section("THEME & COLOR SCHEME"))
+                    .child(mode_row)
+                    .child(theme_row)
+                    .child(theme_desc_row),
             )
             .child(
                 card()
@@ -488,8 +542,7 @@ impl AtlasView {
             )
             .child(
                 card()
-                    .child(section("THEME & CURSOR"))
-                    .child(theme_row)
+                    .child(section("TERMINAL CARET"))
                     .child(cursor_row)
                     .child(cursor_blink_row),
             );
