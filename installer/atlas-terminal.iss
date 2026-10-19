@@ -24,7 +24,7 @@ AppUpdatesURL={#MyAppURL}/releases
 
 ; Per-user install: no administrator privileges / UAC prompt required
 PrivilegesRequired=lowest
-DefaultDirName={localappdata}\Programs\AtlasTerminal
+DefaultDirName={localappdata}\Programs\Atlas Terminal
 DefaultGroupName=Atlas Terminal
 DisableProgramGroupPage=yes
 

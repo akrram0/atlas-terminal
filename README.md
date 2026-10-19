@@ -241,7 +241,7 @@ Atlas Terminal compiles via GitHub Actions on `windows-latest`. To compile local
 ```powershell
 # Prerequisites: Rust stable toolchain with MSVC
 git clone https://github.com/akrram0/atlas-terminal.git
-cd atlas-terminal/atlas-native
+cd atlas-terminal
 cargo run --release
 ```
 

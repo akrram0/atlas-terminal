@@ -22,13 +22,51 @@ use gpui::{
 };
 
 pub(crate) fn user_data_dir() -> std::path::PathBuf {
-    if let Some(appdata) = std::env::var_os("APPDATA") {
-        std::path::PathBuf::from(appdata).join("atlas-terminal")
-    } else if let Some(userprofile) = std::env::var_os("USERPROFILE") {
-        std::path::PathBuf::from(userprofile).join("AppData").join("Roaming").join("atlas-terminal")
-    } else {
-        std::env::temp_dir().join("atlas-terminal")
+    // 1. Portable mode: if portable.txt or settings.json exists right next to the executable,
+    //    use the executable directory as the self-contained portable data root.
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            if exe_dir.join("portable.txt").exists() || exe_dir.join("settings.json").exists() {
+                return exe_dir.to_path_buf();
+            }
+        }
     }
+
+    // 2. Custom override via environment variable (e.g. ATLAS_CONFIG_DIR)
+    if let Some(custom) = std::env::var_os("ATLAS_CONFIG_DIR") {
+        return std::path::PathBuf::from(custom);
+    }
+
+    // 3. Modern standard: ~/.config/atlas (cross-platform, dotfiles friendly)
+    let modern_dir = if let Some(home) = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+    {
+        std::path::PathBuf::from(home).join(".config").join("atlas")
+    } else {
+        std::env::temp_dir().join(".config").join("atlas")
+    };
+
+    // 4. Backwards compatibility & automatic seamless migration from legacy %APPDATA%\atlas-terminal
+    let legacy_dir = std::env::var_os("APPDATA")
+        .map(|appdata| std::path::PathBuf::from(appdata).join("atlas-terminal"));
+
+    if !modern_dir.exists() {
+        if let Some(ref legacy) = legacy_dir {
+            if legacy.join("settings.json").exists() {
+                // Perform one-time migration to modern ~/.config/atlas
+                let _ = std::fs::create_dir_all(&modern_dir);
+                let _ = std::fs::copy(legacy.join("settings.json"), modern_dir.join("settings.json"));
+                let _ = std::fs::create_dir_all(modern_dir.join("sessions"));
+                if let Ok(entries) = std::fs::read_dir(legacy.join("sessions")) {
+                    for entry in entries.flatten() {
+                        let _ = std::fs::copy(entry.path(), modern_dir.join("sessions").join(entry.file_name()));
+                    }
+                }
+            }
+        }
+    }
+
+    modern_dir
 }
 
 pub(crate) fn init_user_data() {
@@ -93,7 +131,7 @@ pub(crate) fn log_line(msg: &str) {
         let _ = writeln!(f, "{msg}");
     }
 
-    // Also persist into %APPDATA%\atlas-terminal\logs\app.log
+    // Also persist into <user_data_dir>/logs/app.log
     let app_log = user_data_dir().join("logs").join("app.log");
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)

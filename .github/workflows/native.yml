@@ -3,6 +3,10 @@ name: CI & Release Pipeline
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main]
@@ -15,7 +19,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: atlas-native
+        working-directory: .
     steps:
       - uses: actions/checkout@v4
         with:
@@ -113,23 +117,18 @@ jobs:
             Get-Content build-output.log -Tail 150 | Out-String >> $env:GITHUB_STEP_SUMMARY
             exit $code
           }
-          "## atlas-native compiled (release)" >> $env:GITHUB_STEP_SUMMARY
+          "## atlas-terminal compiled (release)" >> $env:GITHUB_STEP_SUMMARY
 
-          # Locate built binary (workspace root target or subcrate target)
+          # Locate built binary in workspace target
           $builtTerm = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
-          if (-not (Test-Path $builtTerm)) {
-            $builtTerm = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-terminal.exe"
-          }
           if (-not (Test-Path $builtTerm)) {
             throw "Built binary not found at $builtTerm"
           }
 
-          # Mirror to both filenames across root target and subcrate target for compatibility
+          # Mirror to both filenames for compatibility
           $destPaths = @(
             (Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"),
-            (Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"),
-            (Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-terminal.exe"),
-            (Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe")
+            (Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe")
           )
           foreach ($dst in $destPaths) {
             $dir = Split-Path $dst
@@ -147,10 +146,9 @@ jobs:
         # or died (PANIC in the log). Results are mirrored as public annotations.
         continue-on-error: true
         run: |
-          $candidate1 = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"
-          $candidate2 = Join-Path $env:GITHUB_WORKSPACE "atlas-native\target\release\atlas-native.exe"
-          $candidate3 = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
-          $exe = if (Test-Path $candidate1) { $candidate1 } elseif (Test-Path $candidate3) { $candidate3 } else { $candidate2 }
+          $candidate1 = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
+          $candidate2 = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-native.exe"
+          $exe = if (Test-Path $candidate1) { $candidate1 } else { $candidate2 }
           $log = Join-Path $env:TEMP "atlas-native-debug.log"
           Remove-Item $log -ErrorAction SilentlyContinue
           $proc = Start-Process -FilePath $exe -PassThru
@@ -198,8 +196,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 1. Determine base version from atlas-native/Cargo.toml
-          $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
+          # 1. Determine base version from Cargo.toml
+          $cargoFile = Join-Path $env:GITHUB_WORKSPACE "Cargo.toml"
           $version = "0.1.4"
           if (Test-Path $cargoFile) {
             $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
@@ -283,18 +281,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: atlas-native-build-log
-          path: atlas-native/build-output.log
+          name: atlas-terminal-build-log
+          path: build-output.log
           if-no-files-found: ignore
 
       - name: Upload binaries
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: atlas-native-binaries
+          name: atlas-terminal-binaries
           path: |
-            target/release/atlas-native.exe
             target/release/atlas-terminal.exe
+            target/release/atlas-native.exe
           if-no-files-found: error
 
       - name: Upload distribution packages
@@ -330,7 +328,7 @@ jobs:
         run: |
           $version = $env:APP_VERSION
           if (-not $version) {
-            $cargoFile = Join-Path $env:GITHUB_WORKSPACE "atlas-native\Cargo.toml"
+            $cargoFile = Join-Path $env:GITHUB_WORKSPACE "Cargo.toml"
             $version = "0.1.4"
             if (Test-Path $cargoFile) {
               $match = Select-String -Path $cargoFile -Pattern '^version\s*=\s*"([^"]+)"'
@@ -349,10 +347,10 @@ jobs:
 
           $files = @()
           Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $files += $_.FullName }
-          $releaseExe = if (Test-Path "$env:GITHUB_WORKSPACE\target\release\atlas-native.exe") {
-            "$env:GITHUB_WORKSPACE\target\release\atlas-native.exe"
-          } else {
+          $releaseExe = if (Test-Path "$env:GITHUB_WORKSPACE\target\release\atlas-terminal.exe") {
             "$env:GITHUB_WORKSPACE\target\release\atlas-terminal.exe"
+          } else {
+            "$env:GITHUB_WORKSPACE\target\release\atlas-native.exe"
           }
           if (Test-Path $releaseExe) {
             $files += $releaseExe
