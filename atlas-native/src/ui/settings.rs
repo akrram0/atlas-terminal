@@ -15,7 +15,9 @@ use crate::config::{
     ACTION_COPY, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN,
     ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE,
     ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL, ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN,
-    ACTION_ZOOM_OUT,
+    ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP,
+    ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_TO_TOP, ACTION_SCROLL_TO_BOTTOM,
+    ACTION_OPEN_URL_PICKER, ACTION_TOGGLE_THEME, ACTION_TOGGLE_MAXIMIZE,
 };
 use crate::icons;
 use crate::theme::Theme;
@@ -754,6 +756,69 @@ impl AtlasView {
             row.child(right_col).into_any_element()
         };
 
+        let render_builtin_row = |idx: usize, label: &'static str, keycap_text: &'static str| -> AnyElement {
+            let keycap_bg = if is_dark {
+                rgba(0xFFFFFF0F)
+            } else {
+                rgba(0x00000008)
+            };
+            let keycap_border = if is_dark {
+                rgba(0xFFFFFF18)
+            } else {
+                rgba(0x00000012)
+            };
+            let keycap_fg = if is_dark {
+                rgb(0x94A3B8)
+            } else {
+                rgb(0x64748B)
+            };
+
+            div()
+                .id(ElementId::named_usize("shortcut-builtin-row", idx))
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .py(px(4.0))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.0))
+                        .child(
+                            div()
+                                .text_size(px(13.0))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(sc_label)
+                                .child(label),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(sc_desc)
+                                .child("Built-in native shortcut"),
+                        ),
+                )
+                .child(
+                    div()
+                        .h(px(26.0))
+                        .px(px(10.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(5.0))
+                        .bg(keycap_bg)
+                        .border_1()
+                        .border_color(keycap_border)
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(keycap_fg)
+                        .child(keycap_text),
+                )
+                .into_any_element()
+        };
+
+        // 1. Tabs & Navigation
         let tab_window_actions = [
             ACTION_NEW_TAB,
             ACTION_CLOSE_TAB,
@@ -762,34 +827,78 @@ impl AtlasView {
             ACTION_PALETTE,
             ACTION_OPEN_SETTINGS,
             ACTION_FULLSCREEN,
+            ACTION_TOGGLE_THEME,
         ];
-        let mut tab_window_card = card().child(section("TABS & WINDOWS"));
+        let mut tab_window_card = card().child(section("TABS & NAVIGATION"));
         for (i, &act) in tab_window_actions.iter().enumerate() {
             tab_window_card = tab_window_card.child(render_shortcut_row(i, act));
         }
+        tab_window_card = tab_window_card
+            .child(render_builtin_row(10, "Jump to Tab 1 – 8", "Ctrl + 1 … 8"))
+            .child(render_builtin_row(11, "Jump to Last Tab", "Ctrl + 9"))
+            .child(render_builtin_row(12, "Cycle Tabs (Alternative)", "Ctrl + PageUp / PageDn"));
 
+        // 2. Splits & Panes
         let split_pane_actions = [
-            ACTION_SPLIT_VERTICAL,
             ACTION_SPLIT_HORIZONTAL,
+            ACTION_SPLIT_VERTICAL,
             ACTION_FOCUS_NEXT_PANE,
             ACTION_FOCUS_PREV_PANE,
+            ACTION_TOGGLE_MAXIMIZE,
         ];
         let mut split_pane_card = card().child(section("SPLITS & PANES"));
         for (i, &act) in split_pane_actions.iter().enumerate() {
             split_pane_card = split_pane_card.child(render_shortcut_row(100 + i, act));
         }
 
-        let terminal_selection_actions = [
+        // 3. Scrolling & Buffer
+        let scroll_actions = [
+            ACTION_SCROLL_PAGE_UP,
+            ACTION_SCROLL_PAGE_DOWN,
+            ACTION_SCROLL_TO_TOP,
+            ACTION_SCROLL_TO_BOTTOM,
+            ACTION_CLEAR_SCROLLBACK,
+        ];
+        let mut scroll_card = card().child(section("SCROLLING & BUFFER"));
+        for (i, &act) in scroll_actions.iter().enumerate() {
+            scroll_card = scroll_card.child(render_shortcut_row(200 + i, act));
+        }
+        scroll_card = scroll_card.child(render_builtin_row(210, "Scroll Viewport 1 Line", "Ctrl + Shift + Up / Down"));
+
+        // 4. Text & Clipboard
+        let text_actions = [
             ACTION_COPY,
             ACTION_PASTE,
-            ACTION_CLEAR_SCROLLBACK,
+            ACTION_SELECT_ALL,
+        ];
+        let mut text_card = card().child(section("TEXT & CLIPBOARD"));
+        for (i, &act) in text_actions.iter().enumerate() {
+            text_card = text_card.child(render_shortcut_row(300 + i, act));
+        }
+        text_card = text_card
+            .child(render_builtin_row(310, "Smart Copy Selection", "Ctrl + C (when selected)"))
+            .child(render_builtin_row(311, "Deselect Text / Dismiss", "Esc"));
+
+        // 5. Font Size & Zoom
+        let zoom_actions = [
             ACTION_ZOOM_IN,
             ACTION_ZOOM_OUT,
+            ACTION_ZOOM_RESET,
         ];
-        let mut terminal_selection_card = card().child(section("TERMINAL & SELECTION"));
-        for (i, &act) in terminal_selection_actions.iter().enumerate() {
-            terminal_selection_card = terminal_selection_card.child(render_shortcut_row(200 + i, act));
+        let mut zoom_card = card().child(section("FONT SIZE & ZOOM"));
+        for (i, &act) in zoom_actions.iter().enumerate() {
+            zoom_card = zoom_card.child(render_shortcut_row(400 + i, act));
         }
+
+        // 6. Hyperlinks & Browser
+        let link_actions = [
+            ACTION_OPEN_URL_PICKER,
+        ];
+        let mut link_card = card().child(section("HYPERLINKS & BROWSER"));
+        for (i, &act) in link_actions.iter().enumerate() {
+            link_card = link_card.child(render_shortcut_row(500 + i, act));
+        }
+        link_card = link_card.child(render_builtin_row(510, "Open Link in Browser", "Ctrl + Click (on link)"));
 
         let shortcuts_view = div()
             .flex()
@@ -806,10 +915,10 @@ impl AtlasView {
                         div()
                             .text_size(px(12.0))
                             .text_color(sc_desc)
-                            .child("Click a binding to rebind. Press Esc to cancel."),
+                            .child("Click any key binding to record a new shortcut. Press Esc to cancel."),
                     )
                     .child(pill_button(
-                        "Reset All".to_string(),
+                        "Reset All to Defaults".to_string(),
                         299,
                         false,
                         theme,
@@ -823,7 +932,10 @@ impl AtlasView {
             )
             .child(tab_window_card)
             .child(split_pane_card)
-            .child(terminal_selection_card);
+            .child(scroll_card)
+            .child(text_card)
+            .child(zoom_card)
+            .child(link_card);
 
         // --- General Tab ---
         let shells = ["PowerShell", "WSL", "OpenCode", "Command Prompt", "Git Bash"];

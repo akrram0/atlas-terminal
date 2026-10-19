@@ -27,6 +27,8 @@ pub const ACTION_SCROLL_PAGE_DOWN: &str = "scroll_page_down";
 pub const ACTION_SCROLL_TO_TOP: &str = "scroll_to_top";
 pub const ACTION_SCROLL_TO_BOTTOM: &str = "scroll_to_bottom";
 pub const ACTION_OPEN_URL_PICKER: &str = "open_url_picker";
+pub const ACTION_TOGGLE_THEME: &str = "toggle_theme";
+pub const ACTION_TOGGLE_MAXIMIZE: &str = "toggle_maximize";
 
 pub fn action_display_name(action: &str) -> &'static str {
     match action {
@@ -53,6 +55,8 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_CLEAR_SCROLLBACK => "Clear Scrollback Buffer",
         ACTION_FOCUS_NEXT_PANE => "Focus Next Split Pane",
         ACTION_FOCUS_PREV_PANE => "Focus Previous Split Pane",
+        ACTION_TOGGLE_THEME => "Toggle Dark / Light Theme",
+        ACTION_TOGGLE_MAXIMIZE => "Toggle Pane Zoom / Maximize",
         _ => "Custom Action",
     }
 }
@@ -82,6 +86,8 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_CLEAR_SCROLLBACK.to_string(), "ctrl+shift+k".to_string());
     m.insert(ACTION_FOCUS_NEXT_PANE.to_string(), "alt+right".to_string());
     m.insert(ACTION_FOCUS_PREV_PANE.to_string(), "alt+left".to_string());
+    m.insert(ACTION_TOGGLE_THEME.to_string(), "ctrl+shift+t".to_string());
+    m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "ctrl+shift+m".to_string());
     m
 }
 

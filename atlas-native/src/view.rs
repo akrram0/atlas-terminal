@@ -26,7 +26,7 @@ use crate::config::{
     ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL,
     ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN, ACTION_ZOOM_OUT, ACTION_ZOOM_RESET,
     ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_TO_TOP,
-    ACTION_SCROLL_TO_BOTTOM, ACTION_OPEN_URL_PICKER,
+    ACTION_SCROLL_TO_BOTTOM, ACTION_OPEN_URL_PICKER, ACTION_TOGGLE_THEME, ACTION_TOGGLE_MAXIMIZE,
 };
 use crate::icons;
 use crate::keymap;
@@ -1780,6 +1780,15 @@ impl AtlasView {
                 }
                 if chord == self.get_shortcut(ACTION_OPEN_URL_PICKER) {
                     self.open_buffer_urls(window, cx);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_TOGGLE_THEME) {
+                    self.toggle_theme(cx);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_TOGGLE_MAXIMIZE) {
+                    self.toggle_maximize(cx);
+                    self.focus_main(window);
                     return;
                 }
             }

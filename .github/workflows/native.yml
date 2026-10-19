@@ -75,7 +75,7 @@ jobs:
       - name: cargo test (unit tests)
         shell: pwsh
         run: |
-          cargo test --bin atlas-terminal -- --nocapture
+          cargo test --release --bin atlas-terminal -- --nocapture
 
       - name: cargo build (release — final exe)
         shell: pwsh
