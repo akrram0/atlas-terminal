@@ -266,7 +266,7 @@ mod tests {
         assert_eq!(urls.len(), 1);
         assert_eq!(urls[0].0, "https://github.com/akrram0/atlas-terminal");
         assert_eq!(urls[0].1, 10);
-        assert_eq!(urls[0].2, 50);
+        assert_eq!(urls[0].2, 51);
     }
 
     #[test]
