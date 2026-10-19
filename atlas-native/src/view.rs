@@ -2008,6 +2008,37 @@ impl Render for AtlasView {
         // Window chrome and top tab bar use the cohesive application theme
         let tb = theme.clone();
 
+        let is_translucent = self.blur_enabled || self.opacity < 1.0;
+        let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
+            let base_alpha = if self.blur_enabled {
+                self.opacity.min(0.85)
+            } else {
+                self.opacity
+            };
+            if self.blur_enabled {
+                // Acrylic glassmorphism: subtle chrome tint, rich translucent terminal sheet
+                let chrome = Rgba { a: (base_alpha * 0.45).clamp(0.05, 1.0), ..tb.panel_bg };
+                let sheet = if self.settings_open {
+                    Rgba { a: (base_alpha * 0.85).clamp(0.05, 1.0), ..theme.elevated_bg }
+                } else {
+                    Rgba { a: (base_alpha * 0.75).clamp(0.05, 1.0), ..active_bg }
+                };
+                (chrome, sheet, chrome)
+            } else {
+                // Standard window opacity without blur
+                let chrome = Rgba { a: base_alpha.clamp(0.05, 1.0), ..tb.panel_bg };
+                let sheet = if self.settings_open {
+                    Rgba { a: base_alpha.clamp(0.05, 1.0), ..theme.elevated_bg }
+                } else {
+                    Rgba { a: base_alpha.clamp(0.05, 1.0), ..active_bg }
+                };
+                (chrome, sheet, rgba(0x00000000))
+            }
+        } else {
+            let sheet = if self.settings_open { theme.elevated_bg } else { active_bg };
+            (tb.panel_bg, sheet, tb.panel_bg)
+        };
+
         let mut bar = div()
             .flex()
             .flex_row()
@@ -2016,7 +2047,7 @@ impl Render for AtlasView {
             .w(relative(1.0))
             .h(px(36.0))
             .pl(px(8.0))
-            .bg(tb.panel_bg)
+            .bg(chrome_bg)
             .border_b_1()
             .border_color(tb.hairline);
 
@@ -3000,39 +3031,21 @@ impl Render for AtlasView {
             (px(6.0), px(6.0), px(10.0))
         };
 
-        let sheet = if self.settings_open {
-            div()
-                .id(ElementId::named_usize("terminal-sheet", 0))
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w(px(0.0))
-                .min_h(px(0.0))
-                .mx(sheet_mx)
-                .mb(sheet_mb)
-                .rounded(sheet_radius)
-                .overflow_hidden()
-                .bg(theme.elevated_bg)
-                .border_1()
-                .border_color(tb.sheet_border)
-                .child(body)
-        } else {
-            div()
-                .id(ElementId::named_usize("terminal-sheet", 0))
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w(px(0.0))
-                .min_h(px(0.0))
-                .mx(sheet_mx)
-                .mb(sheet_mb)
-                .rounded(sheet_radius)
-                .overflow_hidden()
-                .bg(active_bg)
-                .border_1()
-                .border_color(tb.sheet_border)
-                .child(body)
-        };
+        let sheet = div()
+            .id(ElementId::named_usize("terminal-sheet", 0))
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .mx(sheet_mx)
+            .mb(sheet_mb)
+            .rounded(sheet_radius)
+            .overflow_hidden()
+            .bg(sheet_bg)
+            .border_1()
+            .border_color(tb.sheet_border)
+            .child(body);
 
         let container = div()
             .id(ElementId::named_usize("terminal-container", 0))
@@ -3044,7 +3057,7 @@ impl Render for AtlasView {
             .h(relative(1.0))
             .min_w(px(0.0))
             .min_h(px(0.0))
-            .bg(tb.panel_bg)
+            .bg(container_bg)
             .overflow_hidden()
             .child(bar)
             .child(sheet);
@@ -3055,7 +3068,6 @@ impl Render for AtlasView {
             .flex_col()
             .w(relative(1.0))
             .h(relative(1.0))
-            .bg(tb.panel_bg)
             .font_family("Segoe UI")
             .text_color(tb.chrome_fg_active)
             .child(container);

@@ -342,13 +342,13 @@ impl AtlasView {
                             .text_size(px(12.5))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(sc_label)
-                            .child("Windows 11 Acrylic blur"),
+                            .child("Blurry Acrylic Transparency"),
                     )
                     .child(
                         div()
                             .text_size(px(11.0))
                             .text_color(sc_desc)
-                            .child("System backdrop acrylic blur (Windows 11 DWM)"),
+                            .child("Translucent glassmorphism acrylic blur behind the terminal (Windows 11 DWM)"),
                     ),
             )
             .child(toggle_pill(

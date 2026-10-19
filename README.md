@@ -39,19 +39,6 @@ Terminal emulators on Windows have historically been forced into a painful compr
 
 ---
 
-## Visual Showcase
-
-<p align="center">
-  <img src="assets/screenshots/atlas-light-fastfetch.png" alt="Atlas Terminal - Warm Paper Light Theme" width="49%">
-  <img src="assets/screenshots/atlas-dark-opencode.png" alt="Atlas Terminal - Matte Dark Theme with OpenCode TUI" width="49%">
-</p>
-
-<p align="center">
-  <em>Left: <b>Warm Paper</b> theme running fastfetch with process tabs. Right: <b>Matte Dark</b> theme running OpenCode with seamless 10px rounded corners and full SGR mouse interaction.</em>
-</p>
-
----
-
 ## Download & Install
 
 Get the latest release for Windows (x64):

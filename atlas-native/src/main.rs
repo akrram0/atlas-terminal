@@ -123,7 +123,7 @@ pub(crate) fn log_line(msg: &str) {
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
 pub(crate) mod rounded_corners {
-    use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 
     type Hwnd = *mut core::ffi::c_void;
     type Lparam = isize;
@@ -208,6 +208,7 @@ pub(crate) mod rounded_corners {
 
     /// Top-level window handle, published once `apply` finds it.
     static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
+    static INITIAL_BLUR: AtomicBool = AtomicBool::new(false);
 
     /// Titlebar drag bands reported by the view on every paint, in logical
     /// client pixels: 4 slots of two f32 bit patterns (top-left, bottom-right).
@@ -435,19 +436,40 @@ pub(crate) mod rounded_corners {
 
     /// Toggle Windows 11 DWM acrylic / blur background.
     pub fn set_blur(enabled: bool) {
+        INITIAL_BLUR.store(enabled, Ordering::SeqCst);
         let raw = MAIN_HWND.load(Ordering::SeqCst);
         if raw == 0 {
             return;
         }
         let hwnd = raw as Hwnd;
         unsafe {
-            let value: i32 = if enabled { 2 } else { 1 };
+            // DWMSBT_TRANSIENTWINDOW (3): Windows 11 Acrylic blur.
+            // DWMSBT_NONE (1): Disable system backdrop.
+            let value: i32 = if enabled { 3 } else { 1 };
             let _ = DwmSetWindowAttribute(
                 hwnd,
                 DWMWA_SYSTEMBACKDROP_TYPE,
                 &value as *const i32 as *const core::ffi::c_void,
                 core::mem::size_of::<i32>() as u32,
             );
+            // When acrylic blur is enabled, extend frame across the entire client area (-1 margins).
+            // When disabled, restore the 1px frame margin used for standard rounded corners and shadows.
+            let margins = if enabled {
+                Margins {
+                    cx_left_width: -1,
+                    cx_right_width: -1,
+                    cy_top_height: -1,
+                    cy_bottom_height: -1,
+                }
+            } else {
+                Margins {
+                    cx_left_width: 1,
+                    cx_right_width: 1,
+                    cy_top_height: 1,
+                    cy_bottom_height: 1,
+                }
+            };
+            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
         }
     }
 
@@ -703,6 +725,11 @@ pub(crate) mod rounded_corners {
                         }
                         if !hicon_small.is_null() {
                             let _ = SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small as isize);
+                        }
+
+                        // 6c. If acrylic blur was enabled before window handle resolved, apply it now.
+                        if INITIAL_BLUR.load(Ordering::SeqCst) {
+                            set_blur(true);
                         }
 
                         // 7. Diagnostics: with the ring gone the client should
