@@ -4,6 +4,7 @@
 //! `Flags::WRAPLINE`) for HTTP/HTTPS/file URLs, maps character spans back
 //! to exact grid `Point` coordinates, and dispatches clicks to the OS.
 
+use alacritty_terminal::event::EventListener;
 use alacritty_terminal::index::{Column, Line, Point};
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::Term;
@@ -121,7 +122,7 @@ struct LogicalLine {
     points: Vec<Point>,
 }
 
-fn collect_logical_lines<T>(term: &Term<T>) -> Vec<LogicalLine> {
+fn collect_logical_lines<T: EventListener>(term: &Term<T>) -> Vec<LogicalLine> {
     let content = term.renderable_content();
     let mut current_line: Option<Line> = None;
     let mut lines: Vec<(Line, Vec<(Point, char)>, bool)> = Vec::new();
@@ -179,7 +180,7 @@ fn collect_logical_lines<T>(term: &Term<T>) -> Vec<LogicalLine> {
 }
 
 /// Find a clickable URL at the specified terminal grid `Point`, walking wrapped lines.
-pub fn find_url_at_point<T>(term: &Term<T>, target: Point) -> Option<DetectedUrl> {
+pub fn find_url_at_point<T: EventListener>(term: &Term<T>, target: Point) -> Option<DetectedUrl> {
     let logical_lines = collect_logical_lines(term);
 
     for log_line in logical_lines {
@@ -202,7 +203,7 @@ pub fn find_url_at_point<T>(term: &Term<T>, target: Point) -> Option<DetectedUrl
 }
 
 /// Scan visible rows in the terminal viewport for all distinct URLs.
-pub fn find_all_urls_in_viewport<T>(term: &Term<T>) -> Vec<String> {
+pub fn find_all_urls_in_viewport<T: EventListener>(term: &Term<T>) -> Vec<String> {
     let logical_lines = collect_logical_lines(term);
     let mut urls = Vec::new();
 

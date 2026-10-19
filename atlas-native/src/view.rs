@@ -880,7 +880,7 @@ impl AtlasView {
     }
 
     /// Pane that owns the keyboard and the status bar.
-    fn active_pane(&self) -> Option<&Pane> {
+    pub(crate) fn active_pane(&self) -> Option<&Pane> {
         self.tabs
             .get(self.active)
             .and_then(|tab| tab.panes.get(tab.active_pane))
@@ -892,14 +892,14 @@ impl AtlasView {
             .unwrap_or_else(TermMode::empty)
     }
 
-    fn write_to_shell(&self, bytes: &[u8]) {
+    pub(crate) fn write_to_shell(&self, bytes: &[u8]) {
         if let Some(pane) = self.active_pane() {
             pane.session.borrow_mut().write_bytes(bytes);
         }
     }
 
     /// Keyboard paging: instant, and it wins over any in-flight wheel easing.
-    fn scroll(&mut self, lines: i32) {
+    pub(crate) fn scroll(&mut self, lines: i32) {
         self.scroll_anim = None;
         if let Some(pane) = self.active_pane() {
             pane.session
@@ -952,7 +952,7 @@ impl AtlasView {
 
 
 
-    fn paste(&self, cx: &mut Context<Self>) {
+    pub(crate) fn paste(&self, cx: &mut Context<Self>) {
         let Some(pane) = self.active_pane() else {
             return;
         };
