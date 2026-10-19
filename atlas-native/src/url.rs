@@ -115,88 +115,86 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
     results
 }
 
+#[derive(Debug, Clone)]
+struct LogicalLine {
+    text: String,
+    points: Vec<Point>,
+}
+
+fn collect_logical_lines<T>(term: &Term<T>) -> Vec<LogicalLine> {
+    let content = term.renderable_content();
+    let mut current_line: Option<Line> = None;
+    let mut lines: Vec<(Line, Vec<(Point, char)>, bool)> = Vec::new();
+
+    for indexed in content.display_iter {
+        let pt = indexed.point;
+        let cell = indexed.cell;
+        let is_spacer = cell.flags.contains(Flags::WIDE_CHAR_SPACER);
+        let is_wrap = cell.flags.contains(Flags::WRAPLINE);
+
+        if current_line != Some(pt.line) {
+            current_line = Some(pt.line);
+            lines.push((pt.line, Vec::new(), false));
+        }
+
+        if let Some((_, cells, wraps_next)) = lines.last_mut() {
+            if is_wrap {
+                *wraps_next = true;
+            }
+            if !is_spacer {
+                let ch = if (cell.c as u32) < 32 && cell.c != '\t' {
+                    ' '
+                } else {
+                    cell.c
+                };
+                cells.push((pt, ch));
+            }
+        }
+    }
+
+    let mut logical_lines: Vec<LogicalLine> = Vec::new();
+    let mut cur_log = LogicalLine {
+        text: String::new(),
+        points: Vec::new(),
+    };
+
+    for (_, cells, wraps_next) in lines {
+        for (pt, ch) in cells {
+            cur_log.text.push(ch);
+            cur_log.points.push(pt);
+        }
+        if !wraps_next {
+            logical_lines.push(cur_log);
+            cur_log = LogicalLine {
+                text: String::new(),
+                points: Vec::new(),
+            };
+        }
+    }
+    if !cur_log.text.is_empty() {
+        logical_lines.push(cur_log);
+    }
+
+    logical_lines
+}
+
 /// Find a clickable URL at the specified terminal grid `Point`, walking wrapped lines.
 pub fn find_url_at_point<T>(term: &Term<T>, target: Point) -> Option<DetectedUrl> {
-    let grid = term.grid();
-    let num_cols = grid.columns();
-    if num_cols == 0 {
-        return None;
-    }
+    let logical_lines = collect_logical_lines(term);
 
-    let top_line = term.topmost_line().0;
-    let bot_line = term.bottommost_line().0;
-    if target.line.0 < top_line || target.line.0 > bot_line {
-        return None;
-    }
-
-    // 1. Walk backward to find the start of the logical wrapped line (up to 8 lines)
-    let mut start_line = target.line.0;
-    for _ in 0..8 {
-        if start_line <= top_line {
-            break;
-        }
-        let prev_line = Line(start_line - 1);
-        let last_cell = &grid[Point::new(prev_line, Column(num_cols - 1))];
-        if last_cell.flags.contains(Flags::WRAPLINE) {
-            start_line -= 1;
-        } else {
-            break;
-        }
-    }
-
-    // 2. Walk forward to find the end of the logical wrapped line (up to 8 lines)
-    let mut end_line = target.line.0;
-    for _ in 0..8 {
-        if end_line >= bot_line {
-            break;
-        }
-        let cur_line = Line(end_line);
-        let last_cell = &grid[Point::new(cur_line, Column(num_cols - 1))];
-        if last_cell.flags.contains(Flags::WRAPLINE) {
-            end_line += 1;
-        } else {
-            break;
-        }
-    }
-
-    // 3. Reconstruct logical string while building character index -> Point mapping
-    let mut logical_text = String::new();
-    let mut char_points: Vec<Point> = Vec::new();
-    let mut target_char_idx = None;
-
-    for l in start_line..=end_line {
-        let line = Line(l);
-        for c in 0..num_cols {
-            let pt = Point::new(line, Column(c));
-            if pt == target {
-                target_char_idx = Some(char_points.len());
-            }
-            let cell = &grid[pt];
-            if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
-                continue;
-            }
-            if (cell.c as u32) < 32 && cell.c != '\t' {
-                logical_text.push(' ');
-            } else {
-                logical_text.push(cell.c);
-            }
-            char_points.push(pt);
-        }
-    }
-
-    let target_idx = target_char_idx?;
-
-    // 4. Scan logical text for URLs
-    let detected = find_urls_in_text(&logical_text);
-    for (url, start_char, end_char) in detected {
-        if target_idx >= start_char && target_idx < end_char {
-            let start_point = *char_points.get(start_char)?;
-            let end_point = *char_points.get(end_char.saturating_sub(1))?;
-            return Some(DetectedUrl {
+    for log_line in logical_lines {
+        let detected = find_urls_in_text(&log_line.text);
+        for (url, start_char, end_char) in detected {
+            let start_point = *log_line.points.get(start_char)?;
+            let end_point = *log_line.points.get(end_char.saturating_sub(1))?;
+            let candidate = DetectedUrl {
                 url,
                 start_point,
                 end_point,
-            });
+            };
+            if candidate.contains(target) {
+                return Some(candidate);
+            }
         }
     }
 
@@ -205,33 +203,14 @@ pub fn find_url_at_point<T>(term: &Term<T>, target: Point) -> Option<DetectedUrl
 
 /// Scan visible rows in the terminal viewport for all distinct URLs.
 pub fn find_all_urls_in_viewport<T>(term: &Term<T>) -> Vec<String> {
-    let grid = term.grid();
-    let num_cols = grid.columns();
-    let offset = term.renderable_content().display_offset as i32;
-    let screen_lines = term.screen_lines() as i32;
+    let logical_lines = collect_logical_lines(term);
     let mut urls = Vec::new();
 
-    let mut full_text = String::new();
-    for row in 0..screen_lines {
-        let line = Line(row - offset);
-        for col in 0..num_cols {
-            let pt = Point::new(line, Column(col));
-            let cell = &grid[pt];
-            if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
-                continue;
+    for log_line in logical_lines {
+        for (url, _, _) in find_urls_in_text(&log_line.text) {
+            if !urls.contains(&url) {
+                urls.push(url);
             }
-            if (cell.c as u32) < 32 {
-                full_text.push(' ');
-            } else {
-                full_text.push(cell.c);
-            }
-        }
-        full_text.push('\n');
-    }
-
-    for (url, _, _) in find_urls_in_text(&full_text) {
-        if !urls.contains(&url) {
-            urls.push(url);
         }
     }
 

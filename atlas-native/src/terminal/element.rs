@@ -311,7 +311,7 @@ impl Element for TerminalElement {
             )
         };
 
-        let total_rows = rows.len();
+        let _total_rows = rows.len();
         for (row_index, row) in rows.iter().enumerate() {
             let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
             let y1 = y0 + cell_height;
