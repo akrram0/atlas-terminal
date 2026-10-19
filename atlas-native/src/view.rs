@@ -86,6 +86,8 @@ pub struct AtlasView {
     pub(crate) registry: ThemeRegistry,
     /// Settings page visibility (replaces the terminal sheet).
     pub(crate) settings_open: bool,
+    /// Settings tab mounted on top bar (stays until closed).
+    pub(crate) settings_tab_open: bool,
     /// Workspace (new-tab profile) menu visibility.
     pub(crate) profile_menu: bool,
     /// Command palette (Ctrl+K / top-bar search icon).
@@ -214,6 +216,7 @@ impl AtlasView {
             last_theme_check: std::time::Instant::now(),
             registry,
             settings_open: false,
+            settings_tab_open: false,
             profile_menu: false,
             palette_open: false,
             palette_query: String::new(),
@@ -470,25 +473,6 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
-                    // 8. Settings kinetic smooth scrolling
-                    if view.settings_open {
-                        let max_y = f32::from(view.settings_scroll_handle.max_offset().height).max(0.0);
-                        if max_y > 0.0 && view.settings_scroll_target > max_y {
-                            view.settings_scroll_target = max_y;
-                        }
-                        let diff = view.settings_scroll_target - view.settings_scroll_pos;
-                        if diff.abs() > 0.4 {
-                            active_motion = true;
-                            let factor = (1.0 - (-18.0 * dt).exp()).clamp(0.0, 1.0);
-                            view.settings_scroll_pos += diff * factor;
-                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(-view.settings_scroll_pos)));
-                            needs_paint = true;
-                        } else if (view.settings_scroll_pos - view.settings_scroll_target).abs() > 0.01 {
-                            view.settings_scroll_pos = view.settings_scroll_target;
-                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(-view.settings_scroll_pos)));
-                            needs_paint = true;
-                        }
-                    }
 
                     if needs_paint {
                         cx.notify();
@@ -966,19 +950,7 @@ impl AtlasView {
         cx.notify();
     }
 
-    /// Smooth kinetic scrolling for Settings: accumulates delta and eases towards target.
-    pub(crate) fn scroll_settings_smooth(&mut self, delta_y: f32, cx: &mut Context<Self>) {
-        let current_offset = -f32::from(self.settings_scroll_handle.offset().y);
-        // If previous animation has completed or settled, resync position with handle
-        if (self.settings_scroll_target - self.settings_scroll_pos).abs() < 0.5 {
-            self.settings_scroll_pos = current_offset;
-            self.settings_scroll_target = current_offset;
-        }
-        let max_y = f32::from(self.settings_scroll_handle.max_offset().height).max(0.0);
-        let upper_bound = if max_y > 0.0 { max_y } else { 10_000.0 };
-        self.settings_scroll_target = (self.settings_scroll_target - delta_y).clamp(0.0, upper_bound);
-        cx.notify();
-    }
+
 
     fn paste(&self, cx: &mut Context<Self>) {
         let Some(pane) = self.active_pane() else {
@@ -1674,6 +1646,7 @@ impl AtlasView {
             if chord == self.get_shortcut(ACTION_OPEN_SETTINGS) {
                 self.settings_open = !self.settings_open;
                 if self.settings_open {
+                    self.settings_tab_open = true;
                     self.settings_tab = SettingsTab::General;
                     self.settings_scroll_pos = 0.0;
                     self.settings_scroll_target = 0.0;
@@ -2202,14 +2175,30 @@ impl Render for AtlasView {
             ));
         }
 
-        // When in settings, render an active Settings tab pill
-        if self.settings_open {
-            let pill_bg = tb.elevated_bg;
-            let pill_border = tb.elevated_border;
-            let pill_fg = tb.chrome_fg_active;
-            let pill_icon = tb.accent;
+        // Settings tab pill: stays mounted on the tab bar until the user explicitly closes it.
+        // If settings_open is true: renders in the active tab state (elevated bg, accent icon).
+        // If settings_open is false: renders in the inactive tab state (quiet transparent, clickable to reopen).
+        if self.settings_tab_open {
+            let active = self.settings_open;
+            let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
+                (
+                    tb.elevated_bg,
+                    tb.elevated_border,
+                    tb.chrome_fg_active,
+                    tb.accent,
+                )
+            } else {
+                (
+                    rgba(0x00000000),
+                    rgba(0x00000000),
+                    tb.chrome_fg,
+                    tb.chrome_fg,
+                )
+            };
+            let pill_hover = tb.card_hover;
+            let pill_hot = tb.chrome_fg_active;
 
-            let settings_pill = div()
+            let mut settings_pill = div()
                 .id(ElementId::named_usize("tab-pill-settings", 0))
                 .h(px(24.0))
                 .flex()
@@ -2225,7 +2214,29 @@ impl Render for AtlasView {
                 .bg(pill_bg)
                 .border_1()
                 .border_color(pill_border)
-                .text_color(pill_fg)
+                .text_color(pill_fg);
+
+            if !active {
+                settings_pill = settings_pill
+                    .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
+                    .active(move |style| style.opacity(0.82))
+                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                        view.settings_open = true;
+                        window.focus(&view.settings_focus);
+                        cx.notify();
+                    }));
+            }
+
+            settings_pill = settings_pill
+                .on_mouse_down(
+                    MouseButton::Middle,
+                    cx.listener(|view, _: &MouseDownEvent, window, cx| {
+                        view.settings_tab_open = false;
+                        view.settings_open = false;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    }),
+                )
                 .child(
                     div()
                         .text_color(pill_icon)
@@ -2234,7 +2245,11 @@ impl Render for AtlasView {
                 .child(
                     div()
                         .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
+                        .font_weight(if active {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
                         .truncate()
                         .child("Settings"),
                 )
@@ -2256,6 +2271,8 @@ impl Render for AtlasView {
                                 .text_color(tb.faint_fg),
                         )
                         .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            cx.stop_propagation();
+                            view.settings_tab_open = false;
                             view.settings_open = false;
                             window.focus(&view.focus);
                             cx.notify();
@@ -2401,6 +2418,7 @@ impl Render for AtlasView {
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = !view.settings_open;
                     if view.settings_open {
+                        view.settings_tab_open = true;
                         view.settings_tab = SettingsTab::General;
                         view.settings_scroll_pos = 0.0;
                         view.settings_scroll_target = 0.0;

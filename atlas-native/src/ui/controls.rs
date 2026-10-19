@@ -93,7 +93,7 @@ pub fn stepper(
         .into_any_element()
 }
 
-/// Settings toggle pill with native SVG checkmark when active (zero unicode icons).
+/// Modern Apple/macOS-style sliding toggle switcher (zero unicode icons).
 pub fn toggle_pill(
     id: usize,
     enabled: bool,
@@ -102,44 +102,83 @@ pub fn toggle_pill(
     cx: &mut Context<AtlasView>,
 ) -> AnyElement {
     let dark = is_dark(theme);
-    let active_bg = Rgba {
-        a: 0.22,
-        ..theme.accent
+
+    // Track styles (38×22 capsule)
+    let track_bg = if enabled {
+        theme.accent
+    } else if dark {
+        rgba(0xFFFFFF24)
+    } else {
+        rgba(0x0000001A)
     };
-    let active_border = theme.accent;
-    let idle_bg = if dark { rgba(0xFFFFFF0D) } else { rgba(0x00000008) };
-    let idle_border = if dark { rgba(0xFFFFFF18) } else { rgba(0x00000014) };
-    let idle_fg = if dark { rgb(0xCBD5E1) } else { rgb(0x334155) };
-    let hover_bg = theme.card_hover;
-    let mut btn = div()
+    let track_border = if enabled {
+        theme.accent
+    } else if dark {
+        rgba(0xFFFFFF18)
+    } else {
+        rgba(0x00000020)
+    };
+    let track_hover_bg = if enabled {
+        Rgba {
+            a: 0.88,
+            ..theme.accent
+        }
+    } else if dark {
+        rgba(0xFFFFFF30)
+    } else {
+        rgba(0x00000026)
+    };
+
+    // Thumb styles (15×15 white circular knob)
+    let thumb_bg = if enabled {
+        rgb(0xFFFFFF)
+    } else if dark {
+        rgb(0xE2E8F0)
+    } else {
+        rgb(0xFFFFFF)
+    };
+    let thumb_border = if dark {
+        rgba(0x00000028)
+    } else {
+        rgba(0x0000001A)
+    };
+
+    let mut track = div()
         .id(ElementId::named_usize("settings-toggle", id))
-        .h(px(26.0))
-        .px(px(10.0))
+        .w(px(38.0))
+        .h(px(22.0))
+        .p(px(2.5))
         .flex()
-        .flex_row()
         .items_center()
-        .gap(px(5.0))
-        .rounded(px(6.0))
+        .rounded_full()
         .border_1()
-        .border_color(if enabled { active_border } else { idle_border })
-        .bg(if enabled { active_bg } else { idle_bg })
-        .hover(move |s| s.bg(hover_bg))
-        .active(move |s| s.opacity(0.82))
-        .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-            on_toggle(view, cx);
-        }));
+        .border_color(track_border)
+        .bg(track_bg)
+        .cursor_pointer()
+        .hover(move |s| s.bg(track_hover_bg))
+        .active(move |s| s.opacity(0.85));
 
     if enabled {
-        btn = btn
-            .text_color(theme.accent)
-            .child(icons::icon(icons::CHECK).size(px(11.0)).text_color(theme.accent))
-            .child(div().text_size(px(12.0)).font_weight(FontWeight::SEMIBOLD).child("Enabled"));
+        track = track.justify_end();
     } else {
-        btn = btn
-            .text_color(idle_fg)
-            .child(div().text_size(px(12.0)).child("Disabled"));
+        track = track.justify_start();
     }
-    btn.into_any_element()
+
+    track = track.child(
+        div()
+            .w(px(15.0))
+            .h(px(15.0))
+            .rounded_full()
+            .border_1()
+            .border_color(thumb_border)
+            .bg(thumb_bg),
+    );
+
+    track
+        .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+            on_toggle(view, cx);
+        }))
+        .into_any_element()
 }
 
 /// One settings option pill; `active` paints the selected state.

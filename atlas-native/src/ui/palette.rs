@@ -381,6 +381,7 @@ impl AtlasView {
                 self.focus_main(window);
             }
             Command::OpenSettings => {
+                self.settings_tab_open = true;
                 self.settings_open = true;
                 self.settings_tab = SettingsTab::General;
                 self.profile_menu = false;
