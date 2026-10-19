@@ -34,6 +34,7 @@ pub struct TerminalElement {
     pub cursor_alpha: f32,
     pub subpixel_y: f32,
     pub scrollbar_opacity: f32,
+    pub hovered_link: Option<crate::url::DetectedUrl>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -242,6 +243,13 @@ impl Element for TerminalElement {
 
                 let mut fg = theme.resolve(cell.fg, flags.contains(Flags::DIM), &over);
                 let mut bg = theme.resolve(cell.bg, false, &over);
+                let is_link_hovered = self
+                    .hovered_link
+                    .as_ref()
+                    .map_or(false, |hl| hl.contains(point));
+                if is_link_hovered {
+                    fg = theme.accent;
+                }
                 if flags.contains(Flags::INVERSE) {
                     std::mem::swap(&mut fg, &mut bg);
                 }
@@ -271,7 +279,7 @@ impl Element for TerminalElement {
                     bg,
                     bold: flags.contains(Flags::BOLD) && !is_icon,
                     italic: flags.contains(Flags::ITALIC) && !is_icon,
-                    underline: flags.intersects(Flags::ALL_UNDERLINES),
+                    underline: is_link_hovered || flags.intersects(Flags::ALL_UNDERLINES),
                     strike: flags.contains(Flags::STRIKEOUT),
                     class: char_class(ch),
                 };

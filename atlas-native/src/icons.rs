@@ -63,6 +63,7 @@ icon_assets![
     (UBUNTU, "ubuntu"),
     (CMD, "cmd"),
     (GIT, "git"),
+    (LINK, "link"),
 ];
 
 /// Render an embedded vector icon element.

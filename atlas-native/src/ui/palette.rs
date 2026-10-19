@@ -21,9 +21,13 @@ use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 pub enum Command {
     NewTab,
     NewTabWsl,
+    NewTabCmd,
+    NewTabGitBash,
     NewTabOpenCode,
     SplitPane,
     SplitPaneDown,
+    FocusNextPane,
+    FocusPrevPane,
     MaximizePane,
     ClosePane,
     CloseTab,
@@ -31,20 +35,41 @@ pub enum Command {
     PrevTab,
     RestartTab,
     RenameTab,
+    CopySelection,
+    PasteClipboard,
+    SelectAll,
+    ClearScrollback,
+    ScrollPageUp,
+    ScrollPageDown,
+    ScrollToTop,
+    ScrollToBottom,
     ToggleTheme,
     OpenSettings,
     FontInc,
     FontDec,
+    FontReset,
     CheckUpdates,
+    OpenLatestUrl,
+}
+
+/// Action to execute from the palette (a built-in command or opening a detected URL).
+#[derive(Clone, PartialEq, Eq)]
+pub enum PaletteAction {
+    Command(Command),
+    OpenUrl(String),
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 17] = [
-    (Command::NewTab, icons::PLUS, "New tab", "Ctrl Shift N"),
+pub const COMMANDS: [(Command, &str, &str, &str); 31] = [
+    (Command::NewTab, icons::PLUS, "New tab (PowerShell)", "Ctrl Shift N"),
     (Command::NewTabWsl, icons::UBUNTU, "New Ubuntu (WSL) tab", ""),
+    (Command::NewTabCmd, icons::CMD, "New Command Prompt tab", ""),
+    (Command::NewTabGitBash, icons::GIT, "New Git Bash tab", ""),
     (Command::NewTabOpenCode, icons::OPENCODE_MARK, "New OpenCode tab", ""),
-    (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right", "Ctrl Shift D"),
-    (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down", "Ctrl Shift E"),
+    (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right (columns)", "Ctrl Shift D"),
+    (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down (rows)", "Ctrl Shift E"),
+    (Command::FocusNextPane, icons::CHEVRON_RIGHT, "Focus next split pane", "Alt Right"),
+    (Command::FocusPrevPane, icons::CHEVRON_LEFT, "Focus previous split pane", "Alt Left"),
     (
         Command::MaximizePane,
         icons::WINDOW_MAXIMIZE,
@@ -60,7 +85,16 @@ pub const COMMANDS: [(Command, &str, &str, &str); 17] = [
         "Previous tab",
         "Ctrl Shift Tab",
     ),
-    (Command::RestartTab, icons::REFRESH, "Restart pane", ""),
+    (Command::CopySelection, icons::KEYBOARD, "Copy selection", "Ctrl Shift C"),
+    (Command::PasteClipboard, icons::KEYBOARD, "Paste clipboard", "Ctrl Shift V"),
+    (Command::SelectAll, icons::KEYBOARD, "Select all in viewport", "Ctrl Shift A"),
+    (Command::ClearScrollback, icons::REFRESH, "Clear scrollback buffer", "Ctrl Shift K"),
+    (Command::ScrollPageUp, icons::CHEVRON_RIGHT, "Scroll page up", "Shift PageUp"),
+    (Command::ScrollPageDown, icons::CHEVRON_RIGHT, "Scroll page down", "Shift PageDown"),
+    (Command::ScrollToTop, icons::CHEVRON_RIGHT, "Scroll to top of buffer", "Shift Home"),
+    (Command::ScrollToBottom, icons::CHEVRON_RIGHT, "Scroll to bottom of buffer", "Shift End"),
+    (Command::OpenLatestUrl, icons::LINK, "Open latest URL from buffer", "Ctrl Shift O"),
+    (Command::RestartTab, icons::REFRESH, "Restart pane", "R"),
     (Command::RenameTab, icons::PEN, "Rename tab", ""),
     (
         Command::ToggleTheme,
@@ -68,9 +102,10 @@ pub const COMMANDS: [(Command, &str, &str, &str); 17] = [
         "Switch theme",
         "Ctrl Shift T",
     ),
-    (Command::OpenSettings, icons::SETTINGS, "Open settings", ""),
-    (Command::FontInc, icons::SETTINGS, "Increase font size", ""),
-    (Command::FontDec, icons::SETTINGS, "Decrease font size", ""),
+    (Command::OpenSettings, icons::SETTINGS, "Open settings", "Ctrl ,"),
+    (Command::FontInc, icons::SETTINGS, "Increase font size", "Ctrl ="),
+    (Command::FontDec, icons::SETTINGS, "Decrease font size", "Ctrl -"),
+    (Command::FontReset, icons::SETTINGS, "Reset font size (default)", "Ctrl 0"),
     (Command::CheckUpdates, icons::REFRESH, "Check for updates", ""),
 ];
 
@@ -110,15 +145,37 @@ impl AtlasView {
         .detach();
     }
 
-    /// Commands matching the current query, in declaration order.
-    pub fn palette_matches(&self) -> Vec<(Command, &'static str, &'static str, &'static str)> {
+    /// Commands matching the current query, with multi-word search and detected buffer URLs.
+    pub fn palette_matches(&self) -> Vec<(PaletteAction, &'static str, String, &'static str)> {
+        let mut items = Vec::new();
+        for (cmd, icon, label, shortcut) in &COMMANDS {
+            items.push((PaletteAction::Command(*cmd), *icon, label.to_string(), *shortcut));
+        }
+
+        // Add dynamically detected URLs from active terminal viewport
+        if let Some(pane) = self.active_pane() {
+            let session = pane.session.borrow();
+            let urls = crate::url::find_all_urls_in_viewport(&session.term);
+            for url in urls {
+                let label = format!("Open link: {url}");
+                items.push((PaletteAction::OpenUrl(url), icons::LINK, label, ""));
+            }
+        }
+
         let query = self.palette_query.trim().to_ascii_lowercase();
-        COMMANDS
-            .iter()
-            .copied()
-            .filter(|(_, _, label, _)| {
-                query.is_empty() || label.to_ascii_lowercase().contains(&query)
+        if query.is_empty() {
+            return items.into_iter().take(12).collect();
+        }
+
+        let words: Vec<&str> = query.split_whitespace().collect();
+        items
+            .into_iter()
+            .filter(|(_, _, label, shortcut)| {
+                let l = label.to_ascii_lowercase();
+                let s = shortcut.to_ascii_lowercase();
+                words.iter().all(|w| l.contains(w) || s.contains(w))
             })
+            .take(12)
             .collect()
     }
 
@@ -136,8 +193,8 @@ impl AtlasView {
             "enter" => {
                 let matches = self.palette_matches();
                 let index = self.palette_index.min(matches.len().saturating_sub(1));
-                match matches.get(index).copied() {
-                    Some((command, _, _, _)) => self.run_command(command, window, cx),
+                match matches.get(index).cloned() {
+                    Some((action, _, _, _)) => self.run_palette_action(action, window, cx),
                     None => self.close_palette(window, cx),
                 }
             }
@@ -180,6 +237,20 @@ impl AtlasView {
         }
     }
 
+    /// Run a palette action (command or open URL); the palette fades out on the way.
+    pub fn run_palette_action(&mut self, action: PaletteAction, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open {
+            self.close_palette(window, cx);
+        }
+        match action {
+            PaletteAction::Command(command) => self.run_command(command, window, cx),
+            PaletteAction::OpenUrl(url) => {
+                crate::url::open_url(&url);
+                self.focus_main(window);
+            }
+        }
+    }
+
     /// Run a palette command; the palette fades out on the way.
     pub fn run_command(&mut self, command: Command, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette_open {
@@ -187,11 +258,20 @@ impl AtlasView {
         }
         match command {
             Command::NewTab => {
-                self.new_tab(Profile::PowerShell, cx);
+                let prof = self.get_default_profile();
+                self.new_tab(prof, cx);
                 window.focus(&self.focus);
             }
             Command::NewTabWsl => {
                 self.new_tab(Profile::Wsl, cx);
+                window.focus(&self.focus);
+            }
+            Command::NewTabCmd => {
+                self.new_tab(Profile::Cmd, cx);
+                window.focus(&self.focus);
+            }
+            Command::NewTabGitBash => {
+                self.new_tab(Profile::GitBash, cx);
                 window.focus(&self.focus);
             }
             Command::NewTabOpenCode => {
@@ -206,6 +286,28 @@ impl AtlasView {
             Command::SplitPaneDown => {
                 self.settings_open = false;
                 self.split_active(SplitAxis::Rows, cx);
+                window.focus(&self.focus);
+            }
+            Command::FocusNextPane => {
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    if tab.panes.len() > 1 {
+                        tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
+                        cx.notify();
+                    }
+                }
+                window.focus(&self.focus);
+            }
+            Command::FocusPrevPane => {
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    if tab.panes.len() > 1 {
+                        tab.active_pane = if tab.active_pane == 0 {
+                            tab.panes.len() - 1
+                        } else {
+                            tab.active_pane - 1
+                        };
+                        cx.notify();
+                    }
+                }
                 window.focus(&self.focus);
             }
             Command::MaximizePane => {
@@ -237,6 +339,43 @@ impl AtlasView {
                 window.focus(&self.focus);
             }
             Command::RenameTab => self.open_rename(window, cx),
+            Command::CopySelection => {
+                self.copy_selection(cx);
+                self.focus_main(window);
+            }
+            Command::PasteClipboard => {
+                self.paste(cx);
+                self.focus_main(window);
+            }
+            Command::SelectAll => {
+                self.select_all_viewport(cx);
+                self.focus_main(window);
+            }
+            Command::ClearScrollback => {
+                self.write_to_shell(b"\x1b[3J\x1b[H\x1b[2J");
+                self.focus_main(window);
+                cx.notify();
+            }
+            Command::ScrollPageUp => {
+                self.scroll(15);
+                self.focus_main(window);
+                cx.notify();
+            }
+            Command::ScrollPageDown => {
+                self.scroll(-15);
+                self.focus_main(window);
+                cx.notify();
+            }
+            Command::ScrollToTop => {
+                self.scroll(100_000);
+                self.focus_main(window);
+                cx.notify();
+            }
+            Command::ScrollToBottom => {
+                self.scroll(-100_000);
+                self.focus_main(window);
+                cx.notify();
+            }
             Command::ToggleTheme => {
                 self.toggle_theme(cx);
                 self.focus_main(window);
@@ -253,16 +392,27 @@ impl AtlasView {
             }
             Command::FontInc => {
                 self.font_size = (self.font_size + 1.0).min(24.0);
+                self.sync_and_save_settings();
                 self.focus_main(window);
                 cx.notify();
             }
             Command::FontDec => {
                 self.font_size = (self.font_size - 1.0).max(10.0);
+                self.sync_and_save_settings();
+                self.focus_main(window);
+                cx.notify();
+            }
+            Command::FontReset => {
+                self.font_size = self.app_settings.font_size.clamp(10.0, 24.0);
+                self.sync_and_save_settings();
                 self.focus_main(window);
                 cx.notify();
             }
             Command::CheckUpdates => {
                 self.check_updates_manual(cx);
+            }
+            Command::OpenLatestUrl => {
+                self.open_buffer_urls(window, cx);
             }
         }
     }
@@ -333,7 +483,7 @@ impl AtlasView {
                     .bg(theme.card_active),
             );
 
-            for (index, (command, icon, label, shortcut)) in matches.into_iter().enumerate() {
+            for (index, (action, icon, label, shortcut)) in matches.into_iter().enumerate() {
                 let hover = theme.card_hover;
                 let row = div()
                     .id(ElementId::named_usize("palette-command", index))
@@ -361,7 +511,7 @@ impl AtlasView {
                             .child(shortcut),
                     )
                     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                        view.run_command(command, window, cx);
+                        view.run_palette_action(action.clone(), window, cx);
                     }));
                 list = list.child(row);
             }

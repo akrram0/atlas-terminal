@@ -24,7 +24,9 @@ use crate::config::{
     ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FOCUS_NEXT_PANE,
     ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEXT_TAB,
     ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL,
-    ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN, ACTION_ZOOM_OUT,
+    ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN, ACTION_ZOOM_OUT, ACTION_ZOOM_RESET,
+    ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_TO_TOP,
+    ACTION_SCROLL_TO_BOTTOM, ACTION_OPEN_URL_PICKER,
 };
 use crate::icons;
 use crate::keymap;
@@ -152,6 +154,7 @@ pub struct AtlasView {
     pub(crate) settings_scroll_handle: ScrollHandle,
     pub(crate) settings_scroll_pos: f32,
     pub(crate) settings_scroll_target: f32,
+    pub(crate) hovered_link: Option<(usize, crate::url::DetectedUrl)>,
 }
 
 
@@ -267,6 +270,7 @@ impl AtlasView {
             settings_scroll_handle: ScrollHandle::new(),
             settings_scroll_pos: 0.0,
             settings_scroll_target: 0.0,
+            hovered_link: None,
         };
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_blur(blur_enabled);
@@ -1077,6 +1081,47 @@ impl AtlasView {
         }
     }
 
+    pub fn select_all_viewport(&mut self, cx: &mut Context<Self>) {
+        if let Some(pane) = self.active_pane() {
+            let mut session = pane.session.borrow_mut();
+            let offset = session.term.renderable_content().display_offset as i32;
+            let screen_lines = session.term.screen_lines() as i32;
+            let cols = session.cols.saturating_sub(1);
+            let start = Point::new(Line(0 - offset), Column(0));
+            let end = Point::new(Line(screen_lines.saturating_sub(1) - offset), Column(cols));
+            let mut sel = Selection::new(SelectionType::Simple, start, Side::Left);
+            sel.update(end, Side::Right);
+            session.term.selection = Some(sel);
+            cx.notify();
+        }
+    }
+
+    pub fn open_buffer_urls(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let urls = if let Some(pane) = self.active_pane() {
+            crate::url::find_all_urls_in_viewport(&pane.session.borrow().term)
+        } else {
+            Vec::new()
+        };
+
+        if urls.is_empty() {
+            return;
+        }
+
+        if urls.len() == 1 {
+            crate::url::open_url(&urls[0]);
+            self.focus_main(window);
+        } else {
+            self.palette_open = true;
+            self.palette_closing = false;
+            self.palette_query = "open link".to_string();
+            self.palette_index = 0;
+            self.palette_anim_index = 0.0;
+            self.profile_menu = false;
+            window.focus(&self.palette_focus);
+            cx.notify();
+        }
+    }
+
     pub fn grid_coords_from_mouse(&self, mouse_pos: gpui::Point<Pixels>, pane_ix: usize) -> Option<(usize, usize)> {
         let tab = self.tabs.get(self.active)?;
         let pane = tab.panes.get(pane_ix)?;
@@ -1594,6 +1639,12 @@ impl AtlasView {
         self.cursor_on = true;
         self.cursor_last_typing = std::time::Instant::now();
 
+        // Clear hovered link if control is released
+        if self.hovered_link.is_some() && !modifiers.control {
+            self.hovered_link = None;
+            cx.notify();
+        }
+
         if key == "escape"
             && (self.settings_open || self.profile_menu || self.update_panel_open)
         {
@@ -1724,6 +1775,40 @@ impl AtlasView {
                     cx.notify();
                     return;
                 }
+                if chord == self.get_shortcut(ACTION_ZOOM_RESET) {
+                    self.font_size = self.app_settings.font_size.clamp(10.0, 24.0);
+                    self.sync_and_save_settings();
+                    cx.notify();
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_SELECT_ALL) {
+                    self.select_all_viewport(cx);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_SCROLL_PAGE_UP) {
+                    self.scroll(15);
+                    cx.notify();
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_SCROLL_PAGE_DOWN) {
+                    self.scroll(-15);
+                    cx.notify();
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_SCROLL_TO_TOP) {
+                    self.scroll(100_000);
+                    cx.notify();
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_SCROLL_TO_BOTTOM) {
+                    self.scroll(-100_000);
+                    cx.notify();
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_OPEN_URL_PICKER) {
+                    self.open_buffer_urls(window, cx);
+                    return;
+                }
             }
         }
 
@@ -1731,7 +1816,11 @@ impl AtlasView {
         if modifiers.control && !modifiers.shift && !modifiers.alt {
             if let Ok(num) = key.parse::<usize>() {
                 if (1..=9).contains(&num) {
-                    let target = num - 1;
+                    let target = if num == 9 {
+                        self.tabs.len().saturating_sub(1)
+                    } else {
+                        num - 1
+                    };
                     if target < self.tabs.len() {
                         self.active = target;
                         self.settings_open = false;
@@ -1741,12 +1830,32 @@ impl AtlasView {
                     }
                 }
             }
+
+            match key {
+                "pageup" => {
+                    self.cycle(-1);
+                    cx.notify();
+                    return;
+                }
+                "pagedown" => {
+                    self.cycle(1);
+                    cx.notify();
+                    return;
+                }
+                "0" => {
+                    self.font_size = self.app_settings.font_size.clamp(10.0, 24.0);
+                    self.sync_and_save_settings();
+                    cx.notify();
+                    return;
+                }
+                _ => {}
+            }
         }
 
-        // Mouseless shortcut: Alt+Arrows to cycle focus between split panes
-        if modifiers.alt && !modifiers.control && !modifiers.shift {
+        // Mouseless shortcut: Alt+Arrows (and Ctrl+Alt+Arrows) to cycle focus between split panes
+        if modifiers.alt && !modifiers.shift {
             match key {
-                "arrowright" | "arrowdown" => {
+                "arrowright" | "arrowdown" | "right" | "down" => {
                     if let Some(tab) = self.tabs.get_mut(self.active) {
                         if tab.panes.len() > 1 {
                             tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
@@ -1755,7 +1864,7 @@ impl AtlasView {
                         }
                     }
                 }
-                "arrowleft" | "arrowup" => {
+                "arrowleft" | "arrowup" | "left" | "up" => {
                     if let Some(tab) = self.tabs.get_mut(self.active) {
                         if tab.panes.len() > 1 {
                             tab.active_pane = if tab.active_pane == 0 {
@@ -1810,6 +1919,28 @@ impl AtlasView {
                     self.focus_main(window);
                 }
                 "p" => self.open_palette(window, cx),
+                "o" => self.open_buffer_urls(window, cx),
+                "a" => self.select_all_viewport(cx),
+                "arrowup" | "up" => {
+                    self.scroll(1);
+                    cx.notify();
+                    return;
+                }
+                "arrowdown" | "down" => {
+                    self.scroll(-1);
+                    cx.notify();
+                    return;
+                }
+                "{" | "[" => {
+                    self.cycle(-1);
+                    cx.notify();
+                    return;
+                }
+                "}" | "]" => {
+                    self.cycle(1);
+                    cx.notify();
+                    return;
+                }
                 _ => {}
             }
             return;
@@ -1818,12 +1949,22 @@ impl AtlasView {
         if modifiers.shift && !modifiers.control && !modifiers.alt {
             match key {
                 "pageup" => {
-                    self.scroll(12);
+                    self.scroll(15);
                     cx.notify();
                     return;
                 }
                 "pagedown" => {
-                    self.scroll(-12);
+                    self.scroll(-15);
+                    cx.notify();
+                    return;
+                }
+                "home" => {
+                    self.scroll(100_000);
+                    cx.notify();
+                    return;
+                }
+                "end" => {
+                    self.scroll(-100_000);
                     cx.notify();
                     return;
                 }
@@ -2437,6 +2578,9 @@ impl Render for AtlasView {
                             rgba(0x00000000)
                         });
                 }
+                if self.hovered_link.as_ref().map_or(false, |(p, _)| *p == pane_ix) {
+                    cell = cell.cursor_pointer();
+                }
                 cell = cell
                     .on_mouse_down(
                         MouseButton::Left,
@@ -2449,6 +2593,22 @@ impl Render for AtlasView {
                                 }
                             }
                             window.focus(&view.focus);
+
+                            // Ctrl+Click opens URL at clicked grid point
+                            if event.modifiers.control {
+                                if let Some(pt) = view.point_from_mouse(event.position, pane_down) {
+                                    if let Some(tab) = view.tabs.get(view.active) {
+                                        if let Some(pane) = tab.panes.get(pane_down) {
+                                            let term = &pane.session.borrow().term;
+                                            if let Some(detected) = crate::url::find_url_at_point(term, pt) {
+                                                crate::url::open_url(&detected.url);
+                                                view.mouse_down_pane = None;
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             if !event.modifiers.shift {
                                 if let Some(tab) = view.tabs.get(view.active) {
                                     if let Some(pane) = tab.panes.get(pane_down) {
@@ -2651,6 +2811,26 @@ impl Render for AtlasView {
                                 }
                             }
                         }
+                        if event.modifiers.control {
+                            let mut found = None;
+                            if let Some(pt) = view.point_from_mouse(event.position, pane_move) {
+                                if let Some(tab) = view.tabs.get(view.active) {
+                                    if let Some(pane) = tab.panes.get(pane_move) {
+                                        let term = &pane.session.borrow().term;
+                                        if let Some(detected) = crate::url::find_url_at_point(term, pt) {
+                                            found = Some((pane_move, detected));
+                                        }
+                                    }
+                                }
+                            }
+                            if view.hovered_link != found {
+                                view.hovered_link = found;
+                                cx.notify();
+                            }
+                        } else if view.hovered_link.is_some() {
+                            view.hovered_link = None;
+                            cx.notify();
+                        }
                         if view.mouse_down_pane == Some(pane_move) {
                             if let Some(pt) = view.point_from_mouse(event.position, pane_move) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
@@ -2751,6 +2931,13 @@ impl Render for AtlasView {
                         cursor_alpha,
                         subpixel_y,
                         scrollbar_opacity: self.scrollbar_opacity,
+                        hovered_link: self.hovered_link.as_ref().and_then(|(p, hl)| {
+                            if *p == pane_ix {
+                                Some(hl.clone())
+                            } else {
+                                None
+                            }
+                        }),
                     });
                 }
                 area = area.child(cell.with_animation(

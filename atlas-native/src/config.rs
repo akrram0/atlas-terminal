@@ -20,6 +20,13 @@ pub const ACTION_FULLSCREEN: &str = "fullscreen";
 pub const ACTION_CLEAR_SCROLLBACK: &str = "clear_scrollback";
 pub const ACTION_FOCUS_NEXT_PANE: &str = "focus_next_pane";
 pub const ACTION_FOCUS_PREV_PANE: &str = "focus_prev_pane";
+pub const ACTION_ZOOM_RESET: &str = "zoom_reset";
+pub const ACTION_SELECT_ALL: &str = "select_all";
+pub const ACTION_SCROLL_PAGE_UP: &str = "scroll_page_up";
+pub const ACTION_SCROLL_PAGE_DOWN: &str = "scroll_page_down";
+pub const ACTION_SCROLL_TO_TOP: &str = "scroll_to_top";
+pub const ACTION_SCROLL_TO_BOTTOM: &str = "scroll_to_bottom";
+pub const ACTION_OPEN_URL_PICKER: &str = "open_url_picker";
 
 pub fn action_display_name(action: &str) -> &'static str {
     match action {
@@ -34,6 +41,13 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_OPEN_SETTINGS => "Open Settings",
         ACTION_ZOOM_IN => "Zoom In (Font Size)",
         ACTION_ZOOM_OUT => "Zoom Out (Font Size)",
+        ACTION_ZOOM_RESET => "Reset Zoom (Font Size)",
+        ACTION_SELECT_ALL => "Select All in Viewport",
+        ACTION_SCROLL_PAGE_UP => "Scroll Page Up",
+        ACTION_SCROLL_PAGE_DOWN => "Scroll Page Down",
+        ACTION_SCROLL_TO_TOP => "Scroll to Top of Buffer",
+        ACTION_SCROLL_TO_BOTTOM => "Scroll to Bottom of Buffer",
+        ACTION_OPEN_URL_PICKER => "Open URL from Buffer",
         ACTION_PALETTE => "Command Palette",
         ACTION_FULLSCREEN => "Toggle Fullscreen / Maximize",
         ACTION_CLEAR_SCROLLBACK => "Clear Scrollback Buffer",
@@ -56,6 +70,13 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_OPEN_SETTINGS.to_string(), "ctrl+,".to_string());
     m.insert(ACTION_ZOOM_IN.to_string(), "ctrl+=".to_string());
     m.insert(ACTION_ZOOM_OUT.to_string(), "ctrl+-".to_string());
+    m.insert(ACTION_ZOOM_RESET.to_string(), "ctrl+0".to_string());
+    m.insert(ACTION_SELECT_ALL.to_string(), "ctrl+shift+a".to_string());
+    m.insert(ACTION_SCROLL_PAGE_UP.to_string(), "shift+pageup".to_string());
+    m.insert(ACTION_SCROLL_PAGE_DOWN.to_string(), "shift+pagedown".to_string());
+    m.insert(ACTION_SCROLL_TO_TOP.to_string(), "shift+home".to_string());
+    m.insert(ACTION_SCROLL_TO_BOTTOM.to_string(), "shift+end".to_string());
+    m.insert(ACTION_OPEN_URL_PICKER.to_string(), "ctrl+shift+o".to_string());
     m.insert(ACTION_PALETTE.to_string(), "ctrl+k".to_string());
     m.insert(ACTION_FULLSCREEN.to_string(), "f11".to_string());
     m.insert(ACTION_CLEAR_SCROLLBACK.to_string(), "ctrl+shift+k".to_string());

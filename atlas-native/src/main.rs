@@ -12,6 +12,7 @@ mod terminal;
 mod theme;
 mod ui;
 pub mod updater;
+pub mod url;
 mod view;
 mod workspace;
 

@@ -22,6 +22,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License: MIT"></a>
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Built%20by-AI-7C3AED?logo=openai&logoColor=white" alt="Built by AI">
+  <a href="https://github.com/akrram0"><img src="https://img.shields.io/badge/Tested%20%26%20Reviewed%20by-%40akrram0-C05A28?logo=github&logoColor=white" alt="Tested & Reviewed by @akrram0"></a>
+</p>
+
+> **Note:** This project was built by AI and tested & reviewed by [@akrram0](https://github.com/akrram0).
+
 ---
 
 ## The Vision
@@ -103,7 +110,16 @@ printf '\033]1337;File=inline=1;width=40;height=20:%s\007\n' "$(base64 -w0 photo
 
 ---
 
-### 2. Interactive TUI Applications (Full Mouse Control)
+### 2. Clickable Links (`Ctrl + Click`)
+Atlas Terminal automatically scans visible terminal rows and wrapped lines for hyperlinks (`https://`, `http://`, `file://`, `www.`, `git://`, `ssh://`, `ftp://`, `mailto:`):
+- **Hover Affordance**: Hold **`Ctrl`** and hover your mouse over any link to highlight it in your theme's accent color with an underline and hand pointer cursor.
+- **Instant Launch**: **`Ctrl + Click`** opens the URL directly in your default browser or associated Windows application without disrupting terminal selection.
+- **Smart Wrapping**: Multi-line URLs that soft-wrap across terminal columns are seamlessly reassembled and opened intact.
+- **Keyboard Link Picker**: Press **`Ctrl+Shift+O`** to open links directly from the keyboard. If multiple links are present in the viewport, the Command Palette opens pre-filtered with every visible link ready for selection with arrow keys and `Enter`.
+
+---
+
+### 3. Interactive TUI Applications (Full Mouse Control)
 Atlas Terminal provides comprehensive SGR mouse reporting (`?1000h`, `?1002h`, `?1003h`, `?1006h`):
 - **Clickable Interfaces**: Click buttons, select list items, and collapse accordions inside modern terminal apps like **OpenCode**, **Lazygit**, **Micro**, **Helix**, and **Neovim**.
 - **Smooth Mouse Wheel Scrolling**: Scroll through diffs, file trees, and logs directly with the wheel.
@@ -111,27 +127,27 @@ Atlas Terminal provides comprehensive SGR mouse reporting (`?1000h`, `?1002h`, `
 
 ---
 
-### 3. Workspaces: Tabs & Split Panes
+### 4. Workspaces: Tabs & Split Panes
 Organize multiple concurrent tasks and long-running services in a single window:
 - **New Tab**: Press `Ctrl+Shift+T` or `Ctrl+Shift+N` (or click `+` on the tab bar).
 - **Split Vertically**: Press `Ctrl+Shift+E` to divide the screen into side-by-side panes.
 - **Split Horizontally**: Press `Ctrl+Shift+D` to divide the screen top and bottom.
 - **Maximize Pane**: Press `Ctrl+Shift+M` to temporarily focus entirely on the active pane, and press it again to restore the split layout.
 - **Close Pane / Tab**: Press `Ctrl+Shift+W`.
-- **Switch Tabs**: Press `Ctrl+Tab` or `Ctrl+Shift+Tab`.
+- **Switch Tabs**: Press `Ctrl+Tab` / `Ctrl+Shift+Tab`, or use direct index switching (`Ctrl+1` through `Ctrl+9`).
 
 ---
 
-### 4. Command Palette (`Ctrl+K` or `Ctrl+Shift+P`)
-Press `Ctrl+K` or `Ctrl+Shift+P` at any time to open the instant fuzzy-search Command Palette:
-- Jump between tabs and active processes.
-- Split panes, close sessions, or toggle fullscreen.
-- Switch themes (**Matte Dark** / **Warm Paper**).
-- Open Settings directly from your keyboard.
+### 5. Supercharged Command Palette (`Ctrl+K` or `Ctrl+Shift+P`)
+Press `Ctrl+K` or `Ctrl+Shift+P` at any time to open the instant Raycast-style floating Command Palette:
+- **Multi-Word Search**: Filter commands naturally with queries like `new wsl`, `split rows`, `open link`, or `clear`.
+- **Direct Shell Spawning**: Open dedicated tabs for **PowerShell**, **Ubuntu (WSL)**, **Command Prompt (`cmd.exe`)**, **Git Bash**, or **OpenCode CLI**.
+- **Buffer Link Opener**: Any URLs currently visible in your active terminal viewport appear automatically as actionable items (`Open link: https://...`).
+- **Mouseless Control**: Navigate with `↑`/`↓`, execute with `Enter`, or dismiss with `Esc`.
 
 ---
 
-### 5. Settings & Theme Customization (`Ctrl+,`)
+### 6. Settings & Theme Customization (`Ctrl+,`)
 Press `Ctrl+,` to open the built-in Settings dashboard:
 - **Appearance & Themes**: Instant crossfade between **Matte Dark** and **Warm Paper**, or enable automatic Windows system dark/light synchronization.
 - **Typography**: Select any installed system font (defaults to `Segoe UI` and `Symbols Nerd Font`), font size, and line height.
@@ -140,22 +156,41 @@ Press `Ctrl+,` to open the built-in Settings dashboard:
 
 ---
 
-## Keyboard Shortcuts
+## Mouseless Navigation & Keyboard Shortcuts
 
-| Shortcut | Action |
-| :--- | :--- |
-| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette |
-| `Ctrl+Shift+T` / `Ctrl+Shift+N` | New Tab |
-| `Ctrl+Shift+W` | Close Tab / Active Split Pane |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / Previous Tab |
-| `Ctrl+Shift+E` | Split Pane Vertically (Side-by-Side) |
-| `Ctrl+Shift+D` | Split Pane Horizontally (Top / Bottom) |
-| `Ctrl+Shift+M` | Maximize / Restore Active Split Pane |
-| `Ctrl+Shift+C` | Copy Selection to Clipboard |
-| `Ctrl+Shift+V` | Paste from Clipboard |
-| `Ctrl+,` | Toggle Settings Dashboard |
-| `Shift + Mouse Drag` | Bypass TUI mouse reporting for text copy |
-| `R` | Restart Exited Process Pane |
+Atlas Terminal is designed from the ground up to be completely usable without touching a mouse:
+
+| Category | Shortcut | Action |
+| :--- | :--- | :--- |
+| **Command Palette** | `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette with multi-word search |
+| **Links & URLs** | `Ctrl + Click` | Open hovered link in default browser |
+| | `Ctrl+Shift+O` | Open latest link or launch keyboard link picker |
+| **Tab Navigation** | `Ctrl+1` .. `Ctrl+8` | Switch directly to Tab 1 through 8 |
+| | `Ctrl+9` | Jump directly to the last Tab |
+| | `Ctrl+Tab` / `Ctrl+PageDown` / `Ctrl+Shift+]` | Next Tab |
+| | `Ctrl+Shift+Tab` / `Ctrl+PageUp` / `Ctrl+Shift+[` | Previous Tab |
+| | `Ctrl+Shift+T` / `Ctrl+Shift+N` | New Tab (Default Shell) |
+| | `Ctrl+Shift+W` | Close Active Pane / Tab |
+| **Pane Navigation** | `Alt+Left` / `Alt+Up` / `Ctrl+Alt+Left` | Focus Previous Split Pane |
+| | `Alt+Right` / `Alt+Down` / `Ctrl+Alt+Right` | Focus Next Split Pane |
+| | `Ctrl+Shift+E` | Split Pane Vertically (Columns) |
+| | `Ctrl+Shift+D` | Split Pane Horizontally (Rows) |
+| | `Ctrl+Shift+M` | Toggle Maximize / Restore Active Pane |
+| **Buffer Scrolling** | `Shift+PageUp` / `Shift+PageDown` | Scroll Up / Down 15 lines |
+| | `Ctrl+Shift+Up` / `Ctrl+Shift+Down` | Fine scroll 1 line Up / Down |
+| | `Shift+Home` / `Shift+End` | Scroll directly to Top / Bottom of history |
+| | `Ctrl+Shift+K` | Clear scrollback buffer |
+| **Selection & Zoom** | `Ctrl+Shift+A` | Select all text in current viewport |
+| | `Ctrl+Shift+C` (or `Ctrl+C` with selection) | Copy selection to clipboard |
+| | `Ctrl+Shift+V` | Paste from clipboard |
+| | `Ctrl+=` / `Ctrl++` | Increase font size (Zoom In) |
+| | `Ctrl+-` | Decrease font size (Zoom Out) |
+| | `Ctrl+0` | Reset font size to default (Zoom Reset) |
+| **Window & Shell** | `F11` | Toggle Fullscreen |
+| | `Ctrl+,` | Toggle Settings Dashboard |
+| | `Ctrl+Shift+T` | Toggle Dark / Light Theme Preset |
+| | `R` | Restart exited process / dead shell pane |
+| | `Shift + Mouse Drag` | Bypass TUI mouse reporting for native text selection |
 
 ---
 
