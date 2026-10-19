@@ -69,7 +69,38 @@ pub(crate) fn user_data_dir() -> std::path::PathBuf {
     modern_dir
 }
 
+fn cleanup_legacy_debris() {
+    // 1. Remove obsolete Tauri bundle cache/state directories
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let tauri_local = std::path::PathBuf::from(&local).join("com.atlas.terminal");
+        if tauri_local.exists() {
+            let _ = std::fs::remove_dir_all(&tauri_local);
+        }
+        let legacy_updater_dir = std::path::PathBuf::from(&local).join("atlas-terminal");
+        if legacy_updater_dir.exists() {
+            let _ = std::fs::remove_dir_all(&legacy_updater_dir);
+        }
+        // Remove older installation directory if running from new "Atlas Terminal"
+        let old_prog = std::path::PathBuf::from(&local).join("Programs").join("AtlasTerminal");
+        let new_prog = std::path::PathBuf::from(&local).join("Programs").join("Atlas Terminal");
+        if old_prog.exists() && new_prog.exists() {
+            let _ = std::fs::remove_dir_all(&old_prog);
+        }
+    }
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let tauri_roaming = std::path::PathBuf::from(&appdata).join("com.atlas.terminal");
+        if tauri_roaming.exists() {
+            let _ = std::fs::remove_dir_all(&tauri_roaming);
+        }
+        let legacy_roaming = std::path::PathBuf::from(&appdata).join("atlas-terminal");
+        if legacy_roaming.exists() {
+            let _ = std::fs::remove_dir_all(&legacy_roaming);
+        }
+    }
+}
+
 pub(crate) fn init_user_data() {
+    cleanup_legacy_debris();
     let base = user_data_dir();
     let logs_dir = base.join("logs");
     let sessions_dir = base.join("sessions");

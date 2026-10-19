@@ -154,8 +154,36 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  OldProgDir, TauriLocal, TauriRoaming, LegacyUpdater: String;
 begin
-  if CurStep = ssPostInstall then
+  if CurStep = ssInstall then
+  begin
+    // Clean up old installer directory without space if it exists
+    OldProgDir := ExpandConstant('{localappdata}\Programs\AtlasTerminal');
+    if DirExists(OldProgDir) then
+    begin
+      DelTree(OldProgDir, True, True, True);
+    end;
+    // Clean up legacy Tauri directories
+    TauriLocal := ExpandConstant('{localappdata}\com.atlas.terminal');
+    if DirExists(TauriLocal) then
+    begin
+      DelTree(TauriLocal, True, True, True);
+    end;
+    TauriRoaming := ExpandConstant('{userappdata}\com.atlas.terminal');
+    if DirExists(TauriRoaming) then
+    begin
+      DelTree(TauriRoaming, True, True, True);
+    end;
+    // Clean up old updater downloads directory
+    LegacyUpdater := ExpandConstant('{localappdata}\atlas-terminal');
+    if DirExists(LegacyUpdater) then
+    begin
+      DelTree(LegacyUpdater, True, True, True);
+    end;
+  end
+  else if CurStep = ssPostInstall then
   begin
     if WizardIsTaskSelected('addtopath') then
     begin
@@ -166,17 +194,19 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  DataDir: String;
+  DataDir, ConfigDir: String;
   AppDir: String;
 begin
   if CurUninstallStep = usUninstall then
   begin
+    ConfigDir := ExpandConstant('{userprofile}\.config\atlas');
     DataDir := ExpandConstant('{userappdata}\atlas-terminal');
-    if DirExists(DataDir) then
+    if DirExists(ConfigDir) or DirExists(DataDir) then
     begin
-      if SuppressibleMsgBox('Also delete your settings and data?' + #13#10 + DataDir, mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES then
+      if SuppressibleMsgBox('Also delete your configuration and settings?' + #13#10 + ConfigDir, mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES then
       begin
-        DelTree(DataDir, True, True, True);
+        if DirExists(ConfigDir) then DelTree(ConfigDir, True, True, True);
+        if DirExists(DataDir) then DelTree(DataDir, True, True, True);
       end;
     end;
     RemovePathFromEnv(ExpandConstant('{app}'));
@@ -184,7 +214,7 @@ begin
   else if CurUninstallStep = usPostUninstall then
   begin
     AppDir := ExpandConstant('{app}');
-    if (Pos('AtlasTerminal', AppDir) > 0) and DirExists(AppDir) then
+    if DirExists(AppDir) then
     begin
       DelTree(AppDir, True, True, True);
     end;

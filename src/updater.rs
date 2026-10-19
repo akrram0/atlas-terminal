@@ -117,14 +117,17 @@ pub fn format_bytes(bytes: u64) -> String {
 
 /// Dedicated directory for downloaded update installers.
 pub fn updates_dir() -> PathBuf {
-    let dir = if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        PathBuf::from(local).join("atlas-terminal").join("updates")
-    } else if let Some(appdata) = std::env::var_os("APPDATA") {
-        PathBuf::from(appdata).join("atlas-terminal").join("updates")
-    } else {
-        std::env::temp_dir().join("atlas-terminal-updates")
-    };
+    let dir = crate::user_data_dir().join("updates");
     let _ = std::fs::create_dir_all(&dir);
+    // Purge any stale installer files to prevent disk spam
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("exe") {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
     dir
 }
 
