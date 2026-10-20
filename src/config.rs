@@ -224,7 +224,7 @@ fn default_corner_radius() -> f32 {
     14.0
 }
 fn default_opacity() -> f32 {
-    1.0
+    0.85
 }
 fn default_blur() -> bool {
     false

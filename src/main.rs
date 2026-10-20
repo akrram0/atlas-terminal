@@ -116,8 +116,7 @@ pub(crate) fn init_user_data() {
   "font_size": 13.0,
   "line_height": 1.2,
   "corner_radius": 14.0,
-  "opacity": 1.0,
-  "blur_enabled": false,
+  "opacity": 0.85,
   "cursor_shape": "block",
   "cursor_blink": true,
   "shortcuts": {
@@ -277,7 +276,7 @@ pub(crate) mod rounded_corners {
 
     /// Top-level window handle, published once `apply` finds it.
     static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
-    static INITIAL_BLUR: AtomicBool = AtomicBool::new(false);
+    static INITIAL_OPACITY: AtomicU32 = AtomicU32::new(f32::to_bits(0.85));
 
     /// Titlebar drag bands reported by the view on every paint, in logical
     /// client pixels: 4 slots of two f32 bit patterns (top-left, bottom-right).
@@ -331,7 +330,12 @@ pub(crate) mod rounded_corners {
         fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
         fn GetForegroundWindow() -> Hwnd;
+        fn SetLayeredWindowAttributes(hwnd: Hwnd, cr_key: u32, b_alpha: u8, dw_flags: u32) -> i32;
     }
+
+    const GWL_EXSTYLE: i32 = -20;
+    const WS_EX_LAYERED: isize = 0x00080000;
+    const LWA_ALPHA: u32 = 0x00000002;
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -503,42 +507,27 @@ pub(crate) mod rounded_corners {
         }
     }
 
-    /// Toggle Windows 11 DWM acrylic / blur background.
-    pub fn set_blur(enabled: bool) {
-        INITIAL_BLUR.store(enabled, Ordering::SeqCst);
+    /// Set true OS-level window opacity (Win32 layered window).
+    pub fn set_opacity(opacity: f32) {
+        INITIAL_OPACITY.store(opacity.to_bits(), Ordering::SeqCst);
         let raw = MAIN_HWND.load(Ordering::SeqCst);
         if raw == 0 {
             return;
         }
         let hwnd = raw as Hwnd;
         unsafe {
-            // DWMSBT_TRANSIENTWINDOW (3): Windows 11 Acrylic blur.
-            // DWMSBT_NONE (1): Disable system backdrop.
-            let value: i32 = if enabled { 3 } else { 1 };
-            let _ = DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_SYSTEMBACKDROP_TYPE,
-                &value as *const i32 as *const core::ffi::c_void,
-                core::mem::size_of::<i32>() as u32,
-            );
-            // When acrylic blur is enabled, extend frame across the entire client area (-1 margins).
-            // When disabled, restore the 1px frame margin used for standard rounded corners and shadows.
-            let margins = if enabled {
-                Margins {
-                    cx_left_width: -1,
-                    cx_right_width: -1,
-                    cy_top_height: -1,
-                    cy_bottom_height: -1,
+            let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            if opacity >= 0.999 {
+                if (ex_style & WS_EX_LAYERED) != 0 {
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style & !WS_EX_LAYERED);
                 }
             } else {
-                Margins {
-                    cx_left_width: 1,
-                    cx_right_width: 1,
-                    cy_top_height: 1,
-                    cy_bottom_height: 1,
+                if (ex_style & WS_EX_LAYERED) == 0 {
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED);
                 }
-            };
-            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+                let alpha = (opacity.clamp(0.15, 1.0) * 255.0).round() as u8;
+                SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
+            }
         }
     }
 
@@ -796,10 +785,9 @@ pub(crate) mod rounded_corners {
                             let _ = SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small as isize);
                         }
 
-                        // 6c. If acrylic blur was enabled before window handle resolved, apply it now.
-                        if INITIAL_BLUR.load(Ordering::SeqCst) {
-                            set_blur(true);
-                        }
+                        // 6c. Apply initial window opacity
+                        let initial_op = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
+                        set_opacity(initial_op);
 
                         // 7. Diagnostics: with the ring gone the client should
                         //    match the window size.
@@ -833,7 +821,7 @@ mod rounded_corners {
         true
     }
     pub fn set_dark_mode(_dark: bool) {}
-    pub fn set_blur(_enabled: bool) {}
+    pub fn set_opacity(_opacity: f32) {}
     pub fn window_button(_index: usize) {}
     pub fn set_caption_rect(_slot: usize, _x: f32, _y: f32, _w: f32, _h: f32) {}
 }

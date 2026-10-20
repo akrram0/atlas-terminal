@@ -43,7 +43,6 @@ impl AtlasView {
         self.app_settings.line_height = self.line_height;
         self.app_settings.corner_radius = self.corner_radius;
         self.app_settings.opacity = self.opacity;
-        self.app_settings.blur_enabled = self.blur_enabled;
         self.app_settings.cursor_shape = cursor_shape;
         self.app_settings.cursor_blink = self.cursor_blink;
         self.app_settings.auto_check_updates = self.updater_settings.auto_check_updates;
@@ -55,7 +54,7 @@ impl AtlasView {
 
         let (_, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
         crate::rounded_corners::set_dark_mode(is_dark);
-        crate::rounded_corners::set_blur(self.blur_enabled);
+        crate::rounded_corners::set_opacity(self.opacity);
         save_app_settings(&self.app_settings);
     }
 
@@ -313,7 +312,7 @@ impl AtlasView {
                 |view, cx| {
                     view.opacity =
                         ((view.opacity - 0.05) * 100.0).round() / 100.0;
-                    view.opacity = view.opacity.max(0.5);
+                    view.opacity = view.opacity.max(0.15);
                     view.sync_and_save_settings();
                     cx.notify();
                 },
@@ -321,42 +320,6 @@ impl AtlasView {
                     view.opacity =
                         ((view.opacity + 0.05) * 100.0).round() / 100.0;
                     view.opacity = view.opacity.min(1.0);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let blur_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(sc_label)
-                            .child("Blurry Acrylic Transparency"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(sc_desc)
-                            .child("Translucent glassmorphism acrylic blur behind the terminal (Windows 11 DWM)"),
-                    ),
-            )
-            .child(toggle_pill(
-                114,
-                self.blur_enabled,
-                theme,
-                |view, cx| {
-                    view.blur_enabled = !view.blur_enabled;
                     view.sync_and_save_settings();
                     cx.notify();
                 },
@@ -611,8 +574,7 @@ impl AtlasView {
                 card()
                     .child(section("WINDOW & BACKDROP"))
                     .child(corner_radius_row)
-                    .child(opacity_row)
-                    .child(blur_row),
+                    .child(opacity_row),
             )
             .child(
                 card()
@@ -1570,7 +1532,6 @@ impl AtlasView {
                     view.line_height = view.app_settings.line_height;
                     view.corner_radius = view.app_settings.corner_radius;
                     view.opacity = view.app_settings.opacity;
-                    view.blur_enabled = view.app_settings.blur_enabled;
                     view.cursor_style = None;
                     view.cursor_blink = view.app_settings.cursor_blink;
                     view.sync_and_save_settings();

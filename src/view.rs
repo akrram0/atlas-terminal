@@ -147,7 +147,6 @@ pub struct AtlasView {
     pub(crate) line_height: f32,
     pub(crate) corner_radius: f32,
     pub(crate) opacity: f32,
-    pub(crate) blur_enabled: bool,
     pub(crate) cursor_blink: bool,
     pub(crate) window_was_active: bool,
     pub(crate) mouse_down_pane: Option<usize>,
@@ -196,8 +195,7 @@ impl AtlasView {
         let font_size = app_settings.font_size.clamp(10.0, 24.0);
         let line_height = app_settings.line_height.clamp(1.0, 1.8);
         let corner_radius = app_settings.corner_radius.clamp(0.0, 20.0);
-        let opacity = app_settings.opacity.clamp(0.5, 1.0);
-        let blur_enabled = app_settings.blur_enabled;
+        let opacity = app_settings.opacity.clamp(0.15, 1.0);
         let cursor_blink = app_settings.cursor_blink;
 
         let font = resolve_terminal_font(&font_family);
@@ -264,7 +262,6 @@ impl AtlasView {
             line_height,
             corner_radius,
             opacity,
-            blur_enabled,
             cursor_blink,
             window_was_active: true,
             mouse_down_pane: None,
@@ -276,7 +273,7 @@ impl AtlasView {
             hovered_link: None,
         };
         crate::rounded_corners::set_dark_mode(is_dark);
-        crate::rounded_corners::set_blur(blur_enabled);
+        crate::rounded_corners::set_opacity(opacity);
         let default_shell_prof = view.get_default_profile();
         view.new_tab_with_cwd(default_shell_prof, initial_dir, cx);
 
@@ -2008,36 +2005,8 @@ impl Render for AtlasView {
         // Window chrome and top tab bar use the cohesive application theme
         let tb = theme.clone();
 
-        let is_translucent = self.blur_enabled || self.opacity < 1.0;
-        let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
-            let base_alpha = if self.blur_enabled {
-                self.opacity.min(0.85)
-            } else {
-                self.opacity
-            };
-            if self.blur_enabled {
-                // Acrylic glassmorphism: subtle chrome tint, rich translucent terminal sheet
-                let chrome = Rgba { a: (base_alpha * 0.45).clamp(0.05, 1.0), ..tb.panel_bg };
-                let sheet = if self.settings_open {
-                    Rgba { a: (base_alpha * 0.85).clamp(0.05, 1.0), ..theme.elevated_bg }
-                } else {
-                    Rgba { a: (base_alpha * 0.75).clamp(0.05, 1.0), ..active_bg }
-                };
-                (chrome, sheet, chrome)
-            } else {
-                // Standard window opacity without blur
-                let chrome = Rgba { a: base_alpha.clamp(0.05, 1.0), ..tb.panel_bg };
-                let sheet = if self.settings_open {
-                    Rgba { a: base_alpha.clamp(0.05, 1.0), ..theme.elevated_bg }
-                } else {
-                    Rgba { a: base_alpha.clamp(0.05, 1.0), ..active_bg }
-                };
-                (chrome, sheet, rgba(0x00000000))
-            }
-        } else {
-            let sheet = if self.settings_open { theme.elevated_bg } else { active_bg };
-            (tb.panel_bg, sheet, tb.panel_bg)
-        };
+        let sheet = if self.settings_open { theme.elevated_bg } else { active_bg };
+        let (chrome_bg, sheet_bg, container_bg) = (tb.panel_bg, sheet, tb.panel_bg);
 
         let mut bar = div()
             .flex()
