@@ -111,7 +111,8 @@ pub(crate) fn init_user_data() {
 
     if !settings_file.exists() {
         let default_settings = r#"{
-  "theme": "dark",
+  "theme": "tokyo_night",
+  "theme_mode": "dark",
   "font_family": "Cascadia Code",
   "font_size": 13.0,
   "line_height": 1.2,
@@ -388,7 +389,7 @@ pub(crate) mod rounded_corners {
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
                 accent_flags: 2,
-                gradient_color: 0x01000000,
+                gradient_color: 0x8016161E,
                 animation_id: 0,
             }
         } else {
@@ -574,7 +575,7 @@ pub(crate) mod rounded_corners {
             // DWMSBT_TRANSIENTWINDOW (3): Windows 11 Desktop Acrylic blur.
             // DWMSBT_NONE (1): Disable system backdrop.
             let backdrop_type: i32 = if enabled { DWMSBT_TRANSIENTWINDOW } else { DWMSBT_NONE };
-            let _ = DwmSetWindowAttribute(
+            let hr = DwmSetWindowAttribute(
                 hwnd,
                 DWMWA_SYSTEMBACKDROP_TYPE,
                 &backdrop_type as *const i32 as *const core::ffi::c_void,
@@ -590,8 +591,13 @@ pub(crate) mod rounded_corners {
             };
             let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
 
-            // Also call SetWindowCompositionAttribute (undocumented User32 API) for Acrylic/BlurBehind.
-            apply_composition_accent(hwnd, enabled);
+            // Windows 10 fallback: only call SetWindowCompositionAttribute if
+            // DWMWA_SYSTEMBACKDROP_TYPE is not supported (returns error).
+            // On Windows 11, calling SetWindowCompositionAttribute causes a compositor conflict
+            // that results in a solid opaque white/black fill!
+            if hr != 0 {
+                apply_composition_accent(hwnd, enabled);
+            }
         }
     }
 
@@ -971,7 +977,7 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
-                window_background: WindowBackgroundAppearance::Blurred,
+                window_background: WindowBackgroundAppearance::Transparent,
                 window_decorations: Some(WindowDecorations::Client),
                 window_min_size: Some(size(px(640.0), px(420.0))),
                 is_resizable: true,

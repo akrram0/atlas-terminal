@@ -180,7 +180,11 @@ impl AtlasView {
         window.focus(&focus);
         let registry = ThemeRegistry::standard();
         let app_settings = load_app_settings();
-        let theme_mode = app_settings.theme_mode.clone();
+        let theme_mode = if app_settings.theme_mode == "auto" {
+            "dark".to_string()
+        } else {
+            app_settings.theme_mode.clone()
+        };
         let theme_id = registry
             .find_by_name_or_id(&app_settings.theme)
             .unwrap_or(0);
@@ -195,7 +199,11 @@ impl AtlasView {
         let font_size = app_settings.font_size.clamp(10.0, 24.0);
         let line_height = app_settings.line_height.clamp(1.0, 1.8);
         let corner_radius = app_settings.corner_radius.clamp(0.0, 20.0);
-        let opacity = app_settings.opacity.clamp(0.15, 1.0);
+        let opacity = if app_settings.opacity >= 0.999 {
+            0.85
+        } else {
+            app_settings.opacity.clamp(0.15, 1.0)
+        };
         let cursor_blink = app_settings.cursor_blink;
 
         let font = resolve_terminal_font(&font_family);
@@ -3001,26 +3009,16 @@ impl Render for AtlasView {
                 |el, delta| el.opacity(delta),
             );
 
-        let (sheet_mx, sheet_mb, sheet_radius) = if zoomed {
-            (px(0.0), px(0.0), px(0.0))
-        } else {
-            (px(6.0), px(6.0), px(10.0))
-        };
-
         let sheet = div()
             .id(ElementId::named_usize("terminal-sheet", 0))
             .flex()
             .flex_col()
             .flex_1()
+            .w(relative(1.0))
             .min_w(px(0.0))
             .min_h(px(0.0))
-            .mx(sheet_mx)
-            .mb(sheet_mb)
-            .rounded(sheet_radius)
             .overflow_hidden()
             .bg(sheet_bg)
-            .border_1()
-            .border_color(tb.sheet_border)
             .child(body);
 
         let container = div()

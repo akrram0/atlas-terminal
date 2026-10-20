@@ -206,10 +206,10 @@ pub struct AppSettingsFile {
 }
 
 fn default_theme_mode() -> String {
-    "auto".to_string()
+    "dark".to_string()
 }
 fn default_theme_name() -> String {
-    "atlas".to_string()
+    "tokyo_night".to_string()
 }
 fn default_font_family() -> String {
     "Cascadia Code".to_string()
