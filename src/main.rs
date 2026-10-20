@@ -330,16 +330,12 @@ pub(crate) mod rounded_corners {
         fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
         fn GetForegroundWindow() -> Hwnd;
-        fn SetLayeredWindowAttributes(hwnd: Hwnd, cr_key: u32, b_alpha: u8, dw_flags: u32) -> i32;
     }
-
-    const GWL_EXSTYLE: i32 = -20;
-    const WS_EX_LAYERED: isize = 0x00080000;
-    const LWA_ALPHA: u32 = 0x00000002;
 
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn GetModuleHandleW(lp_module_name: *const u16) -> Hwnd;
+        fn GetProcAddress(hmodule: Hwnd, proc_name: *const u8) -> *const ();
     }
 
     #[link(name = "dwmapi")]
@@ -351,6 +347,66 @@ pub(crate) mod rounded_corners {
             size: u32,
         ) -> i32;
         fn DwmExtendFrameIntoClientArea(hwnd: Hwnd, margins: *const Margins) -> i32;
+    }
+
+    #[repr(C)]
+    struct AccentPolicy {
+        accent_state: u32,
+        accent_flags: u32,
+        gradient_color: u32,
+        animation_id: u32,
+    }
+
+    #[repr(C)]
+    struct WindowCompositionAttributeData {
+        attribute: u32,
+        data: *mut core::ffi::c_void,
+        size_of_data: usize,
+    }
+
+    const WCA_ACCENT_POLICY: u32 = 19;
+    const ACCENT_DISABLED: u32 = 0;
+    const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
+    const DWMSBT_NONE: i32 = 1;
+    const DWMSBT_TRANSIENTWINDOW: i32 = 3;
+
+    unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) {
+        let name: Vec<u16> = "user32.dll\0".encode_utf16().collect();
+        let user32 = GetModuleHandleW(name.as_ptr());
+        if user32.is_null() {
+            return;
+        }
+        let p_fn = GetProcAddress(user32, b"SetWindowCompositionAttribute\0".as_ptr());
+        if p_fn.is_null() {
+            return;
+        }
+        type SetWindowCompositionAttributeFn =
+            unsafe extern "system" fn(Hwnd, *mut WindowCompositionAttributeData) -> i32;
+        let set_composition: SetWindowCompositionAttributeFn = core::mem::transmute(p_fn);
+
+        let mut policy = if enabled {
+            AccentPolicy {
+                accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
+                accent_flags: 2,
+                gradient_color: 0x01000000,
+                animation_id: 0,
+            }
+        } else {
+            AccentPolicy {
+                accent_state: ACCENT_DISABLED,
+                accent_flags: 0,
+                gradient_color: 0,
+                animation_id: 0,
+            }
+        };
+
+        let mut data = WindowCompositionAttributeData {
+            attribute: WCA_ACCENT_POLICY,
+            data: &mut policy as *mut AccentPolicy as *mut core::ffi::c_void,
+            size_of_data: core::mem::size_of::<AccentPolicy>(),
+        };
+
+        let _ = set_composition(hwnd, &mut data);
     }
 
     /// Resize-border hit test for the frameless window (physical screen
@@ -507,28 +563,42 @@ pub(crate) mod rounded_corners {
         }
     }
 
-    /// Set true OS-level window opacity (Win32 layered window).
-    pub fn set_opacity(opacity: f32) {
-        INITIAL_OPACITY.store(opacity.to_bits(), Ordering::SeqCst);
+    /// Configure Windows 11 Desktop Acrylic / composition blur behind the window.
+    pub fn set_blur(enabled: bool) {
         let raw = MAIN_HWND.load(Ordering::SeqCst);
         if raw == 0 {
             return;
         }
         let hwnd = raw as Hwnd;
         unsafe {
-            let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            if opacity >= 0.999 {
-                if (ex_style & WS_EX_LAYERED) != 0 {
-                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style & !WS_EX_LAYERED);
-                }
-            } else {
-                if (ex_style & WS_EX_LAYERED) == 0 {
-                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED);
-                }
-                let alpha = (opacity.clamp(0.15, 1.0) * 255.0).round() as u8;
-                SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
-            }
+            // DWMSBT_TRANSIENTWINDOW (3): Windows 11 Desktop Acrylic blur.
+            // DWMSBT_NONE (1): Disable system backdrop.
+            let backdrop_type: i32 = if enabled { DWMSBT_TRANSIENTWINDOW } else { DWMSBT_NONE };
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                &backdrop_type as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+
+            // Extend DWM frame across the entire window so blur covers the client area.
+            let margins = Margins {
+                cx_left_width: -1,
+                cx_right_width: -1,
+                cy_top_height: -1,
+                cy_bottom_height: -1,
+            };
+            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+
+            // Also call SetWindowCompositionAttribute (undocumented User32 API) for Acrylic/BlurBehind.
+            apply_composition_accent(hwnd, enabled);
         }
+    }
+
+    /// Set OS-level window blur backdrop state based on opacity.
+    pub fn set_opacity(opacity: f32) {
+        INITIAL_OPACITY.store(opacity.to_bits(), Ordering::SeqCst);
+        set_blur(opacity < 0.999);
     }
 
     /// Replacement window procedure: the client area covers the entire window
@@ -686,20 +756,21 @@ pub(crate) mod rounded_corners {
                         SetWindowLongPtrW(hwnd, GWLP_WNDPROC, window_proc as *const () as isize);
 
                         // 2. Windows 11 DWM rounded corners and compositor shadows require
-                        //    the window to retain standard desktop styles (WS_THICKFRAME | WS_CAPTION).
+                        //    the window to retain standard desktop styles (WS_THICKFRAME).
+                        //    We explicitly STRIP WS_CAPTION so DWM never draws native caption buttons
+                        //    (minimize, maximize, close) inside our extended acrylic frame.
                         //    Our WM_NCCALCSIZE returns 0 so USER32 removes standard caption/border space,
                         //    giving our custom chrome 100% full-bleed coverage.
                         let style = GetWindowLongW(hwnd, GWL_STYLE);
-                        let styled = style | WS_THICKFRAME | WS_CAPTION;
+                        let styled = (style & !WS_CAPTION) | WS_THICKFRAME;
                         SetWindowLongW(hwnd, GWL_STYLE, styled);
 
-                        // 3. Extend the DWM frame 1px into the client area.
-                        //    This signals DWM to render its native compositor shadow and rounded corner mask.
+                        // 3. Extend the DWM frame across the client area for full-bleed Acrylic blur.
                         let margins = Margins {
-                            cx_left_width: 1,
-                            cx_right_width: 1,
-                            cy_top_height: 1,
-                            cy_bottom_height: 1,
+                            cx_left_width: -1,
+                            cx_right_width: -1,
+                            cy_top_height: -1,
+                            cy_bottom_height: -1,
                         };
                         let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
 
@@ -900,7 +971,7 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
-                window_background: WindowBackgroundAppearance::Transparent,
+                window_background: WindowBackgroundAppearance::Blurred,
                 window_decorations: Some(WindowDecorations::Client),
                 window_min_size: Some(size(px(640.0), px(420.0))),
                 is_resizable: true,

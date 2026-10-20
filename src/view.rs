@@ -2005,8 +2005,15 @@ impl Render for AtlasView {
         // Window chrome and top tab bar use the cohesive application theme
         let tb = theme.clone();
 
-        let sheet = if self.settings_open { theme.elevated_bg } else { active_bg };
-        let (chrome_bg, sheet_bg, container_bg) = (tb.panel_bg, sheet, tb.panel_bg);
+        let term_base = if self.settings_open { theme.elevated_bg } else { active_bg };
+        let is_translucent = self.opacity < 0.999;
+        let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
+            let chrome = Rgba { a: (self.opacity * 0.70).clamp(0.15, 0.95), ..tb.panel_bg };
+            let sheet = Rgba { a: self.opacity.clamp(0.15, 0.98), ..term_base };
+            (chrome, sheet, rgba(0x00000000))
+        } else {
+            (tb.panel_bg, term_base, tb.panel_bg)
+        };
 
         let mut bar = div()
             .flex()
