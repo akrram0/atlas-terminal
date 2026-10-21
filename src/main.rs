@@ -243,7 +243,6 @@ pub(crate) mod rounded_corners {
     const DWMWA_NCRENDERING_POLICY: u32 = 2;
     const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
     const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
-    const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
     const DWMNCRP_ENABLED: i32 = 2;
     const DWMWCP_ROUND: i32 = 2;
 
@@ -368,8 +367,6 @@ pub(crate) mod rounded_corners {
     const WCA_ACCENT_POLICY: u32 = 19;
     const ACCENT_DISABLED: u32 = 0;
     const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
-    const DWMSBT_NONE: i32 = 1;
-    const DWMSBT_TRANSIENTWINDOW: i32 = 3;
 
     unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) {
         let name: Vec<u16> = "user32.dll\0".encode_utf16().collect();
@@ -388,8 +385,8 @@ pub(crate) mod rounded_corners {
         let mut policy = if enabled {
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                accent_flags: 2,
-                gradient_color: 0x8016161E,
+                accent_flags: 0,
+                gradient_color: 0x0116161E,
                 animation_id: 0,
             }
         } else {
@@ -407,7 +404,8 @@ pub(crate) mod rounded_corners {
             size_of_data: core::mem::size_of::<AccentPolicy>(),
         };
 
-        let _ = set_composition(hwnd, &mut data);
+        let res = set_composition(hwnd, &mut data);
+        crate::log_line(&format!("composition accent: enabled={enabled}, res={res}"));
     }
 
     /// Resize-border hit test for the frameless window (physical screen
@@ -572,16 +570,6 @@ pub(crate) mod rounded_corners {
         }
         let hwnd = raw as Hwnd;
         unsafe {
-            // DWMSBT_TRANSIENTWINDOW (3): Windows 11 Desktop Acrylic blur.
-            // DWMSBT_NONE (1): Disable system backdrop.
-            let backdrop_type: i32 = if enabled { DWMSBT_TRANSIENTWINDOW } else { DWMSBT_NONE };
-            let hr = DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_SYSTEMBACKDROP_TYPE,
-                &backdrop_type as *const i32 as *const core::ffi::c_void,
-                core::mem::size_of::<i32>() as u32,
-            );
-
             // Extend DWM frame across the entire window so blur covers the client area.
             let margins = Margins {
                 cx_left_width: -1,
@@ -591,13 +579,8 @@ pub(crate) mod rounded_corners {
             };
             let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
 
-            // Windows 10 fallback: only call SetWindowCompositionAttribute if
-            // DWMWA_SYSTEMBACKDROP_TYPE is not supported (returns error).
-            // On Windows 11, calling SetWindowCompositionAttribute causes a compositor conflict
-            // that results in a solid opaque white/black fill!
-            if hr != 0 {
-                apply_composition_accent(hwnd, enabled);
-            }
+            // Apply true hardware-accelerated Acrylic frosted-glass blur behind the window.
+            apply_composition_accent(hwnd, enabled);
         }
     }
 

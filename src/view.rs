@@ -2016,9 +2016,12 @@ impl Render for AtlasView {
         let term_base = if self.settings_open { theme.elevated_bg } else { active_bg };
         let is_translucent = self.opacity < 0.999;
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
-            let chrome = Rgba { a: (self.opacity * 0.70).clamp(0.15, 0.95), ..tb.panel_bg };
-            let sheet = Rgba { a: self.opacity.clamp(0.15, 0.98), ..term_base };
-            (chrome, sheet, rgba(0x00000000))
+            // In translucent mode: sheet and container must be fully transparent so
+            // the DWM Acrylic backdrop (via SetWindowCompositionAttribute) shows through.
+            // The DWM gradient_color tint provides the frosted-glass dark appearance.
+            // Only the titlebar chrome gets a subtle semi-transparent tint for legibility.
+            let chrome = Rgba { a: (self.opacity * 0.70).clamp(0.10, 0.85), ..tb.panel_bg };
+            (chrome, rgba(0x00000000), rgba(0x00000000))
         } else {
             (tb.panel_bg, term_base, tb.panel_bg)
         };
@@ -2963,7 +2966,9 @@ impl Render for AtlasView {
                     cell = cell.child(TerminalElement {
                         session: pane.session.clone(),
                         theme: theme.clone(),
-                        active_bg,
+                        // In translucent mode pass transparent so cell backgrounds matching
+                        // the terminal default are not painted — DWM acrylic shows through.
+                        active_bg: if is_translucent { rgba(0x00000000) } else { active_bg },
                         font: self.font.clone(),
                         font_size: self.font_size,
                         line_height: self.line_height,
