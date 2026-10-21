@@ -16,7 +16,7 @@ use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent, Keystroke,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Render, Rgba, ScrollHandle,
-    ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
+    ScrollWheelEvent, SharedString, Window, WindowBackgroundAppearance, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{
@@ -1979,12 +1979,22 @@ impl AtlasView {
 
 
 impl Render for AtlasView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_active = crate::rounded_corners::is_active();
         if is_active && !self.window_was_active {
             self.maybe_auto_check(true, cx);
         }
         self.window_was_active = is_active;
+
+        // Keep GPUI's background appearance in sync with the opacity slider.
+        // Blurred = hardware-accelerated Acrylic backdrop (wallpaper shows through).
+        // Opaque  = solid themed background (opacity = 1.0).
+        let is_translucent = self.opacity < 0.999;
+        window.set_background_appearance(if is_translucent {
+            WindowBackgroundAppearance::Blurred
+        } else {
+            WindowBackgroundAppearance::Opaque
+        });
 
         // A dismissal that raced another state change must not stay armed.
         if !self.palette_open {
@@ -2014,11 +2024,9 @@ impl Render for AtlasView {
         let tb = theme.clone();
 
         let term_base = if self.settings_open { theme.elevated_bg } else { active_bg };
-        let is_translucent = self.opacity < 0.999;
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             // In translucent mode: sheet and container must be fully transparent so
-            // the DWM Acrylic backdrop (via SetWindowCompositionAttribute) shows through.
-            // The DWM gradient_color tint provides the frosted-glass dark appearance.
+            // GPUI's Blurred backdrop (Acrylic/frosted-glass) shows through.
             // Only the titlebar chrome gets a subtle semi-transparent tint for legibility.
             let chrome = Rgba { a: (self.opacity * 0.70).clamp(0.10, 0.85), ..tb.panel_bg };
             (chrome, rgba(0x00000000), rgba(0x00000000))

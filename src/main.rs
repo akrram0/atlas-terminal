@@ -562,32 +562,11 @@ pub(crate) mod rounded_corners {
         }
     }
 
-    /// Configure Windows 11 Desktop Acrylic / composition blur behind the window.
-    pub fn set_blur(enabled: bool) {
-        let raw = MAIN_HWND.load(Ordering::SeqCst);
-        if raw == 0 {
-            return;
-        }
-        let hwnd = raw as Hwnd;
-        unsafe {
-            // Extend DWM frame across the entire window so blur covers the client area.
-            let margins = Margins {
-                cx_left_width: -1,
-                cx_right_width: -1,
-                cy_top_height: -1,
-                cy_bottom_height: -1,
-            };
-            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
-
-            // Apply true hardware-accelerated Acrylic frosted-glass blur behind the window.
-            apply_composition_accent(hwnd, enabled);
-        }
-    }
-
-    /// Set OS-level window blur backdrop state based on opacity.
+    /// Store the current opacity so the view can read it for translucency decisions.
+    /// Blur is managed by GPUI via WindowBackgroundAppearance::Blurred — no manual
+    /// Win32 composition calls needed here.
     pub fn set_opacity(opacity: f32) {
         INITIAL_OPACITY.store(opacity.to_bits(), Ordering::SeqCst);
-        set_blur(opacity < 0.999);
     }
 
     /// Replacement window procedure: the client area covers the entire window
@@ -960,7 +939,7 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
-                window_background: WindowBackgroundAppearance::Transparent,
+                window_background: WindowBackgroundAppearance::Blurred,
                 window_decorations: Some(WindowDecorations::Client),
                 window_min_size: Some(size(px(640.0), px(420.0))),
                 is_resizable: true,
