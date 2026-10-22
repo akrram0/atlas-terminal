@@ -9,8 +9,12 @@ concurrency:
 
 on:
   push:
+    branches:
+      - main
+      - feat/smart-updater
     tags:
       - 'v*'
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -74,6 +78,41 @@ jobs:
               "C:\Program Files (x86)\Inno Setup 6" | Out-File -Append $env:GITHUB_PATH
             }
           }
+
+      - name: Install pinned zstd CLI (binary delta patches)
+        shell: pwsh
+        # CI generates exe patches with the zstd CLI (v1.5.7, pinned + hash
+        # verified). The app decodes them with the Rust zstd crate, so both
+        # sides must agree on the --patch-from format.
+        run: |
+          $zstdVersion = "1.5.7"
+          $expectedSha256 = "acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9"
+          $zstdZip = Join-Path $env:RUNNER_TEMP "zstd-v$zstdVersion-win64.zip"
+          $zstdDir = Join-Path $env:RUNNER_TEMP "zstd-v$zstdVersion-win64"
+          $zstdUrl = "https://github.com/facebook/zstd/releases/download/v$zstdVersion/zstd-v$zstdVersion-win64.zip"
+
+          Remove-Item -Force $zstdZip -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $zstdDir -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $zstdDir | Out-Null
+
+          Write-Output "Downloading $zstdUrl"
+          Invoke-WebRequest -Uri $zstdUrl -OutFile $zstdZip -UseBasicParsing
+
+          $actualSha256 = (Get-FileHash -Path $zstdZip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "zstd zip hash mismatch: expected $expectedSha256, got $actualSha256"
+          }
+
+          Expand-Archive -Path $zstdZip -DestinationPath $zstdDir -Force
+          $zstdExe = Get-ChildItem -Path $zstdDir -Filter "zstd.exe" -Recurse -File | Select-Object -First 1
+          if (-not $zstdExe) {
+            throw "zstd.exe not found after extracting $zstdZip to $zstdDir"
+          }
+
+          "ZSTD_EXE=$($zstdExe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Output "ZSTD_EXE=$($zstdExe.FullName)"
+          & $zstdExe.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "zstd.exe --version failed (exit $LASTEXITCODE)" }
 
       - name: cargo test (unit tests)
         shell: pwsh
@@ -205,8 +244,13 @@ jobs:
             }
           }
 
-          if ($env:GITHUB_REF -match '^refs/tags/v?(\d+\.\d+\.\d+)') {
-            $version = $matches[1]
+          $cargoVersion = $version
+          if ($env:GITHUB_REF -match '^refs/tags/v?(\d+\.\d+\.\d+)$') {
+            $tagVersion = $matches[1]
+            if ($tagVersion -ne $cargoVersion) {
+              throw "Cargo.toml version $cargoVersion does not match release tag $($env:GITHUB_REF_NAME)"
+            }
+            $version = $tagVersion
           }
           Write-Output "APP_VERSION=$version" >> $env:GITHUB_ENV
           Write-Output "Packaging Atlas Terminal v$version"
@@ -246,12 +290,247 @@ jobs:
           $zipFile = Join-Path $distDir "atlas-terminal-windows-x64.zip"
           Remove-Item $zipFile -ErrorAction SilentlyContinue
           Compress-Archive -Path "$zipStaging\*" -DestinationPath $zipFile -Force
-          Remove-Item -Recurse -Force $zipStaging -ErrorAction SilentlyContinue
 
           $zipSha = "$zipFile.sha256"
           $hashZip = (Get-FileHash -Path $zipFile -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hashZip *$([System.IO.Path]::GetFileName($zipFile))" | Out-File -Encoding ascii $zipSha
           Write-Output "Zip created: $zipFile ($hashZip)"
+
+          # 5. Incremental updater assets: zstd binary deltas + atlas-update.json
+          # The app resolves assets under the future release tag URL, so patch
+          # URLs are built up-front (repo hardcoded to match the app).
+          $repoSlug = "akrram0/atlas-terminal"
+          $releaseBaseUrl = "https://github.com/$repoSlug/releases/download/v$version"
+
+          $newExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
+          if (-not (Test-Path $newExe)) { throw "Current release exe not found at $newExe" }
+          $newExeHash = (Get-FileHash -Path $newExe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $newExeSize = (Get-Item $newExe).Length
+          $setupHash = (Get-FileHash -Path $setupExe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $setupSize = (Get-Item $setupExe).Length
+
+          # Fingerprint of every non-exe file (relative path + sha256, sorted).
+          # A patch only ships if the old and new zip carry identical
+          # assets/docs; otherwise an exe-only patch would leave stale files.
+          # Text line endings are normalized: Git checkout on Windows has
+          # historically produced CRLF for one release and LF for another, but
+          # the bundled docs/SVGs are identical to the app.
+          function Get-NonExeFingerprint {
+            param([Parameter(Mandatory = $true)][string]$Root)
+            $rootFull = (Resolve-Path -Path $Root).Path.TrimEnd('\')
+            $lines = @()
+            $textExtensions = @('.md', '.txt', '.svg', '.rc', '.ps1', '.json')
+            foreach ($file in (Get-ChildItem -Path $rootFull -Recurse -File -ErrorAction Stop)) {
+              if ($file.Name -eq 'atlas-terminal.exe') { continue }
+              $relPath = $file.FullName.Substring($rootFull.Length).TrimStart('\').Replace('\', '/')
+              $ext = $file.Extension.ToLowerInvariant()
+              if ($textExtensions -contains $ext -or $file.Name -eq 'LICENSE') {
+                $normalized = ([System.IO.File]::ReadAllText($file.FullName)) -replace "`r`n", "`n"
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                $fileHash = ([BitConverter]::ToString(
+                  $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($normalized))
+                ) -replace '-', '').ToLowerInvariant()
+                $sha.Dispose()
+              } else {
+                $fileHash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              }
+              $lines += "$relPath=$fileHash"
+            }
+            $sorted = @($lines | Sort-Object)
+            return ($sorted -join "`n")
+          }
+
+          $newFingerprint = Get-NonExeFingerprint -Root $zipStaging
+
+          # Up to 3 most recent published (non-draft) releases, excluding ours.
+          $previousTags = @()
+          try {
+            $releasesJson = gh release list --limit 12 --json tagName,isDraft,isPrerelease
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "gh release list failed (exit $LASTEXITCODE); publishing with empty deltas"
+            } elseif ($releasesJson) {
+              $releases = $releasesJson | ConvertFrom-Json
+              if ($releases) {
+                $previousTags = @($releases |
+                  Where-Object { -not $_.isDraft -and -not $_.isPrerelease -and $_.tagName -ne "v$version" } |
+                  Select-Object -First 3 |
+                  ForEach-Object { $_.tagName })
+              }
+            }
+          } catch {
+            Write-Warning "Could not enumerate previous releases: $($_.Exception.Message)"
+            $previousTags = @()
+          }
+
+          # Resolve + validate a previous release as a patch base. Returns $null
+          # (never throws) so an unavailable/malformed old release is skippable.
+          function Resolve-PreviousBase {
+            param(
+              [Parameter(Mandatory = $true)][string]$Tag,
+              [Parameter(Mandatory = $true)][string]$WorkDir,
+              [Parameter(Mandatory = $true)][string]$ExpectedFingerprint
+            )
+            try {
+              Remove-Item -Recurse -Force $WorkDir -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+
+              gh release download $Tag --pattern "atlas-terminal-windows-x64.zip" --dir $WorkDir --clobber
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Skipping delta from ${Tag}: zip download failed (exit $LASTEXITCODE)"
+                return $null
+              }
+              $prevZip = Join-Path $WorkDir "atlas-terminal-windows-x64.zip"
+              if (-not (Test-Path $prevZip)) {
+                Write-Warning "Skipping delta from ${Tag}: zip missing after download"
+                return $null
+              }
+
+              $extractDir = Join-Path $WorkDir "extract"
+              Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
+              Expand-Archive -Path $prevZip -DestinationPath $extractDir -Force
+
+              $oldExe = Join-Path $extractDir "atlas-terminal.exe"
+              $oldRoot = $extractDir
+              if (-not (Test-Path $oldExe)) {
+                # Tolerate a nested layout as long as the exe is findable.
+                $foundExe = Get-ChildItem -Path $extractDir -Filter "atlas-terminal.exe" -Recurse -File |
+                  Select-Object -First 1
+                if (-not $foundExe) {
+                  Write-Warning "Skipping delta from ${Tag}: atlas-terminal.exe not found in zip"
+                  return $null
+                }
+                $oldExe = $foundExe.FullName
+                $oldRoot = Split-Path $oldExe
+              }
+
+              $oldFingerprint = Get-NonExeFingerprint -Root $oldRoot
+              if ($oldFingerprint -ne $ExpectedFingerprint) {
+                Write-Warning "Skipping delta from ${Tag}: bundled non-exe assets differ from this build"
+                return $null
+              }
+
+              return [pscustomobject]@{ Exe = $oldExe; Root = $oldRoot }
+            } catch {
+              Write-Warning "Skipping delta from ${Tag}: $($_.Exception.Message)"
+              return $null
+            }
+          }
+
+          $deltas = @()
+          foreach ($prevTag in $previousTags) {
+            $fromVersion = $prevTag -replace '^v', ''
+            if ([string]::IsNullOrWhiteSpace($fromVersion) -or $fromVersion -eq $version) { continue }
+
+            $workDir = Join-Path $env:RUNNER_TEMP "atlas-delta-$fromVersion"
+            $base = Resolve-PreviousBase -Tag $prevTag -WorkDir $workDir -ExpectedFingerprint $newFingerprint
+            if (-not $base) {
+              Remove-Item -Recurse -Force $workDir -ErrorAction SilentlyContinue
+              continue
+            }
+            $oldExe = $base.Exe
+
+            # From here on every failure is fatal: a bad patch must never ship.
+            try {
+              if (-not $env:ZSTD_EXE -or -not (Test-Path $env:ZSTD_EXE)) {
+                throw "ZSTD_EXE is not set or does not point at an existing file"
+              }
+
+              $patchName = "atlas-exe-$fromVersion-to-$version.zstpatch"
+              $patchPath = Join-Path $distDir $patchName
+              Remove-Item $patchPath -ErrorAction SilentlyContinue
+              & $env:ZSTD_EXE "--patch-from=$oldExe" --ultra -22 -f "$newExe" -o "$patchPath"
+              if ($LASTEXITCODE -ne 0 -or -not (Test-Path $patchPath)) {
+                throw "zstd failed to create $patchName (exit $LASTEXITCODE)"
+              }
+
+              # Verify (a): the CLI can rebuild the new exe from old + patch.
+              $verifyCli = Join-Path $workDir "verify-cli.exe"
+              Remove-Item $verifyCli -ErrorAction SilentlyContinue
+              & $env:ZSTD_EXE -d "--patch-from=$oldExe" -f "$patchPath" -o "$verifyCli"
+              if ($LASTEXITCODE -ne 0 -or -not (Test-Path $verifyCli)) {
+                throw "zstd could not apply $patchName (exit $LASTEXITCODE)"
+              }
+              $verifyCliHash = (Get-FileHash -Path $verifyCli -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($verifyCliHash -ne $newExeHash) {
+                throw "CLI patch verification mismatch for $patchName (got $verifyCliHash, expected $newExeHash)"
+              }
+
+              # Verify (b): the freshly built app's own decoder reproduces the
+              # exact new exe from the same patch (catches zstd crate/CLI drift).
+              $verifyApp = Join-Path $workDir "verify-app.exe"
+              Remove-Item $verifyApp -ErrorAction SilentlyContinue
+              $argLine = '--apply-delta "{0}" "{1}" "{2}" "{3}"' -f $oldExe, $patchPath, $verifyApp, $newExeHash
+              $deltaProc = Start-Process -FilePath $newExe -ArgumentList $argLine -PassThru
+              if (-not $deltaProc.WaitForExit(180000)) {
+                Stop-Process -Id $deltaProc.Id -Force -ErrorAction SilentlyContinue
+                throw "App delta verification timed out for $patchName"
+              }
+              if ($deltaProc.ExitCode -ne 0) {
+                throw "App delta verification failed for $patchName (exit $($deltaProc.ExitCode))"
+              }
+              if (-not (Test-Path $verifyApp)) {
+                throw "App delta verification produced no output for $patchName"
+              }
+              $verifyAppHash = (Get-FileHash -Path $verifyApp -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($verifyAppHash -ne $newExeHash) {
+                throw "App patch verification mismatch for $patchName (got $verifyAppHash, expected $newExeHash)"
+              }
+
+              $patchHash = (Get-FileHash -Path $patchPath -Algorithm SHA256).Hash.ToLowerInvariant()
+              $patchSize = (Get-Item $patchPath).Length
+              $oldExeHash = (Get-FileHash -Path $oldExe -Algorithm SHA256).Hash.ToLowerInvariant()
+
+              $deltas += [ordered]@{
+                from_version    = $fromVersion
+                from_exe_sha256 = $oldExeHash
+                patch           = [ordered]@{
+                  name   = $patchName
+                  url    = "$releaseBaseUrl/$patchName"
+                  size   = $patchSize
+                  sha256 = $patchHash
+                }
+                to_exe_sha256 = $newExeHash
+                to_exe_size   = $newExeSize
+              }
+              Write-Output "Delta patch $patchName : $patchSize bytes, sha256 $patchHash"
+            } finally {
+              Remove-Item -Recurse -Force $workDir -ErrorAction SilentlyContinue
+            }
+          }
+
+          $manifest = [ordered]@{
+            schema    = 1
+            version   = $version
+            tag       = "v$version"
+            # ManifestFile requires url on every file object, including exe.
+            # The bare exe ships inside the release zip, so point at that.
+            exe       = [ordered]@{
+              name   = "atlas-terminal.exe"
+              url    = "$releaseBaseUrl/atlas-terminal-windows-x64.zip"
+              size   = $newExeSize
+              sha256 = $newExeHash
+            }
+            installer = [ordered]@{
+              name   = "AtlasTerminal-Setup-$version.exe"
+              url    = "$releaseBaseUrl/AtlasTerminal-Setup-$version.exe"
+              size   = $setupSize
+              sha256 = $setupHash
+            }
+            deltas    = @($deltas)
+          }
+
+          $manifestPath = Join-Path $distDir "atlas-update.json"
+          $manifestJson = $manifest | ConvertTo-Json -Depth 8
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($manifestPath, $manifestJson, $utf8NoBom)
+
+          Write-Output "----- atlas-update.json -----"
+          Write-Output (Get-Content $manifestPath -Raw)
+          Write-Output "-----------------------------"
+          Write-Output "Deltas generated: $($deltas.Count) (candidate bases: $($previousTags.Count))"
+
+          # Zip staging is only needed for the asset fingerprint comparison above.
+          Remove-Item -Recurse -Force $zipStaging -ErrorAction SilentlyContinue
 
       - name: Upload build log
         if: always()
@@ -291,6 +570,22 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --title "Atlas Terminal $tag" --generate-notes
+            if ($LASTEXITCODE -ne 0) { throw "gh release create failed for $tag (exit $LASTEXITCODE)" }
           }
-          $files = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\dist\*" -File | ForEach-Object { $_.FullName }
-          gh release upload $tag $files --clobber
+
+          # The updater requires atlas-update.json; never publish without it.
+          $manifest = Join-Path "$env:GITHUB_WORKSPACE\dist" "atlas-update.json"
+          if (-not (Test-Path $manifest)) { throw "atlas-update.json missing from dist; refusing to publish" }
+
+          # Upload every referenced asset first, the manifest last, so clients
+          # never resolve a manifest pointing at not-yet-uploaded files.
+          $files = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\*" -File |
+            Where-Object { $_.Name -ne 'atlas-update.json' } |
+            ForEach-Object { $_.FullName }
+          if ($files) {
+            gh release upload $tag $files --clobber
+            if ($LASTEXITCODE -ne 0) { throw "asset upload failed for $tag (exit $LASTEXITCODE)" }
+          }
+          gh release upload $tag $manifest --clobber
+          if ($LASTEXITCODE -ne 0) { throw "manifest upload failed for $tag (exit $LASTEXITCODE)" }
+          Write-Output "Released $tag with atlas-update.json last"

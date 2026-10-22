@@ -58,7 +58,7 @@ pub enum UpdateDownloadState {
     },
     ReadyToRestart {
         version: String,
-        installer_path: std::path::PathBuf,
+        prepared: updater::PreparedUpdate,
     },
     Failed {
         version: String,
@@ -1444,53 +1444,40 @@ impl AtlasView {
             return;
         }
 
-        let installer_url = match info.installer_url.as_deref() {
-            Some(u) => u.to_string(),
-            None => {
-                // Installer asset may have finished uploading since last check; trigger fresh check
-                self.trigger_update_check(true, cx);
-                return;
-            }
-        };
-
         let cancel_token = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.update_cancel_token = Some(cancel_token.clone());
         self.update_download_state = UpdateDownloadState::Downloading {
             version: info.version.clone(),
             received_bytes: 0,
-            total_bytes: info.file_size.unwrap_or(0),
+            total_bytes: info.download_size().unwrap_or(0),
             percent: 0.0,
         };
         cx.notify();
 
-        let installer_name = info
-            .installer_name
-            .clone()
-            .unwrap_or_else(|| format!("AtlasTerminal-Setup-{}.exe", info.version));
-        let dest_path = updater::updates_dir().join(&installer_name);
-
         let (progress_tx, progress_rx) = smol::channel::unbounded::<updater::DownloadProgress>();
-        let (result_tx, result_rx) = smol::channel::bounded::<Result<std::path::PathBuf, String>>(1);
-
-        let dest_clone = dest_path.clone();
-        let sha256_url = info.sha256_url.clone();
+        let (result_tx, result_rx) =
+            smol::channel::bounded::<Result<updater::PreparedUpdate, String>>(1);
+        let result_token = cancel_token.clone();
+        let progress_token = cancel_token.clone();
 
         std::thread::spawn(move || {
-            let res = updater::download_and_verify_installer(
-                &installer_url,
-                sha256_url.as_deref(),
-                &dest_clone,
-                cancel_token,
-                move |prog| {
-                    let _ = progress_tx.send_blocking(prog);
-                },
-            );
+            // Delta-first with automatic full-installer fallback.
+            let res = updater::prepare_update(&info, cancel_token, move |prog| {
+                let _ = progress_tx.send_blocking(prog);
+            });
             let _ = result_tx.send_blocking(res);
         });
 
         cx.spawn(async move |this, cx| {
             while let Ok(prog) = progress_rx.recv().await {
                 let _ = this.update(cx, |view, cx| {
+                    let is_current = view
+                        .update_cancel_token
+                        .as_ref()
+                        .is_some_and(|token| std::sync::Arc::ptr_eq(token, &progress_token));
+                    if !is_current {
+                        return;
+                    }
                     if let UpdateDownloadState::Downloading { ref version, .. } = view.update_download_state {
                         let ver = version.clone();
                         view.update_download_state = UpdateDownloadState::Downloading {
@@ -1506,6 +1493,14 @@ impl AtlasView {
 
             if let Ok(res) = result_rx.recv().await {
                 let _ = this.update(cx, |view, cx| {
+                    // Ignore a result from a download the user cancelled or replaced.
+                    let is_current = view
+                        .update_cancel_token
+                        .as_ref()
+                        .is_some_and(|token| std::sync::Arc::ptr_eq(token, &result_token));
+                    if !is_current {
+                        return;
+                    }
                     view.update_cancel_token = None;
                     let ver = view
                         .available_update
@@ -1513,10 +1508,10 @@ impl AtlasView {
                         .map(|u| u.version.clone())
                         .unwrap_or_default();
                     match res {
-                        Ok(path) => {
+                        Ok(prepared) => {
                             view.update_download_state = UpdateDownloadState::ReadyToRestart {
                                 version: ver,
-                                installer_path: path,
+                                prepared,
                             };
                         }
                         Err(err) => {
@@ -1542,8 +1537,8 @@ impl AtlasView {
     }
 
     pub(crate) fn apply_update_and_restart(&mut self, cx: &mut Context<Self>) {
-        if let UpdateDownloadState::ReadyToRestart { ref installer_path, .. } = self.update_download_state {
-            if let Err(e) = updater::apply_update_and_restart(installer_path) {
+        if let UpdateDownloadState::ReadyToRestart { ref prepared, .. } = self.update_download_state {
+            if let Err(e) = updater::apply_update_and_restart(prepared) {
                 let ver = self
                     .available_update
                     .as_ref()

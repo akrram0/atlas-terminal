@@ -428,7 +428,8 @@ impl AtlasView {
                                 .child("Available"),
                         );
 
-                    if let Some(bytes) = update.file_size {
+                    if let Some(bytes) = update.download_size() {
+                        let kind = if update.is_incremental() { "Delta" } else { "Full" };
                         ver_row = ver_row.child(
                             div()
                                 .px(px(6.0))
@@ -439,7 +440,7 @@ impl AtlasView {
                                 .border_color(theme.hairline)
                                 .text_size(px(10.5))
                                 .text_color(theme.chrome_fg)
-                                .child(format_bytes(bytes)),
+                                .child(format!("{kind} · {}", format_bytes(bytes))),
                         );
                     }
 
@@ -533,7 +534,11 @@ impl AtlasView {
                                         .text_size(px(12.0))
                                         .font_weight(FontWeight::MEDIUM)
                                         .text_color(rgb(0xFFFFFF))
-                                        .child("Download & Update")
+                                        .child(if update.is_incremental() {
+                                            "Download Delta"
+                                        } else {
+                                            "Download & Update"
+                                        })
                                         .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                                             view.start_download_update(cx);
                                         })),
