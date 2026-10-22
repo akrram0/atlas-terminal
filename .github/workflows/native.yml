@@ -342,8 +342,45 @@ jobs:
 
           $newFingerprint = Get-NonExeFingerprint -Root $zipStaging
 
+          # Decoder self-test: always exercise the app's zstd dictionary decoder,
+          # even when no previous release is a valid patch base (e.g. the first
+          # release with this updater). The base is a copy of the new exe with
+          # one byte changed, so the frame references a full-size dictionary.
+          $selfBase = Join-Path $env:RUNNER_TEMP "atlas-self-base.exe"
+          $selfPatch = Join-Path $env:RUNNER_TEMP "atlas-self.zstpatch"
+          $selfOut = Join-Path $env:RUNNER_TEMP "atlas-self-out.exe"
+          Remove-Item $selfBase, $selfPatch, $selfOut -Force -ErrorAction SilentlyContinue
+          Copy-Item $newExe $selfBase
+          $selfBytes = [System.IO.File]::ReadAllBytes($selfBase)
+          $selfIndex = [int]($selfBytes.Length / 2)
+          $selfBytes[$selfIndex] = [byte]($selfBytes[$selfIndex] -bxor 0xFF)
+          [System.IO.File]::WriteAllBytes($selfBase, $selfBytes)
+          & $env:ZSTD_EXE "--patch-from=$selfBase" --ultra -22 -f "$newExe" -o "$selfPatch"
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $selfPatch)) {
+            throw "Decoder self-test: zstd failed to create a patch (exit $LASTEXITCODE)"
+          }
+          $selfArgLine = '--apply-delta "{0}" "{1}" "{2}" "{3}"' -f $selfBase, $selfPatch, $selfOut, $newExeHash
+          $selfProc = Start-Process -FilePath $newExe -ArgumentList $selfArgLine -PassThru
+          if (-not $selfProc.WaitForExit(180000)) {
+            Stop-Process -Id $selfProc.Id -Force -ErrorAction SilentlyContinue
+            throw "Decoder self-test: app timed out"
+          }
+          if ($selfProc.ExitCode -ne 0) {
+            throw "Decoder self-test: app decoder failed (exit $($selfProc.ExitCode))"
+          }
+          if (-not (Test-Path $selfOut)) {
+            throw "Decoder self-test: app produced no output"
+          }
+          $selfHash = (Get-FileHash -Path $selfOut -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($selfHash -ne $newExeHash) {
+            throw "Decoder self-test: output mismatch (got $selfHash, expected $newExeHash)"
+          }
+          Remove-Item $selfBase, $selfPatch, $selfOut -Force -ErrorAction SilentlyContinue
+          Write-Output "Decoder self-test passed"
+
           # Up to 3 most recent published (non-draft) releases, excluding ours.
           $previousTags = @()
+          $script:skipReasons = @()
           try {
             $releasesJson = gh release list --limit 12 --json tagName,isDraft,isPrerelease
             if ($LASTEXITCODE -ne 0) {
@@ -377,11 +414,13 @@ jobs:
               gh release download $Tag --pattern "atlas-terminal-windows-x64.zip" --dir $WorkDir --clobber
               if ($LASTEXITCODE -ne 0) {
                 Write-Warning "Skipping delta from ${Tag}: zip download failed (exit $LASTEXITCODE)"
+                $script:skipReasons += "${Tag}: zip download failed"
                 return $null
               }
               $prevZip = Join-Path $WorkDir "atlas-terminal-windows-x64.zip"
               if (-not (Test-Path $prevZip)) {
                 Write-Warning "Skipping delta from ${Tag}: zip missing after download"
+                $script:skipReasons += "${Tag}: zip missing after download"
                 return $null
               }
 
@@ -397,6 +436,7 @@ jobs:
                   Select-Object -First 1
                 if (-not $foundExe) {
                   Write-Warning "Skipping delta from ${Tag}: atlas-terminal.exe not found in zip"
+                  $script:skipReasons += "${Tag}: atlas-terminal.exe not found in zip"
                   return $null
                 }
                 $oldExe = $foundExe.FullName
@@ -406,12 +446,14 @@ jobs:
               $oldFingerprint = Get-NonExeFingerprint -Root $oldRoot
               if ($oldFingerprint -ne $ExpectedFingerprint) {
                 Write-Warning "Skipping delta from ${Tag}: bundled non-exe assets differ from this build"
+                $script:skipReasons += "${Tag}: bundled non-exe assets differ"
                 return $null
               }
 
               return [pscustomobject]@{ Exe = $oldExe; Root = $oldRoot }
             } catch {
               Write-Warning "Skipping delta from ${Tag}: $($_.Exception.Message)"
+              $script:skipReasons += "${Tag}: $($_.Exception.Message)"
               return $null
             }
           }
@@ -527,7 +569,46 @@ jobs:
           Write-Output "----- atlas-update.json -----"
           Write-Output (Get-Content $manifestPath -Raw)
           Write-Output "-----------------------------"
-          Write-Output "Deltas generated: $($deltas.Count) (candidate bases: $($previousTags.Count))"
+          $candidateBases = if ($previousTags.Count -gt 0) { $previousTags -join ', ' } else { '(none)' }
+          $deltaText = if ($deltas.Count -gt 0) {
+            ($deltas | ForEach-Object { "$($_.from_version):$($_.patch.size)" }) -join ', '
+          } else {
+            'none'
+          }
+          Write-Output "Deltas generated: $($deltas.Count) (candidate bases: $candidateBases)"
+          Write-Output "::notice title=updater::Deltas=$($deltas.Count); sizes=$deltaText; bases=$candidateBases; decoder-self-test=passed"
+          if ($script:skipReasons.Count -gt 0) {
+            $skipText = ($script:skipReasons -join '; ') -replace "`r?`n", ' '
+            Write-Output "::notice title=updater-skipped::$skipText"
+          }
+
+          $summaryPath = $env:GITHUB_STEP_SUMMARY
+          if ($summaryPath) {
+            $summary = @(
+              "## Atlas updater packaging",
+              "",
+              "- Version: ``$version``",
+              "- Previous release candidates: $candidateBases",
+              "- Deltas generated: ``$($deltas.Count)``",
+              "- Decoder self-test: passed"
+            )
+            foreach ($delta in $deltas) {
+              $summary += "- Delta from ``$($delta.from_version)``: ``$($delta.patch.name)`` ($($delta.patch.size) bytes)"
+            }
+            if ($script:skipReasons.Count -gt 0) {
+              $summary += ""
+              $summary += "Skipped bases:"
+              foreach ($reason in $script:skipReasons) {
+                $summary += "- $reason"
+              }
+            }
+            $summary += ""
+            $summary += "Manifest:"
+            $summary += '```json'
+            $summary += (Get-Content $manifestPath -Raw)
+            $summary += '```'
+            $summary -join "`n" | Out-File -FilePath $summaryPath -Append -Encoding utf8
+          }
 
           # Zip staging is only needed for the asset fingerprint comparison above.
           Remove-Item -Recurse -Force $zipStaging -ErrorAction SilentlyContinue
