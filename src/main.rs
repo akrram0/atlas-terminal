@@ -117,7 +117,7 @@ pub(crate) fn init_user_data() {
   "font_size": 13.0,
   "line_height": 1.2,
   "corner_radius": 14.0,
-  "opacity": 0.85,
+  "opacity": 0.15,
   "cursor_shape": "block",
   "cursor_blink": true,
   "shortcuts": {
@@ -274,7 +274,7 @@ pub(crate) mod rounded_corners {
 
     /// Top-level window handle, published once `apply` finds it.
     static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
-    static INITIAL_OPACITY: AtomicU32 = AtomicU32::new(f32::to_bits(0.85));
+    static INITIAL_OPACITY: AtomicU32 = AtomicU32::new(f32::to_bits(0.15));
 
     /// Titlebar drag bands reported by the view on every paint, in logical
     /// client pixels: 4 slots of two f32 bit patterns (top-left, bottom-right).

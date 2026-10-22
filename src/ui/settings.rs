@@ -305,21 +305,17 @@ impl AtlasView {
             .items_center()
             .gap(px(6.0))
             .child(row_label("Window opacity"))
-            .child(stepper(
-                113,
+            .child(pill_button(
                 format!("{}%", (self.opacity * 100.0).round() as i32),
+                113,
+                self.opacity < 0.999,
                 theme,
                 |view, cx| {
-                    view.opacity =
-                        ((view.opacity - 0.05) * 100.0).round() / 100.0;
-                    view.opacity = view.opacity.max(0.15);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                |view, cx| {
-                    view.opacity =
-                        ((view.opacity + 0.05) * 100.0).round() / 100.0;
-                    view.opacity = view.opacity.min(1.0);
+                    if view.opacity < 0.999 {
+                        view.opacity = 1.0;
+                    } else {
+                        view.opacity = 0.15;
+                    }
                     view.sync_and_save_settings();
                     cx.notify();
                 },
