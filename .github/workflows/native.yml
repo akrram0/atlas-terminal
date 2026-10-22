@@ -445,8 +445,20 @@ jobs:
 
               $oldFingerprint = Get-NonExeFingerprint -Root $oldRoot
               if ($oldFingerprint -ne $ExpectedFingerprint) {
-                Write-Warning "Skipping delta from ${Tag}: bundled non-exe assets differ from this build"
-                $script:skipReasons += "${Tag}: bundled non-exe assets differ"
+                $newLines = @($ExpectedFingerprint -split "`n" | Where-Object { $_ })
+                $oldLines = @($oldFingerprint -split "`n" | Where-Object { $_ })
+                $fpDiff = Compare-Object -ReferenceObject $newLines -DifferenceObject $oldLines -CaseSensitive
+                $fpText = if ($fpDiff) {
+                  ($fpDiff | Select-Object -First 8 | ForEach-Object {
+                    $line = [string]$_.InputObject
+                    if ($line.Length -gt 140) { $line = $line.Substring(0, 140) + '...' }
+                    "$($_.SideIndicator) $line"
+                  }) -join ' | '
+                } else {
+                  "lengths new=$($ExpectedFingerprint.Length) old=$($oldFingerprint.Length)"
+                }
+                Write-Warning "Skipping delta from ${Tag}: bundled non-exe assets differ ($fpText)"
+                $script:skipReasons += "${Tag}: assets differ [$fpText]"
                 return $null
               }
 
