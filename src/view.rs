@@ -16,7 +16,7 @@ use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent, Keystroke,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Render, Rgba, ScrollHandle,
-    ScrollWheelEvent, SharedString, Window, WindowBackgroundAppearance, div, px, relative, rgb, rgba,
+    ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{
@@ -1986,15 +1986,12 @@ impl Render for AtlasView {
         }
         self.window_was_active = is_active;
 
-        // Keep GPUI's background appearance in sync with the opacity slider.
-        // Blurred = hardware-accelerated Acrylic backdrop (wallpaper shows through).
-        // Opaque  = solid themed background (opacity = 1.0).
+        // Keep the native DWM backdrop in sync with the opacity slider. GPUI
+        // stays on a transparent swapchain; `rounded_corners` applies the
+        // Windows 11 system backdrop (or the legacy acrylic fallback) and is a
+        // no-op whenever the slider has not moved.
+        crate::rounded_corners::set_opacity(self.opacity);
         let is_translucent = self.opacity < 0.999;
-        window.set_background_appearance(if is_translucent {
-            WindowBackgroundAppearance::Blurred
-        } else {
-            WindowBackgroundAppearance::Opaque
-        });
 
         // A dismissal that raced another state change must not stay armed.
         if !self.palette_open {
@@ -2026,8 +2023,13 @@ impl Render for AtlasView {
         let term_base = if self.settings_open { theme.elevated_bg } else { active_bg };
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             // In translucent mode: sheet and container must be fully transparent so
-            // GPUI's Blurred backdrop (Acrylic/frosted-glass) shows through.
+            // the native DWM backdrop (Acrylic/frosted-glass) shows through.
             // Only the titlebar chrome gets a subtle semi-transparent tint for legibility.
+            //
+            // The terminal element also skips default-cell backgrounds, so the
+            // cleared swapchain keeps alpha 0 across the terminal area. GPUI 0.2.2's
+            // DestBlendAlpha=ONE only over-accumulates overlapping translucent
+            // chrome layers; it does not force the empty terminal area opaque.
             let chrome = Rgba { a: (self.opacity * 0.70).clamp(0.10, 0.85), ..tb.panel_bg };
             (chrome, rgba(0x00000000), rgba(0x00000000))
         } else {
