@@ -277,7 +277,7 @@ jobs:
           }
 
           # 4. Create plain zip distribution (atlas-terminal-windows-x64.zip)
-          $zipStaging = Join-Path $env:TEMP "atlas-terminal-zip-staging"
+          $zipStaging = Join-Path $env:RUNNER_TEMP "atlas-terminal-zip-staging"
           Remove-Item -Recurse -Force $zipStaging -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $zipStaging | Out-Null
 
@@ -286,6 +286,12 @@ jobs:
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") (Join-Path $zipStaging "LICENSE")
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "README.md") (Join-Path $zipStaging "README.md")
           Copy-Item -Recurse (Join-Path $env:GITHUB_WORKSPACE "assets") (Join-Path $zipStaging "assets")
+
+          $sourceFileCount = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "assets") -Recurse -File).Count + 3
+          $stagedFileCount = @(Get-ChildItem -LiteralPath $zipStaging -Recurse -File).Count
+          if ($stagedFileCount -ne $sourceFileCount) {
+            throw "Zip staging incomplete: $stagedFileCount files staged, expected $sourceFileCount"
+          }
 
           $zipFile = Join-Path $distDir "atlas-terminal-windows-x64.zip"
           Remove-Item $zipFile -ErrorAction SilentlyContinue
@@ -317,10 +323,14 @@ jobs:
           # the bundled docs/SVGs are identical to the app.
           function Get-NonExeFingerprint {
             param([Parameter(Mandatory = $true)][string]$Root)
-            $rootFull = (Resolve-Path -Path $Root).Path.TrimEnd('\')
+            # Use DirectoryInfo/FileInfo for both the root and children. Mixing
+            # Resolve-Path with Get-ChildItem can produce different path forms
+            # (short 8.3 vs long) and corrupt the relative-path subtraction.
+            $rootDir = New-Object System.IO.DirectoryInfo -ArgumentList $Root
+            $rootFull = $rootDir.FullName.TrimEnd([System.IO.Path]::DirectorySeparatorChar)
             $lines = @()
             $textExtensions = @('.md', '.txt', '.svg', '.rc', '.ps1', '.json')
-            foreach ($file in (Get-ChildItem -Path $rootFull -Recurse -File -ErrorAction Stop)) {
+            foreach ($file in $rootDir.GetFiles('*', [System.IO.SearchOption]::AllDirectories)) {
               if ($file.Name -eq 'atlas-terminal.exe') { continue }
               $relPath = $file.FullName.Substring($rootFull.Length).TrimStart('\').Replace('\', '/')
               $ext = $file.Extension.ToLowerInvariant()
@@ -341,6 +351,7 @@ jobs:
           }
 
           $newFingerprint = Get-NonExeFingerprint -Root $zipStaging
+          $newFpLines = @($newFingerprint -split "`n" | Where-Object { $_ }).Count
 
           # Decoder self-test: always exercise the app's zstd dictionary decoder,
           # even when no previous release is a valid patch base (e.g. the first
@@ -448,12 +459,18 @@ jobs:
                 $newLines = @($ExpectedFingerprint -split "`n" | Where-Object { $_ })
                 $oldLines = @($oldFingerprint -split "`n" | Where-Object { $_ })
                 $fpDiff = Compare-Object -ReferenceObject $newLines -DifferenceObject $oldLines -CaseSensitive
-                $fpText = if ($fpDiff) {
-                  ($fpDiff | Select-Object -First 8 | ForEach-Object {
+                $newOnly = @($fpDiff | Where-Object { $_.SideIndicator -eq '<=' })
+                $oldOnly = @($fpDiff | Where-Object { $_.SideIndicator -eq '=>' })
+                $formatDiff = {
+                  param($items)
+                  @($items | Select-Object -First 4 | ForEach-Object {
                     $line = [string]$_.InputObject
-                    if ($line.Length -gt 140) { $line = $line.Substring(0, 140) + '...' }
+                    if ($line.Length -gt 130) { $line = $line.Substring(0, 130) + '...' }
                     "$($_.SideIndicator) $line"
                   }) -join ' | '
+                }
+                $fpText = if ($newOnly -or $oldOnly) {
+                  "new=[$(& $formatDiff $newOnly)] old=[$(& $formatDiff $oldOnly)]"
                 } else {
                   "lengths new=$($ExpectedFingerprint.Length) old=$($oldFingerprint.Length)"
                 }
@@ -588,7 +605,7 @@ jobs:
             'none'
           }
           Write-Output "Deltas generated: $($deltas.Count) (candidate bases: $candidateBases)"
-          Write-Output "::notice title=updater::Deltas=$($deltas.Count); sizes=$deltaText; bases=$candidateBases; decoder-self-test=passed"
+          Write-Output "::notice title=updater::Deltas=$($deltas.Count); sizes=$deltaText; bases=$candidateBases; new-fp-lines=$newFpLines; decoder-self-test=passed"
           if ($script:skipReasons.Count -gt 0) {
             $skipText = ($script:skipReasons -join '; ') -replace "`r?`n", ' '
             Write-Output "::notice title=updater-skipped::$skipText"
@@ -601,6 +618,8 @@ jobs:
               "",
               "- Version: ``$version``",
               "- Previous release candidates: $candidateBases",
+              "- Staged files: ``$stagedFileCount``",
+              "- New fingerprint files: ``$newFpLines``",
               "- Deltas generated: ``$($deltas.Count)``",
               "- Decoder self-test: passed"
             )
