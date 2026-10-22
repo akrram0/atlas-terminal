@@ -1,11 +1,15 @@
 //! Smart background update scheduler, GitHub Releases client,
-//! in-app background streaming downloader, and seamless Inno Setup silent updater.
+//! in-app background streaming downloader, zstd delta patcher, and seamless updater.
 //!
 //! Features:
 //! - GitHub API conditional 304 requests with ETags (zero quota wasted).
+//! - `atlas-update.json` manifest with per-release sizes, hashes, and zstd deltas.
 //! - In-app background file streaming to %LOCALAPPDATA%/atlas-terminal/updates.
-//! - Cryptographic SHA-256 validation against release checksum assets.
-//! - Silent background execution via Inno Setup with automatic application relaunch.
+//! - zstd `--patch-from` delta of the installed exe (~700 KB vs ~7.9 MB installer),
+//!   with automatic full-installer fallback.
+//! - Cryptographic SHA-256 validation of every downloaded patch, installer, and
+//!   reconstructed executable.
+//! - Silent background execution via Inno Setup or in-place exe swap with relaunch.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -71,6 +75,82 @@ pub struct ReleaseInfo {
     pub file_size: Option<u64>,
     pub etag: Option<String>,
     pub reset_epoch: Option<u64>,
+    /// `atlas-update.json` asset URL (never displayed to the user).
+    #[serde(default)]
+    pub manifest_url: Option<String>,
+    #[serde(default)]
+    pub installer_sha256: Option<String>,
+    #[serde(default)]
+    pub exe_sha256: Option<String>,
+    #[serde(default)]
+    pub exe_size: Option<u64>,
+    /// Matching zstd delta for the currently installed executable, if any.
+    #[serde(default)]
+    pub delta: Option<ManifestDelta>,
+}
+
+impl ReleaseInfo {
+    /// Bytes to transfer: the delta patch size when incremental, else the installer size.
+    pub fn download_size(&self) -> Option<u64> {
+        self.delta
+            .as_ref()
+            .map(|d| d.patch.size)
+            .or(self.file_size)
+    }
+
+    /// True when this release can be applied as a zstd delta of the installed exe.
+    pub fn is_incremental(&self) -> bool {
+        self.delta.is_some()
+    }
+}
+
+// =====================================================================
+// Update Manifest (`atlas-update.json` release asset)
+// =====================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestFile {
+    pub name: String,
+    #[serde(default)]
+    pub url: String,
+    pub size: u64,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestDelta {
+    pub from_version: String,
+    pub from_exe_sha256: String,
+    pub patch: ManifestFile,
+    pub to_exe_sha256: String,
+    pub to_exe_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateManifest {
+    #[serde(default = "default_manifest_schema")]
+    pub schema: u32,
+    pub version: String,
+    #[serde(default)]
+    pub tag: Option<String>,
+    pub exe: ManifestFile,
+    pub installer: ManifestFile,
+    #[serde(default)]
+    pub deltas: Vec<ManifestDelta>,
+}
+
+fn default_manifest_schema() -> u32 {
+    1
+}
+
+/// What `prepare_update` produced and `apply_update_and_restart` should consume.
+#[derive(Debug, Clone)]
+pub enum PreparedUpdate {
+    /// Full Inno Setup installer, already downloaded and hash-verified.
+    Installer(PathBuf),
+    /// Verified replacement executable staged next to the installed exe as
+    /// `atlas-terminal.update.exe`.
+    Exe(PathBuf),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -115,15 +195,18 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
-/// Dedicated directory for downloaded update installers.
+/// Dedicated directory for downloaded update installers and delta patches.
 pub fn updates_dir() -> PathBuf {
     let dir = crate::user_data_dir().join("updates");
     let _ = std::fs::create_dir_all(&dir);
-    // Purge any stale installer files to prevent disk spam
+    // Purge stale downloads (installers, partials, delta patches) to prevent
+    // disk spam. The staged replacement exe lives in the install directory,
+    // not here, so it is never touched by this purge.
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("exe") {
+            let ext = path.extension().and_then(|e| e.to_str());
+            if matches!(ext, Some("exe") | Some("part") | Some("zstpatch")) {
                 let _ = std::fs::remove_file(path);
             }
         }
@@ -418,6 +501,26 @@ pub fn hash_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256Hasher::new();
     hasher.update(bytes);
     hasher.finish()
+}
+
+/// Streaming SHA-256 of a file on disk (64 KiB buffer).
+pub fn hash_file(path: &Path) -> Result<String, String> {
+    use std::io::Read as _;
+
+    let mut file = std::fs::File::open(path)
+        .map_err(|e| format!("Failed to open {}: {e}", path.display()))?;
+    let mut hasher = Sha256Hasher::new();
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let read = file
+            .read(&mut buf)
+            .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buf[..read]);
+    }
+    Ok(hasher.finish())
 }
 
 // =====================================================================
@@ -754,7 +857,81 @@ pub fn check_for_updates(current_version: &str, etag: Option<&str>) -> UpdateChe
     }
 
     let json_str = String::from_utf8_lossy(&body);
-    parse_github_release(&json_str, current_version, resp_etag, rate_limit_reset)
+    match parse_github_release(&json_str, current_version, resp_etag, rate_limit_reset) {
+        UpdateCheckResult::UpdateAvailable(info) => {
+            UpdateCheckResult::UpdateAvailable(enrich_with_manifest(info, current_version))
+        }
+        other => other,
+    }
+}
+
+#[cfg(windows)]
+fn trusted_release_url(url: &str) -> bool {
+    url.starts_with("https://github.com/akrram0/atlas-terminal/releases/download/")
+}
+
+/// Merge `atlas-update.json` into a release discovered from the GitHub API.
+///
+/// Any failure here (missing/unreachable/stale/!parseable manifest) leaves the
+/// API installer intact as a full-download fallback.
+#[cfg(windows)]
+fn enrich_with_manifest(mut info: ReleaseInfo, current_version: &str) -> ReleaseInfo {
+    let Some(manifest_url) = info.manifest_url.clone() else {
+        return info;
+    };
+    let text = match fetch_text_winhttp(&manifest_url) {
+        Ok(t) => t,
+        Err(_) => return info,
+    };
+    let text = text.trim_start_matches('\u{feff}');
+    let mut manifest: UpdateManifest = match serde_json::from_str(text) {
+        Ok(m) => m,
+        Err(_) => return info,
+    };
+    let manifest_version = manifest
+        .version
+        .trim()
+        .trim_start_matches('v')
+        .trim_start_matches('V');
+    if manifest_version != info.version.trim_start_matches('v') {
+        return info;
+    }
+    // Never trust an incomplete or off-site manifest to drive a download.
+    if manifest.installer.sha256.trim().is_empty()
+        || manifest.exe.sha256.trim().is_empty()
+        || !trusted_release_url(&manifest.installer.url)
+    {
+        return info;
+    }
+    let expected_exe_sha256 = manifest.exe.sha256.trim().to_ascii_lowercase();
+    manifest.deltas.retain(|delta| {
+        trusted_release_url(&delta.patch.url)
+            && !delta.patch.sha256.trim().is_empty()
+            && delta
+                .to_exe_sha256
+                .trim()
+                .eq_ignore_ascii_case(&expected_exe_sha256)
+    });
+    if manifest.schema != 1 {
+        // Unknown schema: keep going, but this is the only version we understand.
+        eprintln!(
+            "updater: atlas-update.json schema {} (expected 1), using compatible fields",
+            manifest.schema
+        );
+    }
+
+    info.installer_url = Some(manifest.installer.url.clone());
+    info.installer_name = Some(manifest.installer.name.clone());
+    info.file_size = Some(manifest.installer.size);
+    info.installer_sha256 = Some(manifest.installer.sha256.trim().to_ascii_lowercase());
+    info.exe_sha256 = Some(manifest.exe.sha256.trim().to_ascii_lowercase());
+    info.exe_size = Some(manifest.exe.size);
+
+    let current_exe_sha256 = std::env::current_exe()
+        .ok()
+        .and_then(|p| hash_file(&p).ok());
+    info.delta = select_delta(&manifest, current_version, current_exe_sha256.as_deref());
+    info
 }
 
 #[cfg(not(windows))]
@@ -945,9 +1122,9 @@ pub fn fetch_text_winhttp(_url: &str) -> Result<String, String> {
 // =====================================================================
 
 #[cfg(windows)]
-pub fn download_and_verify_installer<F>(
-    installer_url: &str,
-    sha256_url: Option<&str>,
+pub fn download_and_verify_file<F>(
+    url: &str,
+    expected_sha256: Option<&str>,
     dest_path: &Path,
     cancel_token: Arc<AtomicBool>,
     on_progress: F,
@@ -959,9 +1136,9 @@ where
     use winhttp::*;
 
     // 1. If file already exists and passes hash verification, skip re-download!
-    let expected_hash = sha256_url
-        .and_then(|u| fetch_text_winhttp(u).ok())
-        .and_then(|t| t.split_whitespace().next().map(|s| s.to_ascii_lowercase()));
+    let expected_hash = expected_sha256
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty());
 
     if dest_path.exists() {
         if let Ok(data) = std::fs::read(dest_path) {
@@ -986,7 +1163,10 @@ where
     if let Some(p) = dest_path.parent() {
         let _ = std::fs::create_dir_all(p);
     }
-    let part_path = dest_path.with_extension("exe.part");
+    // Append (never replace) the extension so `foo.zstpatch` -> `foo.zstpatch.part`.
+    let mut part_os = dest_path.as_os_str().to_os_string();
+    part_os.push(".part");
+    let part_path = PathBuf::from(part_os);
     if part_path.exists() {
         let _ = std::fs::remove_file(&part_path);
     }
@@ -995,7 +1175,7 @@ where
         .map_err(|e| format!("Failed to create temporary file: {e}"))?;
 
     let mut hasher = Sha256Hasher::new();
-    let mut current_url = installer_url.to_string();
+    let mut current_url = url.to_string();
     let mut total_bytes = 0u64;
     let mut received_bytes = 0u64;
 
@@ -1235,12 +1415,12 @@ where
 
     let computed = hasher.finish();
 
-    // Verify cryptographic SHA-256 hash if expected hash was fetched
+    // Verify cryptographic SHA-256 hash if an expected hash was resolved
     if let Some(ref exp) = expected_hash {
         if !computed.eq_ignore_ascii_case(exp) {
             let _ = std::fs::remove_file(&part_path);
             return Err(format!(
-                "Security Check Failed: installer signature does not match (expected {}, calculated {}).",
+                "Security Check Failed: update signature does not match (expected {}, calculated {}).",
                 exp, computed
             ));
         }
@@ -1263,9 +1443,9 @@ where
 }
 
 #[cfg(not(windows))]
-pub fn download_and_verify_installer<F>(
-    _installer_url: &str,
-    _sha256_url: Option<&str>,
+pub fn download_and_verify_file<F>(
+    _url: &str,
+    _expected_sha256: Option<&str>,
     _dest_path: &Path,
     _cancel_token: Arc<AtomicBool>,
     _on_progress: F,
@@ -1277,12 +1457,390 @@ where
 }
 
 // =====================================================================
+// Delta Patching (zstd --patch-from) & Preparation
+// =====================================================================
+
+/// SHA-256 expected for the full installer, from the manifest or the legacy
+/// `.sha256` release asset.
+pub fn installer_expected_sha256(info: &ReleaseInfo) -> Option<String> {
+    if let Some(hash) = info.installer_sha256.as_ref() {
+        let trimmed = hash.trim().to_ascii_lowercase();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
+    }
+    let sha_url = info.sha256_url.as_ref()?;
+    let text = fetch_text_winhttp(sha_url).ok()?;
+    let token = text.split_whitespace().next()?.to_ascii_lowercase();
+    if token.is_empty() { None } else { Some(token) }
+}
+
+/// Pick the delta whose `from_version` and `from_exe_sha256` match the running app.
+pub fn select_delta(
+    manifest: &UpdateManifest,
+    current_version: &str,
+    current_exe_sha256: Option<&str>,
+) -> Option<ManifestDelta> {
+    let current_exe_sha256 = current_exe_sha256?.trim();
+    if current_exe_sha256.is_empty() {
+        return None;
+    }
+    let current_version = current_version
+        .trim()
+        .trim_start_matches('v')
+        .trim_start_matches('V');
+
+    manifest
+        .deltas
+        .iter()
+        .find(|delta| {
+            let from_version = delta
+                .from_version
+                .trim()
+                .trim_start_matches('v')
+                .trim_start_matches('V');
+            from_version == current_version
+                && delta.from_exe_sha256.trim().eq_ignore_ascii_case(current_exe_sha256)
+        })
+        .cloned()
+}
+
+/// Apply a zstd patch produced by `zstd --patch-from=<base>` (or `-D <base>`)
+/// to `base`, writing the reconstructed file to `out`.
+///
+/// The patch is a normal zstd frame whose dictionary is the whole base file, so
+/// decompression is `Decoder::with_dictionary(patch, base_bytes)`.
+pub fn apply_zstd_patch(
+    base: &Path,
+    patch: &Path,
+    out: &Path,
+    expected_out_sha256: Option<&str>,
+) -> Result<(), String> {
+    use std::io::Write as _;
+
+    // ~16 MB, acceptable to hold in memory for the duration of the patch.
+    let base_bytes = std::fs::read(base)
+        .map_err(|e| format!("Failed to read base executable {}: {e}", base.display()))?;
+
+    if let Some(parent) = out.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let result = (|| -> Result<(), String> {
+        // BufReader<File> satisfies either the `Read` or `BufRead` bound that
+        // `with_dictionary` uses across zstd releases; the dictionary is the
+        // whole old executable (raw content dictionary from --patch-from).
+        let patch_reader = std::io::BufReader::new(
+            std::fs::File::open(patch)
+                .map_err(|e| format!("Failed to open patch {}: {e}", patch.display()))?,
+        );
+        let mut decoder = zstd::stream::read::Decoder::with_dictionary(patch_reader, &base_bytes)
+            .map_err(|e| format!("Failed to open zstd patch decoder: {e}"))?;
+
+        let mut out_file = std::fs::File::create(out)
+            .map_err(|e| format!("Failed to create {}: {e}", out.display()))?;
+        std::io::copy(&mut decoder, &mut out_file)
+            .map_err(|e| format!("Failed to apply zstd patch: {e}"))?;
+        out_file
+            .flush()
+            .map_err(|e| format!("Failed to flush {}: {e}", out.display()))?;
+        drop(out_file);
+
+        if let Some(expected) = expected_out_sha256.map(str::trim).filter(|s| !s.is_empty()) {
+            let actual = hash_file(out)?;
+            if !actual.eq_ignore_ascii_case(expected) {
+                return Err(format!(
+                    "Security Check Failed: patched executable does not match (expected {expected}, calculated {actual})."
+                ));
+            }
+        }
+        Ok(())
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(out);
+    }
+    result
+}
+
+/// Remove leftover update artifacts next to the installed executable.
+///
+/// `atlas-terminal.update.exe` is a staged replacement that was never applied.
+/// `atlas-terminal.old.exe` is kept briefly as a rollback copy and deleted by a
+/// detached thread after the new process has had time to start.
+pub fn cleanup_update_backup() {
+    let Ok(current) = std::env::current_exe() else {
+        return;
+    };
+    let Some(dir) = current.parent() else {
+        return;
+    };
+
+    let _ = std::fs::remove_file(dir.join("atlas-terminal.update.exe"));
+
+    let old = dir.join("atlas-terminal.old.exe");
+    if old.exists() {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            let _ = std::fs::remove_file(&old);
+        });
+    }
+}
+
+/// Swap the installed executable for a verified, staged one and relaunch.
+pub fn apply_exe_and_restart(staged_exe: &Path) -> Result<(), String> {
+    let current = std::env::current_exe()
+        .map_err(|e| format!("Failed to resolve current executable: {e}"))?;
+    let dir = current
+        .parent()
+        .ok_or_else(|| "Failed to resolve install directory".to_string())?
+        .to_path_buf();
+    let backup = dir.join("atlas-terminal.old.exe");
+
+    if !staged_exe.exists() {
+        return Err(format!(
+            "Staged update executable is missing: {}",
+            staged_exe.display()
+        ));
+    }
+
+    // Drop any stale rollback copy from an earlier update.
+    if backup.exists() {
+        let _ = std::fs::remove_file(&backup);
+        if backup.exists() {
+            return Err(format!(
+                "Cannot remove previous backup {}",
+                backup.display()
+            ));
+        }
+    }
+
+    std::fs::rename(&current, &backup)
+        .map_err(|e| format!("Failed to move current executable aside: {e}"))?;
+
+    if let Err(e) = std::fs::rename(staged_exe, &current) {
+        let _ = std::fs::rename(&backup, &current);
+        return Err(format!("Failed to install updated executable: {e}"));
+    }
+
+    // Relaunch with the original user arguments, never the hidden patch helper.
+    let mut child_args: Vec<std::ffi::OsString> = Vec::new();
+    for arg in std::env::args_os().skip(1) {
+        if arg.to_string_lossy() == "--apply-delta" {
+            break;
+        }
+        child_args.push(arg);
+    }
+
+    match std::process::Command::new(&current).args(&child_args).spawn() {
+        Ok(_) => std::process::exit(0),
+        Err(e) => {
+            let _ = std::fs::remove_file(&current);
+            let _ = std::fs::rename(&backup, &current);
+            Err(format!("Failed to relaunch Atlas Terminal: {e}"))
+        }
+    }
+}
+
+/// Copy the patched executable next to the installed exe and verify it.
+/// Doing this before reporting success also proves the install directory is
+/// writable.
+fn stage_prepared_exe(
+    current_exe: &Path,
+    new_exe: &Path,
+    expected_sha256: &str,
+) -> Result<PreparedUpdate, String> {
+    let install_dir = current_exe
+        .parent()
+        .ok_or_else(|| "Failed to resolve install directory".to_string())?;
+    let staged = install_dir.join("atlas-terminal.update.exe");
+
+    let _ = std::fs::remove_file(&staged);
+    if let Err(e) = std::fs::copy(new_exe, &staged) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(format!("Failed to write staged executable: {e}"));
+    }
+
+    let actual = match hash_file(&staged) {
+        Ok(hash) => hash,
+        Err(e) => {
+            let _ = std::fs::remove_file(&staged);
+            return Err(e);
+        }
+    };
+    if !actual.eq_ignore_ascii_case(expected_sha256.trim()) {
+        let _ = std::fs::remove_file(&staged);
+        return Err(format!(
+            "Security Check Failed: staged executable does not match (expected {expected_sha256}, calculated {actual})."
+        ));
+    }
+
+    Ok(PreparedUpdate::Exe(staged))
+}
+
+fn apply_delta_update(
+    delta: &ManifestDelta,
+    patch_path: &Path,
+    updates_dir: &Path,
+    version: &str,
+) -> Result<PreparedUpdate, String> {
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to resolve current executable: {e}"))?;
+    let new_exe = updates_dir.join(format!("atlas-terminal-{version}.exe"));
+
+    let outcome = apply_zstd_patch(
+        &current_exe,
+        patch_path,
+        &new_exe,
+        Some(delta.to_exe_sha256.as_str()),
+    )
+    .and_then(|()| stage_prepared_exe(&current_exe, &new_exe, &delta.to_exe_sha256));
+
+    let _ = std::fs::remove_file(&new_exe);
+    outcome
+}
+
+/// Keep manifest/API-supplied names from escaping the updates directory.
+fn safe_download_name(name: &str, fallback: &str) -> String {
+    Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|n| !n.is_empty() && *n != "." && *n != "..")
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+/// Download and prepare the smallest verified update payload for `info`.
+///
+/// Tries the zstd delta first (when one matches the installed exe) and silently
+/// falls back to the full installer if patching fails for any reason other than
+/// user cancellation.
+pub fn prepare_update<F>(
+    info: &ReleaseInfo,
+    cancel_token: Arc<AtomicBool>,
+    on_progress: F,
+) -> Result<PreparedUpdate, String>
+where
+    F: Fn(DownloadProgress) + Send + Sync + 'static,
+{
+    let on_progress = Arc::new(on_progress);
+    // Resolve once: `updates_dir()` purges stale downloads on every call.
+    let dir = updates_dir();
+    let mut delta_error: Option<String> = None;
+
+    if let Some(delta) = info.delta.clone() {
+        let patch_name = safe_download_name(&delta.patch.name, "atlas-update.zstpatch");
+        let patch_path = dir.join(&patch_name);
+        let cb = on_progress.clone();
+        let downloaded = download_and_verify_file(
+            &delta.patch.url,
+            Some(delta.patch.sha256.as_str()),
+            &patch_path,
+            cancel_token.clone(),
+            move |prog| cb(prog),
+        );
+
+        if cancel_token.load(Ordering::Relaxed) {
+            let _ = std::fs::remove_file(&patch_path);
+            return Err("Download cancelled by user".into());
+        }
+
+        let outcome = match downloaded {
+            Ok(_) => apply_delta_update(&delta, &patch_path, &dir, &info.version),
+            Err(e) => Err(e),
+        };
+        let _ = std::fs::remove_file(&patch_path);
+
+        match outcome {
+            Ok(prepared) => return Ok(prepared),
+            Err(e) => delta_error = Some(e),
+        }
+    }
+
+    // Full installer fallback.
+    let installer_name = info
+        .installer_name
+        .clone()
+        .unwrap_or_else(|| format!("AtlasTerminal-Setup-{}.exe", info.version));
+    let installer_name = safe_download_name(&installer_name, "AtlasTerminal-Setup.exe");
+    let Some(installer_url) = info.installer_url.clone() else {
+        return Err(match delta_error {
+            Some(e) => format!("Incremental update failed ({e}) and no full installer is available."),
+            None => "No installer is available for this release.".into(),
+        });
+    };
+
+    let expected_sha256 = installer_expected_sha256(info);
+    let installer_path = dir.join(&installer_name);
+    let cb = on_progress.clone();
+    let downloaded = download_and_verify_file(
+        &installer_url,
+        expected_sha256.as_deref(),
+        &installer_path,
+        cancel_token.clone(),
+        move |prog| cb(prog),
+    );
+
+    match downloaded {
+        Ok(path) => Ok(PreparedUpdate::Installer(path)),
+        Err(e) => {
+            if cancel_token.load(Ordering::Relaxed) {
+                return Err("Download cancelled by user".into());
+            }
+            Err(match delta_error {
+                Some(delta_err) => format!(
+                    "Incremental update failed ({delta_err}); full installer download failed ({e})."
+                ),
+                None => e,
+            })
+        }
+    }
+}
+
+/// Hidden CI helper: `atlas-terminal --apply-delta <base> <patch> <out> [sha256]`.
+/// Returns `None` for a normal application launch.
+pub fn run_patch_cli() -> Option<i32> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) != Some("--apply-delta") {
+        return None;
+    }
+    if args.len() < 5 {
+        eprintln!("usage: --apply-delta <base> <patch> <out> [expected_sha256]");
+        return Some(2);
+    }
+    let expected = args.get(5).map(String::as_str).filter(|s| !s.is_empty());
+    match apply_zstd_patch(
+        Path::new(&args[2]),
+        Path::new(&args[3]),
+        Path::new(&args[4]),
+        expected,
+    ) {
+        Ok(()) => Some(0),
+        Err(e) => {
+            eprintln!("{e}");
+            Some(1)
+        }
+    }
+}
+
+// =====================================================================
 // One-Click Silent Inno Setup Execution & Relaunch
 // =====================================================================
 
-/// Launches the downloaded installer silently and terminates the current process,
-/// allowing Inno Setup to seamlessly upgrade the binary and relaunch Atlas Terminal.
-pub fn apply_update_and_restart(installer_path: &Path) -> Result<(), String> {
+/// Applies a prepared update and terminates the current process.
+///
+/// * `PreparedUpdate::Installer` launches the downloaded Inno Setup installer
+///   silently; it upgrades the binary and relaunches Atlas Terminal.
+/// * `PreparedUpdate::Exe` swaps the installed executable in place (keeping a
+///   temporary rollback copy) and relaunches it.
+pub fn apply_update_and_restart(prepared: &PreparedUpdate) -> Result<(), String> {
+    match prepared {
+        PreparedUpdate::Installer(path) => launch_installer_and_exit(path),
+        PreparedUpdate::Exe(path) => apply_exe_and_restart(path),
+    }
+}
+
+fn launch_installer_and_exit(installer_path: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -1355,10 +1913,20 @@ fn parse_github_release(
     let mut installer_url = None;
     let mut installer_name = None;
     let mut sha256_url = None;
+    let mut manifest_url = None;
     let mut file_size = None;
     let mut detected_version = String::new();
 
     if let Some(assets) = release.assets {
+        // Update manifest asset (authoritative sizes/hashes/deltas).
+        for asset in &assets {
+            if let (Some(name), Some(url)) = (&asset.name, &asset.browser_download_url) {
+                if name == "atlas-update.json" {
+                    manifest_url = Some(url.clone());
+                    break;
+                }
+            }
+        }
         // First pass: locate the primary Inno Setup executable
         for asset in &assets {
             if let (Some(name), Some(url)) = (&asset.name, &asset.browser_download_url) {
@@ -1434,10 +2002,14 @@ fn parse_github_release(
     }
 
     if is_newer_version(&detected_version, current_version) {
-        if installer_url.is_none() {
-            // CI may still be compiling and uploading release assets.
-            // Don't advertise an update until the executable installer is actually ready.
-            return UpdateCheckResult::UpToDate { etag: None, reset_epoch };
+        if installer_url.is_none() || manifest_url.is_none() {
+            // CI may still be compiling and uploading release assets (or the
+            // manifest). Don't advertise an update until the payload is ready,
+            // otherwise the user could download during the upload window.
+            return UpdateCheckResult::UpToDate {
+                etag: None,
+                reset_epoch,
+            };
         }
         UpdateCheckResult::UpdateAvailable(ReleaseInfo {
             version: detected_version,
@@ -1450,6 +2022,11 @@ fn parse_github_release(
             file_size,
             etag,
             reset_epoch,
+            manifest_url,
+            installer_sha256: None,
+            exe_sha256: None,
+            exe_size: None,
+            delta: None,
         })
     } else {
         UpdateCheckResult::UpToDate { etag, reset_epoch }
@@ -1504,5 +2081,137 @@ mod tests {
         assert_eq!(port, 443);
         assert_eq!(path, "/akrram0/atlas-terminal/releases/download/v0.1.13/AtlasTerminal-Setup-0.1.13.exe");
         assert!(is_https);
+    }
+
+    fn test_manifest(deltas: Vec<ManifestDelta>) -> UpdateManifest {
+        UpdateManifest {
+            schema: 1,
+            version: "0.1.45".to_string(),
+            tag: Some("v0.1.45".to_string()),
+            exe: ManifestFile {
+                name: "atlas-terminal.exe".to_string(),
+                url: "https://example.com/atlas-terminal.exe".to_string(),
+                size: 16_948_224,
+                sha256: "toexe".to_string(),
+            },
+            installer: ManifestFile {
+                name: "AtlasTerminal-Setup-0.1.45.exe".to_string(),
+                url: "https://example.com/setup.exe".to_string(),
+                size: 7_919_419,
+                sha256: "installer".to_string(),
+            },
+            deltas,
+        }
+    }
+
+    fn test_delta(from_version: &str, from_sha256: &str) -> ManifestDelta {
+        ManifestDelta {
+            from_version: from_version.to_string(),
+            from_exe_sha256: from_sha256.to_string(),
+            patch: ManifestFile {
+                name: format!("atlas-exe-{from_version}-to-0.1.45.zstpatch"),
+                url: "https://example.com/patch.zstpatch".to_string(),
+                size: 738_000,
+                sha256: "patchhash".to_string(),
+            },
+            to_exe_sha256: "toexe".to_string(),
+            to_exe_size: 16_948_224,
+        }
+    }
+
+    #[test]
+    fn test_select_delta_matches_version_and_hash() {
+        let manifest = test_manifest(vec![
+            test_delta("0.1.43", "aaaa"),
+            test_delta("0.1.44", "bbbb"),
+        ]);
+
+        let selected = select_delta(&manifest, "0.1.44", Some("BBBB")).unwrap();
+        assert_eq!(selected.patch.name, "atlas-exe-0.1.44-to-0.1.45.zstpatch");
+        assert_eq!(selected.from_exe_sha256, "bbbb");
+
+        let with_v = select_delta(&manifest, "v0.1.43", Some("aaaa")).unwrap();
+        assert_eq!(with_v.from_version, "0.1.43");
+    }
+
+    #[test]
+    fn test_select_delta_rejects_mismatched_hash() {
+        let manifest = test_manifest(vec![test_delta("0.1.44", "bbbb")]);
+        assert!(select_delta(&manifest, "0.1.44", Some("cccc")).is_none());
+        assert!(select_delta(&manifest, "0.1.44", None).is_none());
+        assert!(select_delta(&manifest, "0.1.42", Some("bbbb")).is_none());
+    }
+
+    #[test]
+    fn test_download_size_prefers_delta() {
+        let mut info = ReleaseInfo {
+            version: "0.1.45".to_string(),
+            title: String::new(),
+            notes: String::new(),
+            html_url: String::new(),
+            installer_url: None,
+            installer_name: None,
+            sha256_url: None,
+            file_size: Some(7_919_419),
+            etag: None,
+            reset_epoch: None,
+            manifest_url: None,
+            installer_sha256: None,
+            exe_sha256: None,
+            exe_size: None,
+            delta: None,
+        };
+        assert_eq!(info.download_size(), Some(7_919_419));
+        assert!(!info.is_incremental());
+
+        info.delta = Some(test_delta("0.1.44", "bbbb"));
+        assert_eq!(info.download_size(), Some(738_000));
+        assert!(info.is_incremental());
+    }
+
+    #[test]
+    fn test_hash_file_empty() {
+        let path = std::env::temp_dir().join(format!(
+            "atlas-hash-file-test-{}.bin",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"").unwrap();
+        let hash = hash_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn test_hash_file_matches_hash_bytes() {
+        let payload = b"atlas-terminal delta test payload";
+        let path = std::env::temp_dir().join(format!(
+            "atlas-hash-bytes-test-{}.bin",
+            std::process::id()
+        ));
+        std::fs::write(&path, payload).unwrap();
+        let file_hash = hash_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(file_hash, hash_bytes(payload));
+    }
+
+    /// Proves the zstd dictionary (patch-from) API used by `apply_zstd_patch`.
+    /// CLI compatibility is proven separately by the hidden `--apply-delta` helper.
+    #[test]
+    fn test_zstd_dictionary_roundtrip() {
+        let dictionary = b"the quick brown fox jumps over the lazy dog";
+        let data = b"the quick brown fox jumps over the lazy dog, twice over";
+
+        let mut compressor = zstd::bulk::Compressor::with_dictionary(3, dictionary).unwrap();
+        let compressed = compressor.compress(data).unwrap();
+
+        let mut decompressor = zstd::bulk::Decompressor::with_dictionary(dictionary).unwrap();
+        let restored = decompressor
+            .decompress(&compressed, data.len() * 2)
+            .unwrap();
+
+        assert_eq!(restored, data.to_vec());
     }
 }

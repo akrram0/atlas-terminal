@@ -1,6 +1,6 @@
 [package]
 name = "atlas-terminal"
-version = "0.1.44"
+version = "0.1.45"
 edition = "2024"
 publish = false
 description = "Atlas Terminal — native GPU shell (GPUI + alacritty_terminal)"
@@ -20,6 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 base64 = "0.22"
+zstd = "0.13"
 
 [profile.release]
 opt-level = 3

@@ -941,6 +941,13 @@ mod rounded_corners {
 }
 
 fn main() {
+    // Hidden CI/test helper: apply a zstd delta and exit without starting GPUI.
+    if let Some(code) = updater::run_patch_cli() {
+        std::process::exit(code);
+    }
+    // Drop leftover staged/rollback update executables from a previous update.
+    updater::cleanup_update_backup();
+
     #[cfg(windows)]
     unsafe {
         #[link(name = "shell32")]
