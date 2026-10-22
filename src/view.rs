@@ -1986,10 +1986,11 @@ impl Render for AtlasView {
         }
         self.window_was_active = is_active;
 
-        // Keep the native DWM backdrop in sync with the opacity slider. GPUI
-        // stays on a transparent swapchain; `rounded_corners` applies the
-        // Windows 11 system backdrop (or the legacy acrylic fallback) and is a
-        // no-op whenever the slider has not moved.
+        // Keep the native backdrop in sync with the opacity slider. GPUI stays
+        // on a transparent swapchain; `rounded_corners` applies the native
+        // acrylic accent (GPUI's `Blurred` background, with the DWM system
+        // backdrop as a fallback) and is a no-op whenever the slider has not
+        // moved.
         crate::rounded_corners::set_opacity(self.opacity);
         let is_translucent = self.opacity < 0.999;
 
@@ -2023,8 +2024,9 @@ impl Render for AtlasView {
         let term_base = if self.settings_open { theme.elevated_bg } else { active_bg };
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             // In translucent mode: sheet and container must be fully transparent so
-            // the native DWM backdrop (Acrylic/frosted-glass) shows through.
-            // Only the titlebar chrome gets a subtle semi-transparent tint for legibility.
+            // the native acrylic accent (GPUI's `Blurred` background) shows
+            // through. Only the titlebar chrome gets a subtle semi-transparent
+            // tint for legibility.
             //
             // The terminal element also skips default-cell backgrounds, so the
             // cleared swapchain keeps alpha 0 across the terminal area. GPUI 0.2.2's
@@ -2977,7 +2979,7 @@ impl Render for AtlasView {
                         session: pane.session.clone(),
                         theme: theme.clone(),
                         // In translucent mode pass transparent so cell backgrounds matching
-                        // the terminal default are not painted — DWM acrylic shows through.
+                        // the terminal default are not painted — the native acrylic shows through.
                         active_bg: if is_translucent { rgba(0x00000000) } else { active_bg },
                         font: self.font.clone(),
                         font_size: self.font_size,

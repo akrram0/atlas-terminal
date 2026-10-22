@@ -365,15 +365,15 @@ pub(crate) mod rounded_corners {
     const ACCENT_DISABLED: u32 = 0;
     const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 
-    unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) {
+    unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
         let name: Vec<u16> = "user32.dll\0".encode_utf16().collect();
         let user32 = GetModuleHandleW(name.as_ptr());
         if user32.is_null() {
-            return;
+            return 0;
         }
         let p_fn = GetProcAddress(user32, b"SetWindowCompositionAttribute\0".as_ptr());
         if p_fn.is_null() {
-            return;
+            return 0;
         }
         type SetWindowCompositionAttributeFn =
             unsafe extern "system" fn(Hwnd, *mut WindowCompositionAttributeData) -> i32;
@@ -405,52 +405,61 @@ pub(crate) mod rounded_corners {
 
         let res = set_composition(hwnd, &mut data);
         crate::log_line(&format!("composition accent: enabled={enabled}, res={res}"));
+        res
     }
 
     /// Switch the native desktop backdrop on or off.
     ///
-    /// Windows 11 22H2+ gets `DWMSBT_TRANSIENTWINDOW` (Desktop Acrylic) via
-    /// `DWMWA_SYSTEMBACKDROP_TYPE`. Unlike the undocumented
-    /// `SetWindowCompositionAttribute` accent path, this is the same API File
-    /// Explorer and Windows Terminal use and it composites correctly with
-    /// DirectComposition and `WS_EX_NOREDIRECTIONBITMAP`.
+    /// Prefer GPUI's native acrylic accent. On Windows,
+    /// `WindowBackgroundAppearance::Blurred` is exactly
+    /// `SetWindowCompositionAttribute` with `ACCENT_ENABLE_ACRYLICBLURBEHIND`
+    /// and a nearly transparent black tint. That thin tint keeps the wallpaper
+    /// and the windows behind visible, whereas the DWM system backdrop's fixed
+    /// gray acrylic tint washes them out into a flat gray sheet.
     ///
-    /// Builds without `DWMWA_SYSTEMBACKDROP_TYPE` fall back to the legacy
-    /// accent acrylic, which is also what Zeron's GPUI fork uses on Windows.
-    /// `DwmExtendFrameIntoClientArea` is deliberately never called: with
-    /// DirectComposition it turns the client area into an opaque surface.
+    /// The Windows 11 `DWMSBT_TRANSIENTWINDOW` system backdrop is only the
+    /// fallback if the accent API is unavailable. `DwmExtendFrameIntoClientArea`
+    /// is deliberately never called: with DirectComposition it turns the client
+    /// area into an opaque surface.
     fn apply_backdrop(hwnd: Hwnd, translucent: bool) {
         unsafe {
-            // Clear GPUI's own accent policy (and any previous fallback) first.
-            apply_composition_accent(hwnd, false);
+            // Clear any previous system backdrop before changing the accent;
+            // otherwise DWM paints its own tint on top of the acrylic.
+            let none = DWMSBT_NONE;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                &none as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
 
             if !translucent {
-                let backdrop = DWMSBT_NONE;
-                let _ = DwmSetWindowAttribute(
-                    hwnd,
-                    DWMWA_SYSTEMBACKDROP_TYPE,
-                    &backdrop as *const i32 as *const core::ffi::c_void,
-                    core::mem::size_of::<i32>() as u32,
-                );
+                let _ = apply_composition_accent(hwnd, false);
                 return;
             }
 
-            let backdrop = DWMSBT_TRANSIENTWINDOW;
+            let accent_res = apply_composition_accent(hwnd, true);
+            if accent_res != 0 {
+                crate::log_line("backdrop: acrylic accent active (GPUI native)");
+                return;
+            }
+
+            // The accent API is missing (or refused the policy): fall back to
+            // the supported Win11 system backdrop. It has a stronger tint, but
+            // it still blurs the desktop.
+            let acrylic = DWMSBT_TRANSIENTWINDOW;
             let hr = DwmSetWindowAttribute(
                 hwnd,
                 DWMWA_SYSTEMBACKDROP_TYPE,
-                &backdrop as *const i32 as *const core::ffi::c_void,
+                &acrylic as *const i32 as *const core::ffi::c_void,
                 core::mem::size_of::<i32>() as u32,
             );
-            if hr != 0 {
-                // Pre-22621 Windows: the system backdrop attribute is not
-                // available, so use the legacy acrylic accent.
-                apply_composition_accent(hwnd, true);
-                crate::log_line(&format!(
-                    "backdrop: system attribute unavailable (hr={hr:#010x}), using accent acrylic"
-                ));
+            if hr == 0 {
+                crate::log_line("backdrop: DWMSBT_TRANSIENTWINDOW fallback active");
             } else {
-                crate::log_line("backdrop: DWMSBT_TRANSIENTWINDOW active");
+                crate::log_line(&format!(
+                    "backdrop: accent unavailable (res={accent_res}), system backdrop failed (hr={hr:#010x})"
+                ));
             }
         }
     }
@@ -1005,17 +1014,13 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
-                // On Windows, GPUI only needs a transparent swapchain here.
-                // The actual desktop blur is applied natively after the window
-                // exists (see rounded_corners::apply_backdrop) so it can use
-                // the Windows 11 DWM system backdrop instead of the
-                // undocumented accent acrylic. Other platforms keep GPUI's
-                // native blurred backdrop.
-                window_background: if cfg!(windows) {
-                    WindowBackgroundAppearance::Transparent
-                } else {
-                    WindowBackgroundAppearance::Blurred
-                },
+                // GPUI's native `Blurred` background maps to the acrylic
+                // accent on Windows. `rounded_corners::apply_backdrop`
+                // re-applies it on the UI thread with a nearly transparent
+                // tint and toggles it with the opacity slider; the DWM system
+                // backdrop is only the fallback when the accent API is
+                // unavailable.
+                window_background: WindowBackgroundAppearance::Blurred,
                 window_decorations: Some(WindowDecorations::Client),
                 window_min_size: Some(size(px(640.0), px(420.0))),
                 is_resizable: true,
