@@ -215,6 +215,8 @@ pub(crate) mod rounded_corners {
     const WM_NCLBUTTONDOWN: u32 = 0x00A1;
     const WM_NCLBUTTONDBLCLK: u32 = 0x00A3;
     const WM_CLOSE: u32 = 0x0010;
+    /// Private message: apply the native backdrop on the window's UI thread.
+    const WM_APP_BACKDROP: u32 = 0x8000 + 1;
     const HTCLIENT: Lresult = 1;
     const HTCAPTION: Lresult = 2;
     // ShowWindow commands.
@@ -243,6 +245,11 @@ pub(crate) mod rounded_corners {
     const DWMWA_NCRENDERING_POLICY: u32 = 2;
     const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
     const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    // Windows 11 22H2+ system backdrop (the supported replacement for the
+    // undocumented accent acrylic on build 22621 and newer).
+    const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
+    const DWMSBT_NONE: i32 = 1;
+    const DWMSBT_TRANSIENTWINDOW: i32 = 3;
     const DWMNCRP_ENABLED: i32 = 2;
     const DWMWCP_ROUND: i32 = 2;
 
@@ -253,15 +260,6 @@ pub(crate) mod rounded_corners {
         top: i32,
         right: i32,
         bottom: i32,
-    }
-
-    #[repr(C)]
-    #[derive(Clone, Copy, Default)]
-    struct Margins {
-        cx_left_width: i32,
-        cx_right_width: i32,
-        cy_top_height: i32,
-        cy_bottom_height: i32,
     }
 
     #[repr(C)]
@@ -346,7 +344,6 @@ pub(crate) mod rounded_corners {
             value: *const core::ffi::c_void,
             size: u32,
         ) -> i32;
-        fn DwmExtendFrameIntoClientArea(hwnd: Hwnd, margins: *const Margins) -> i32;
     }
 
     #[repr(C)]
@@ -386,7 +383,9 @@ pub(crate) mod rounded_corners {
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
                 accent_flags: 0,
-                gradient_color: 0x0116161E,
+                // Acrylic requires a non-zero alpha tint. Keep it almost
+                // transparent black so light and dark themes both work.
+                gradient_color: 0x01000000,
                 animation_id: 0,
             }
         } else {
@@ -406,6 +405,54 @@ pub(crate) mod rounded_corners {
 
         let res = set_composition(hwnd, &mut data);
         crate::log_line(&format!("composition accent: enabled={enabled}, res={res}"));
+    }
+
+    /// Switch the native desktop backdrop on or off.
+    ///
+    /// Windows 11 22H2+ gets `DWMSBT_TRANSIENTWINDOW` (Desktop Acrylic) via
+    /// `DWMWA_SYSTEMBACKDROP_TYPE`. Unlike the undocumented
+    /// `SetWindowCompositionAttribute` accent path, this is the same API File
+    /// Explorer and Windows Terminal use and it composites correctly with
+    /// DirectComposition and `WS_EX_NOREDIRECTIONBITMAP`.
+    ///
+    /// Builds without `DWMWA_SYSTEMBACKDROP_TYPE` fall back to the legacy
+    /// accent acrylic, which is also what Zeron's GPUI fork uses on Windows.
+    /// `DwmExtendFrameIntoClientArea` is deliberately never called: with
+    /// DirectComposition it turns the client area into an opaque surface.
+    fn apply_backdrop(hwnd: Hwnd, translucent: bool) {
+        unsafe {
+            // Clear GPUI's own accent policy (and any previous fallback) first.
+            apply_composition_accent(hwnd, false);
+
+            if !translucent {
+                let backdrop = DWMSBT_NONE;
+                let _ = DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_SYSTEMBACKDROP_TYPE,
+                    &backdrop as *const i32 as *const core::ffi::c_void,
+                    core::mem::size_of::<i32>() as u32,
+                );
+                return;
+            }
+
+            let backdrop = DWMSBT_TRANSIENTWINDOW;
+            let hr = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_SYSTEMBACKDROP_TYPE,
+                &backdrop as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+            if hr != 0 {
+                // Pre-22621 Windows: the system backdrop attribute is not
+                // available, so use the legacy acrylic accent.
+                apply_composition_accent(hwnd, true);
+                crate::log_line(&format!(
+                    "backdrop: system attribute unavailable (hr={hr:#010x}), using accent acrylic"
+                ));
+            } else {
+                crate::log_line("backdrop: DWMSBT_TRANSIENTWINDOW active");
+            }
+        }
     }
 
     /// Resize-border hit test for the frameless window (physical screen
@@ -562,11 +609,21 @@ pub(crate) mod rounded_corners {
         }
     }
 
-    /// Store the current opacity so the view can read it for translucency decisions.
-    /// Blur is managed by GPUI via WindowBackgroundAppearance::Blurred — no manual
-    /// Win32 composition calls needed here.
+    /// Update the native window backdrop to match the opacity slider.
+    ///
+    /// Called from the view every frame; the atomic compare makes this a no-op
+    /// until the slider actually moves. The initial backdrop is queued by
+    /// `apply()` as `WM_APP_BACKDROP` and applied by `window_proc` on the UI
+    /// thread.
     pub fn set_opacity(opacity: f32) {
-        INITIAL_OPACITY.store(opacity.to_bits(), Ordering::SeqCst);
+        let bits = opacity.to_bits();
+        if INITIAL_OPACITY.swap(bits, Ordering::SeqCst) == bits {
+            return;
+        }
+        let raw = MAIN_HWND.load(Ordering::SeqCst);
+        if raw != 0 {
+            apply_backdrop(raw as Hwnd, opacity < 0.999);
+        }
     }
 
     /// Replacement window procedure: the client area covers the entire window
@@ -666,6 +723,13 @@ pub(crate) mod rounded_corners {
                     }
                 }
             }
+            WM_APP_BACKDROP => {
+                // USER32/DWM composition calls run here, on the window's UI
+                // thread, rather than on the helper thread that subclasses it.
+                let opacity = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
+                apply_backdrop(hwnd, opacity < 0.999);
+                0
+            }
             _ => {
                 let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
                 if prev == 0 {
@@ -733,18 +797,15 @@ pub(crate) mod rounded_corners {
                         let styled = (style & !WS_CAPTION) | WS_THICKFRAME;
                         SetWindowLongW(hwnd, GWL_STYLE, styled);
 
-                        // 3. Extend the DWM frame across the client area for full-bleed Acrylic blur.
-                        let margins = Margins {
-                            cx_left_width: -1,
-                            cx_right_width: -1,
-                            cy_top_height: -1,
-                            cy_bottom_height: -1,
-                        };
-                        let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
-
-                        // 4. Force the frame change: reruns WM_NCCALCSIZE
+                        // 3. Force the frame change: reruns WM_NCCALCSIZE
                         //    through the subclass and makes DWM re-evaluate the
                         //    window frame (rounding + shadow) for the new style.
+                        //
+                        //    Do NOT call DwmExtendFrameIntoClientArea here.
+                        //    With DirectComposition + WS_EX_NOREDIRECTIONBITMAP
+                        //    it turns the client area into an opaque DWM
+                        //    "sheet of glass" surface, which is exactly the
+                        //    solid black background we are fixing.
                         SetWindowPos(
                             hwnd,
                             std::ptr::null_mut(),
@@ -759,7 +820,7 @@ pub(crate) mod rounded_corners {
                                 | SWP_NOACTIVATE,
                         );
 
-                        // 4b. The client area just grew by the old non-client
+                        // 3b. The client area just grew by the old non-client
                         //     ring; nudge the window size by one pixel so gpui
                         //     is guaranteed to see a WM_SIZE for it.
                         let mut window_rect = Rect::default();
@@ -786,7 +847,7 @@ pub(crate) mod rounded_corners {
                             );
                         }
 
-                        // 5. Ask DWM for enabled non-client rendering policy and rounded corners.
+                        // 4. Ask DWM for enabled non-client rendering policy and rounded corners.
                         //    CRITICAL: DWMNCRP_ENABLED is 2 (1 is DWMNCRP_DISABLED!).
                         let nc_policy: i32 = DWMNCRP_ENABLED;
                         let _ = DwmSetWindowAttribute(
@@ -803,7 +864,7 @@ pub(crate) mod rounded_corners {
                             core::mem::size_of::<i32>() as u32,
                         );
 
-                        // 6. Set initial immersive dark mode (1 for dark default theme).
+                        // 5. Set initial immersive dark mode (1 for dark default theme).
                         let dark_mode: i32 = 1;
                         let _ = DwmSetWindowAttribute(
                             hwnd,
@@ -812,7 +873,7 @@ pub(crate) mod rounded_corners {
                             core::mem::size_of::<i32>() as u32,
                         );
 
-                        // 6b. Explicitly set window icon (big and small) from embedded resource #1
+                        // 5b. Explicitly set window icon (big and small) from embedded resource #1
                         let hmodule = GetModuleHandleW(std::ptr::null());
                         let icon_res = 1usize as *const u16;
                         let hicon_big = LoadImageW(hmodule, icon_res, IMAGE_ICON, 0, 0, LR_DEFAULTSIZE | LR_SHARED);
@@ -824,11 +885,16 @@ pub(crate) mod rounded_corners {
                             let _ = SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small as isize);
                         }
 
-                        // 6c. Apply initial window opacity
-                        let initial_op = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
-                        set_opacity(initial_op);
+                        // 5c. Apply the initial native backdrop on the window's
+                        //     UI thread. `apply_backdrop` touches USER32
+                        //     composition state, so posting lets the GPUI
+                        //     message loop dispatch it with the correct thread
+                        //     affinity.
+                        if PostMessageW(hwnd, WM_APP_BACKDROP, 0, 0) == 0 {
+                            crate::log_line("backdrop: PostMessageW(WM_APP_BACKDROP) failed");
+                        }
 
-                        // 7. Diagnostics: with the ring gone the client should
+                        // 6. Diagnostics: with the ring gone the client should
                         //    match the window size.
                         let mut client_rect = Rect::default();
                         GetClientRect(hwnd, &mut client_rect);
@@ -939,7 +1005,17 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
-                window_background: WindowBackgroundAppearance::Blurred,
+                // On Windows, GPUI only needs a transparent swapchain here.
+                // The actual desktop blur is applied natively after the window
+                // exists (see rounded_corners::apply_backdrop) so it can use
+                // the Windows 11 DWM system backdrop instead of the
+                // undocumented accent acrylic. Other platforms keep GPUI's
+                // native blurred backdrop.
+                window_background: if cfg!(windows) {
+                    WindowBackgroundAppearance::Transparent
+                } else {
+                    WindowBackgroundAppearance::Blurred
+                },
                 window_decorations: Some(WindowDecorations::Client),
                 window_min_size: Some(size(px(640.0), px(420.0))),
                 is_resizable: true,
