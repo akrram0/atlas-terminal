@@ -1,13 +1,15 @@
 # Atlas Terminal - Session Handoff
 
 Last updated: 2026-10-23
-Current release: **v0.1.50** (published 2026-10-23T17:49:41Z, CI run `39997448597` green)
-Code commit: `5b3b4cf` - `fix: full-bleed maximized acrylic and readable translucent tabs (v0.1.50)`
-Previous release: **v0.1.49** (`bf12364`)
+Current release: **v0.1.51** (published 2026-10-23T18:42:40Z, CI run `40004768707` green)
+Code commit: `7eb52f1` - `fix: honor confirm-close setting, forward terminal identity into WSL, remove font picker (v0.1.51)`
+Previous release: **v0.1.50** (`5b3b4cf`)
 
 This file is the entry point for the next AI agent. The detailed technical
 record for this round lives in
-[`.agent/handoffs/2026-10-23-v0.1.50.md`](.agent/handoffs/2026-10-23-v0.1.50.md).
+[`.agent/handoffs/2026-10-23-v0.1.51.md`](.agent/handoffs/2026-10-23-v0.1.51.md).
+The v0.1.50 record (full-bleed maximized acrylic, readable translucent tabs) is
+in [`.agent/handoffs/2026-10-23-v0.1.50.md`](.agent/handoffs/2026-10-23-v0.1.50.md).
 The v0.1.49 record (Git Bash resolution, maximized frost, OpenCode prompt
 corners) is in
 [`.agent/handoffs/2026-10-23-v0.1.49.md`](.agent/handoffs/2026-10-23-v0.1.49.md).
@@ -19,16 +21,18 @@ The v0.1.48 record is in
 ## Resume prompt (paste this into the next agent)
 
 > Work in `C:\Users\Neweye\Desktop\Workspace\atlas-terminal` (Windows, Rust 2024,
-> GPUI terminal). v0.1.50 makes the maximized acrylic full-bleed (blur reaches
-> the screen edges) and makes tab names readable at low opacity; read
-> `HANDOFF.md` and `.agent/handoffs/2026-10-23-v0.1.50.md` before changing
-> anything. OpenCode's sharp input-box corners are **not** an Atlas bug:
-> OpenCode paints a cell-aligned background rectangle, so Atlas cannot round it.
-> A local `atlas-glass` OpenCode theme removes the fill; details are in the
-> v0.1.49 handoff. Do not use Unicode/emoji UI icons and never take control of
-> the desktop (no GUI automation, SendKeys, screenshots, or focus stealing).
-> There is no Windows Rust toolchain locally: format with WSL `rustfmt 1.10` and
-> use the isolated `rustc --test` harnesses; CI is the authoritative build.
+> GPUI terminal). v0.1.51 makes `confirm_close_process` real (modal dialog on
+> tab and window close), forwards terminal identity into WSL so fastfetch shows
+> Atlas, and removes the hardcoded font-family picker; read `HANDOFF.md` and
+> `.agent/handoffs/2026-10-23-v0.1.51.md` before changing anything. Keep the
+> v0.1.50 invariants: maximized acrylic must stay full-bleed to the screen edges
+> and translucent tab names must stay readable. OpenCode's sharp input-box
+> corners are **not** an Atlas bug: OpenCode paints a cell-aligned background
+> rectangle, so Atlas cannot round it (v0.1.49 handoff). Do not use
+> Unicode/emoji UI icons and never take control of the desktop (no GUI
+> automation, SendKeys, screenshots, or focus stealing). There is no Windows
+> Rust toolchain locally: format with WSL `rustfmt 1.10` and use the isolated
+> `rustc --test` harnesses; CI is the authoritative build.
 
 ---
 
@@ -36,61 +40,83 @@ The v0.1.48 record is in
 
 | Item | State |
 | --- | --- |
-| Version in `Cargo.toml` | `0.1.50` |
-| Git `main` | `5b3b4cf` (all docs through this handoff are committed and pushed with it) |
-| CI for v0.1.50 | run `39997448597` - **success** (completed 2026-10-23T17:50:37Z) |
-| GitHub release | `v0.1.50` - **published** 2026-10-23T17:49:41Z, not draft/prerelease |
+| Version in `Cargo.toml` | `0.1.51` |
+| Git `main` | `7eb52f1` pushed; the v0.1.51 docs commit is local-only until the next release push |
+| CI for v0.1.51 | run `40004768707` - **success** (target `7eb52f1`) |
+| GitHub release | `v0.1.51` - **published** 2026-10-23T18:42:40Z, not draft/prerelease, latest |
 | Release assets | verified against manifest (see below) |
-| Installed app | v0.1.49 until the user updates from the app |
+| Installed app | v0.1.50 until the user updates from the app |
 | App process | check `Get-Process atlas-terminal` before assuming |
 
 ---
 
-## What changed in v0.1.50
+## What changed in v0.1.51
 
-### 1. Full-bleed acrylic when maximized (`src/main.rs`)
+### 1. `confirm_close_process` is honored (`src/view.rs`)
 
-Root cause: a frameless `WS_THICKFRAME` window is maximized to the work area
-**plus** the resize frame and outdented past the screen. Atlas used to inset
-the client rect in `WM_NCCALCSIZE` while zoomed, which left a non-client ring
-at the screen edges that the acrylic could not cover; DWM also drew a 1px
-border there. That ring is what the user saw as "blur fades near the edges".
-
-Fix in `rounded_corners`:
-
-- New `WM_GETMINMAXINFO` handler pins `ptMaxPosition`/`ptMaxSize` to the
-  monitor work area (`MonitorFromWindow(MONITOR_DEFAULTTONEAREST)` +
-  `GetMonitorInfoW`), after calling the original wndproc.
-- `WM_NCCALCSIZE` now always returns 0 with `rgrc[0]` untouched, so the client
-  covers the whole window at every size.
-- `WM_NCHITTEST` no longer adds the maximized frame offset.
-- `DWMWA_BORDER_COLOR` is set to `DWMWA_COLOR_NONE` (`0xFFFFFFFE`) to remove
-  the 1px DWM outline (Windows 11 22000+; ignored elsewhere).
-- New log on maximize:
-  `backdrop: maximized window WxH client WxH` - the two pairs must be equal.
-
-### 2. Readable tab names in translucent mode (`src/view.rs`)
-
-Root cause: the translucent chrome alpha was `opacity * 0.70`, i.e. **10.5%**
-at the user's 0.15 opacity, so the wallpaper swallowed the bar; inactive tab
-text used the muted `chrome_fg` (`#8A8A8A` in Classic).
+Root cause: the setting existed only in `config.rs`, the settings JSON and the
+Settings toggle; no close path read it. The tab close removed the tab
+immediately and the window close button posts `WM_CLOSE` with no interception.
 
 Fix:
 
-- Chrome alpha floor: `(0.56 + opacity * 0.34).clamp(0.56, 0.90)`
-  (0.611 at 0.15, 0.90 near opaque). Opaque mode still uses `panel_bg`.
-- `chrome_ink = lerp_color(chrome_fg, chrome_fg_active, 0.40)` while
-  translucent, applied to inactive tab titles/icons, the workspace mark, the
-  new-tab plus, refresh/settings icons and window-control glyphs (~3:1 on the
-  bar in Classic dark). Opaque mode keeps the theme token.
-- The active pill hovers to an **opaque**
-  `lerp_color(elevated_bg, accent, 0.10)` in translucent mode, so its title
-  never sits on a translucent wash.
-- Terminal sheet/container stay fully transparent; the terminal area is
-  untouched.
+- `close_tab` holds the close when the setting is on and the tab has a pane
+  with `exited == false`, storing `pending_close_tab`. The old body moved to
+  `close_tab_now`, which the dialog uses.
+- `Window::on_window_should_close` is registered once at startup. With live
+  panes it sets `pending_close_window` and returns `false`; confirming calls
+  `window.remove_window()`, which bypasses the callback. Cancelling clears the
+  state.
+- A modal panel (`confirm_close_dialog`) renders above every other overlay:
+  Cancel / Close, Enter confirms, Esc cancels, backdrop click cancels, and all
+  other keys are swallowed while it is open.
+- Updater restarts use `std::process::exit(0)`, so updates are not blocked.
+- Bonus: closing the last tab now spawns the configured default profile, not
+  hardcoded PowerShell.
+
+### 2. Terminal identity inside WSL (`src/session.rs`)
+
+Atlas already set `TERM_PROGRAM=Atlas` and `TERM_PROGRAM_VERSION=<version>`,
+but `wsl.exe` starts Linux processes with a clean environment. The WSL spawn
+now appends `TERM_PROGRAM`, `TERM_PROGRAM_VERSION`, `COLORTERM` and `TERM` to
+`WSLENV` with `/u` (Win32 -> WSL), preserving inherited entries. Verified on
+this machine: `fastfetch --structure terminal` prints
+`Terminal ❯ Atlas 0.1.51`.
+
+### 3. Font-family picker removed (`src/ui/settings.rs`)
+
+The hardcoded five-family row and `set_font_family` are gone; the user asked
+for it to be removed. **Font size** and **Line height** remain. The saved
+`font_family` is still honored at startup and written back on save, so no
+config migration is needed. There is no in-app family picker any more.
+
+### 4. Two dead settings fixed while auditing
+
+- **Start directory**: `"current"` now spawns a new tab in the active pane's
+  polled working directory (home fallback). An explicit CLI directory wins.
+- **Scrollback lines**: passed into `Session::spawn`, used for
+  `alacritty_terminal`'s `scrolling_history`, and used for inline-image
+  pruning instead of the hardcoded 10,000.
+
+`startup_mode` ("Restore last session") is still inert: no session persistence
+exists. It is a known limitation, not claimed as fixed.
 
 Full details, line numbers and the hash table are in
-[`.agent/handoffs/2026-10-23-v0.1.50.md`](.agent/handoffs/2026-10-23-v0.1.50.md).
+[`.agent/handoffs/2026-10-23-v0.1.51.md`](.agent/handoffs/2026-10-23-v0.1.51.md).
+
+---
+
+## Still relevant from v0.1.50
+
+- Maximized acrylic is full-bleed: `WM_GETMINMAXINFO` pins the maximized rect to
+  the monitor work area, `WM_NCCALCSIZE` never insets, and DWM's border color is
+  `DWMWA_COLOR_NONE`. The log line `backdrop: maximized window WxH client WxH`
+  must show equal pairs.
+- Translucent chrome alpha floor is
+  `(0.56 + opacity * 0.34).clamp(0.56, 0.90)`; inactive chrome ink is
+  `lerp_color(chrome_fg, chrome_fg_active, 0.40)`. Do not lower the floor
+  without checking tab legibility at 15% opacity.
+- Terminal sheet/container stay fully transparent over the acrylic.
 
 ---
 
@@ -140,14 +166,18 @@ already supports `customBorderChars`).
 
 ## Pending user confirmation
 
-1. **Edges**: update to v0.1.50, maximize at 15% opacity - the blur should run
-   to all four screen edges with no sharp rim. The log should show
-   `backdrop: maximized window 1920x1040 client 1920x1040` (equal values).
-2. **Tabs**: inactive tab titles legible at 15% opacity (Classic dark), active
-   tab legible on hover.
-3. **Regressions**: Git Bash opens Git for Windows; maximized frost still
-   shows `tint=0x26000000`; Ctrl+K, Ctrl+V, smart Ctrl+C, themes and the
-   updater still work.
+1. **Confirm close**: with the setting on, closing a tab that has a running
+   shell (Ctrl+Shift+W, the tab X, or the palette) shows the dialog. Esc
+   cancels; Enter or "Close tab" closes. The window X shows the window variant;
+   Cancel keeps the window open. The in-app updater must still restart without
+   a prompt.
+2. **Fonts**: Appearance no longer shows "Font family"; Font size and Line
+   height still work and the terminal still renders in Cascadia Code.
+3. **WSL**: in the WSL profile, `fastfetch` shows
+   `Terminal ❯ Atlas 0.1.51` (or the installed version).
+4. **Regressions**: full-bleed maximized acrylic, readable translucent tabs,
+   Git Bash -> Git for Windows, Ctrl+K palette, Ctrl+V paste, smart Ctrl+C,
+   themes, WSL icons and the updater.
 
 ---
 
@@ -187,6 +217,17 @@ wsl.exe -e bash -lc 'rustc --edition 2024 --test /mnt/c/Users/Neweye/AppData/Loc
 
 Expected: 5/5 procedural tests, 3/3 WSL mapping tests.
 
+Verify WSL terminal identity without launching Atlas:
+
+```powershell
+$env:TERM_PROGRAM='Atlas'; $env:TERM_PROGRAM_VERSION='0.1.51'
+$env:COLORTERM='truecolor'; $env:TERM='xterm-256color'
+$env:WSLENV='TERM_PROGRAM/u:TERM_PROGRAM_VERSION/u:COLORTERM/u:TERM/u'
+wsl.exe -e bash -lc 'fastfetch --structure terminal --logo none'
+```
+
+Expected: `Terminal ❯ Atlas 0.1.51`.
+
 Watch CI for a commit:
 
 ```powershell
@@ -206,45 +247,46 @@ Release verification procedure:
 
 1. Release is not draft/prerelease and `published_at` is set.
 2. `atlas-update.json` is the newest asset (uploaded last).
-3. Manifest `version == Cargo.toml version` (0.1.50).
-4. Zip SHA matches its `.sha256`, manifest `exe.sha256`, and the exe inside
-   the zip.
+3. Manifest `version == Cargo.toml version` (0.1.51).
+4. Zip SHA matches its `.sha256` and the exe inside the zip matches
+   manifest `exe.sha256`/`exe.size`.
 5. Installer SHA matches its `.sha256` and manifest `installer.sha256`.
 6. `deltas` may be empty; the updater falls back to the full installer.
 
-### v0.1.50 verified assets
+### v0.1.51 verified assets
 
 Verified locally on 2026-10-23 by downloading every asset and recomputing
-SHA-256 (all values below were confirmed equal):
+SHA-256 (all values below were confirmed equal). The 0.1.50 -> 0.1.51 delta was
+applied with zstd against the v0.1.50 exe and reproduced the new exe exactly.
 
 | Asset | Size | SHA-256 |
 | --- | --- | --- |
-| `atlas-terminal-windows-x64.zip` | 9,675,424 | `f9879f8b074ec7e9e59757098f93558cfaedbf84eb999ab68bc0c90ab14acbf1` |
-| `atlas-terminal.exe` (inside zip) | 17,308,672 | `1ebd1b559b8d21fcd48cf4e2635764fc314e7c0e3016196d6af2ac8fd2d8ec77` |
-| `AtlasTerminal-Setup-0.1.50.exe` | 8,023,932 | `1f7c3555a7790c4024d1c6976ad38a2275d53ec9792cc362e1a502a1cb1a3d11` |
-| `atlas-exe-0.1.49-to-0.1.50.zstpatch` | 809,756 | `aba4385cc2dfd685dc31c613a2946c30647f7be00997217e1e96255ebc4d9c9d` |
-| `atlas-exe-0.1.48-to-0.1.50.zstpatch` | 810,747 | `e3c73f6bcd87a32a2956361843f400bd0d5fbdc02f8604218d39c79c3686081d` |
-| `atlas-update.json` | 1,811 | `5ec5e6eb73e6b58da2246baa631b8d97424a8a8e9e40f4d6631374bf3b3aaaf6` |
+| `atlas-terminal-windows-x64.zip` | 9,683,723 | `8bbc123e50a377769925df580e5c818cfb1197ae9c49d90717df17e36b1e56f2` |
+| `atlas-terminal.exe` (inside zip) | 17,331,200 | `a6cca9c182d32b958c06cbc549f3b90261e345f9be547d8d9b2cc4522336d399` |
+| `AtlasTerminal-Setup-0.1.51.exe` | 8,026,956 | `65ab46ab6ccf18da54c8b228e9efdf425cb20fb8007e74551ceb187105a7a84f` |
+| `atlas-exe-0.1.50-to-0.1.51.zstpatch` | 886,632 | `d7a3f01a681f0db81146c396948dbc78b2420c354cf77a52213b0a87f75ad5d5` |
+| `atlas-exe-0.1.49-to-0.1.51.zstpatch` | 902,562 | `3054aede55d102e145d8acf7913168f10ca000b0131a4577bd01dcda652d5059` |
+| `atlas-exe-0.1.48-to-0.1.51.zstpatch` | 915,050 | `8b2d6c13117fc92d379454795293de45ec3e488d933d9959c0ce93dd9c3a4a73` |
+| `atlas-update.json` | 2,394 | `7d0693745326d27fdef660ba018d261993eb960556dc8d1edbad5b5f9b6e6e7c` |
 
-Manifest cross-checks: `version == "0.1.50"`, `tag == "v0.1.50"`,
-`exe.size == 17308672`, `installer.size == 8023932`,
-`deltas[0].from_version == "0.1.49"`, `deltas[1].from_version == "0.1.48"`,
-and both `to_exe_sha256` equal the exe hash above. The release exe contains
-the new `backdrop: maximized window` log string, confirming the window fix is
-in the shipped binary.
+Manifest cross-checks: `version == "0.1.51"`, `tag == "v0.1.51"`,
+`exe.size == 17331200`, `installer.size == 8026956`, three deltas whose
+`to_exe_sha256` equals the exe hash above, and `from_exe_sha256` for 0.1.50
+equal to the v0.1.50 exe
+(`1ebd1b559b8d21fcd48cf4e2635764fc314e7c0e3016196d6af2ac8fd2d8ec77`).
+The release exe contains `WSLENV`, `TERM_PROGRAM` and `Close running tab?`, and
+does **not** contain `Font family`.
 
 ---
 
 ## Next steps
 
-1. Ask the user to update and confirm the three items above. CI and the
-   release are already verified; no further release action is needed.
-2. If the chrome bar now reads too heavy at low opacity, tune the `0.56` floor
-   in `src/view.rs` (keep it >= ~0.50 for tab contrast); if it reads too light,
-   raise it.
-3. If the maximized frost is still too weak, raise the `0x26` veil; if the
-   maximize flash is objectionable, reconsider the `WM_SIZE` reapply (but keep
-   the tint path working).
-4. For actual rounded corners in OpenCode, file/upstream a small feature
-   request (the prompt already uses `customBorderChars`); do not try to round
-   cell rectangles in Atlas.
+1. Ask the user to update via the in-app updater (delta from 0.1.50) and
+   confirm the four items above. CI and the release are already verified; no
+   further release action is needed.
+2. If the confirm dialog proves too eager (every tab close counts as a live
+   process), consider tracking foreground job state instead of `!exited`.
+3. If the user wants a font picker back, build a real one from
+   `window.text_system().all_font_names()`; do not restore the hardcoded list.
+4. `startup_mode` still needs a session-persistence layer; treat it as a
+   feature, not a setting fix.
