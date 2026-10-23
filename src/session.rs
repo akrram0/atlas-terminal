@@ -148,6 +148,9 @@ pub struct Session {
     /// PID of the shell process; lets the UI poll its working directory
     /// (see `crate::cwd`).
     pub pid: Option<u32>,
+    /// Scrollback limit the terminal was created with; used to prune inline
+    /// images whose anchor has scrolled out of the buffer.
+    scrollback_limit: usize,
     /// Last painted grid layout: (left, top, cell_width, cell_height).
     pub grid_bounds: Option<(f32, f32, f32, f32)>,
     /// Active inline images anchored to the terminal scrollback grid.
@@ -170,6 +173,7 @@ impl Session {
         rows: usize,
         cwd: Option<PathBuf>,
         profile: Profile,
+        scrollback_lines: usize,
     ) -> anyhow::Result<(Session, Receiver<SessionMsg>)> {
         let pty_system = native_pty_system();
         let pixel_width = (cols as f32 * 8.0).round() as u16;
@@ -269,6 +273,28 @@ impl Session {
             cmd.env("WT_SESSION", "1");
             cmd.env("TERM_PROGRAM", "Atlas");
             cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+            if matches!(profile, Profile::Wsl) {
+                // wsl.exe starts a Linux process from a Windows one; only
+                // variables listed in WSLENV are copied into the distro. Without
+                // this, fastfetch and other CLIs inside WSL see no terminal
+                // identity at all (TERM_PROGRAM is what they report).
+                let mut wsl_env = std::env::var("WSLENV").unwrap_or_default();
+                for var in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "TERM"] {
+                    // Already listed, with or without a WSLENV flag (`/p`, `/u`…).
+                    let listed = wsl_env
+                        .split(':')
+                        .any(|entry| entry.split('/').next() == Some(var));
+                    if listed {
+                        continue;
+                    }
+                    if !wsl_env.is_empty() {
+                        wsl_env.push(':');
+                    }
+                    wsl_env.push_str(var);
+                    wsl_env.push_str("/u");
+                }
+                cmd.env("WSLENV", wsl_env);
+            }
             if let Some(dir) = cwd.as_ref() {
                 if dir.is_dir() {
                     cmd.cwd(dir.clone());
@@ -299,7 +325,7 @@ impl Session {
         let proxy = EventProxy { tx: tx.clone() };
         let term = Term::new(
             Config {
-                scrolling_history: 10_000,
+                scrolling_history: scrollback_lines,
                 ..Config::default()
             },
             &TermSize { cols, rows },
@@ -342,6 +368,7 @@ impl Session {
                 pty_rows: rows,
                 shell: shell_used.to_string(),
                 pid,
+                scrollback_limit: scrollback_lines,
                 grid_bounds: None,
                 placed_images: Vec::new(),
                 next_image_id: 1,
@@ -441,11 +468,12 @@ impl Session {
             }
         }
 
-        // Prune images whose anchor line has scrolled past the maximum scrollback limit (10,000 lines)
+        // Prune images whose anchor line has scrolled past the configured
+        // scrollback limit.
         let cur_history = self.term.history_size() as i32;
-        self.placed_images.retain(|img| {
-            img.is_alt_screen || img.anchor_line >= cur_history - 10_000
-        });
+        let limit = self.scrollback_limit as i32;
+        self.placed_images
+            .retain(|img| img.is_alt_screen || img.anchor_line >= cur_history - limit);
     }
 
     /// Send bytes to the shell.

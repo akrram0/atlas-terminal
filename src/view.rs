@@ -99,6 +99,10 @@ pub struct AtlasView {
     /// Rename-tab dialog (palette).
     pub(crate) rename_open: bool,
     pub(crate) rename_value: String,
+    /// Pending "confirm before closing" state: the tab to close after the user
+    /// confirms, or a whole-window close. Cleared by the dialog actions.
+    pub(crate) pending_close_tab: Option<usize>,
+    pub(crate) pending_close_window: bool,
     /// Terminal font size in px (settings page).
     pub(crate) font_size: f32,
     /// Cursor override; `None` follows the shell's DECSCUSR.
@@ -245,6 +249,8 @@ impl AtlasView {
             palette_anim_index: 0.0,
             rename_open: false,
             rename_value: String::new(),
+            pending_close_tab: None,
+            pending_close_window: false,
             font_size,
             cursor_style,
             cursor_on: true,
@@ -299,6 +305,26 @@ impl AtlasView {
         crate::rounded_corners::set_opacity(opacity);
         let default_shell_prof = view.get_default_profile();
         view.new_tab_with_cwd(default_shell_prof, initial_dir, cx);
+
+        // Window close is interruptible while shells are still alive and the
+        // user asked for confirmation. Confirming calls `remove_window()`,
+        // which bypasses this callback; cancelling just clears the dialog.
+        let view_handle = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |_window, cx| {
+            let mut allow = true;
+            if let Some(handle) = view_handle.upgrade() {
+                let _ = handle.update(cx, |view, cx| {
+                    if view.pending_close_window {
+                        allow = false;
+                    } else if view.app_settings.confirm_close_process && view.has_live_processes() {
+                        view.pending_close_window = true;
+                        allow = false;
+                        cx.notify();
+                    }
+                });
+            }
+            allow
+        });
 
         // Motion & breathing ticker: drives continuous kinetic cursor gliding,
         // organic sinusoidal breathing, theme crossfading, palette gliding,
@@ -620,9 +646,26 @@ impl AtlasView {
         // A fresh terminal should be visible, not hidden behind settings.
         self.settings_open = false;
 
-        let spawn_cwd = cwd_override.or_else(home_dir);
+        let spawn_cwd = cwd_override.or_else(|| {
+            // "Start directory" setting: home (default) or the active pane's
+            // current directory. An explicit override (CLI directory) wins.
+            let start_current = self.app_settings.start_directory.eq_ignore_ascii_case("current");
+            if start_current {
+                self.active_pane()
+                    .and_then(|pane| pane.cwd.clone())
+                    .or_else(home_dir)
+            } else {
+                home_dir()
+            }
+        });
         let (init_cols, init_rows) = self.default_grid_size();
-        match Session::spawn(init_cols, init_rows, spawn_cwd.clone(), profile) {
+        match Session::spawn(
+            init_cols,
+            init_rows,
+            spawn_cwd.clone(),
+            profile,
+            self.app_settings.scrollback_lines,
+        ) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd).or(spawn_cwd);
@@ -665,12 +708,44 @@ impl AtlasView {
         if index >= self.tabs.len() {
             return;
         }
+        // "Confirm before closing active process": hold the close until the
+        // dialog is answered. `close_tab_now` is the unconditional path used by
+        // the dialog and by non-interactive callers.
+        if self.app_settings.confirm_close_process && self.tab_is_live(index) {
+            self.pending_close_tab = Some(index);
+            self.pending_close_window = false;
+            cx.notify();
+            return;
+        }
+        self.close_tab_now(index, cx);
+    }
+
+    /// Whether the tab still owns a shell that has not exited.
+    fn tab_is_live(&self, index: usize) -> bool {
+        self.tabs
+            .get(index)
+            .map(|tab| tab.panes.iter().any(|pane| !pane.exited))
+            .unwrap_or(false)
+    }
+
+    /// Whether any tab in the window still owns a live shell.
+    fn has_live_processes(&self) -> bool {
+        self.tabs
+            .iter()
+            .any(|tab| tab.panes.iter().any(|pane| !pane.exited))
+    }
+
+    fn close_tab_now(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index >= self.tabs.len() {
+            return;
+        }
         let open_count = self.tabs.iter().filter(|t| !t.closing).count();
         if open_count <= 1 {
             self.tabs.remove(index);
             self.hover_tab = None;
             if self.tabs.is_empty() {
-                self.new_tab(Profile::PowerShell, cx);
+                let profile = self.get_default_profile();
+                self.new_tab(profile, cx);
                 return;
             }
             if index < self.active {
@@ -696,6 +771,26 @@ impl AtlasView {
         cx.notify();
     }
 
+    /// Answer "yes" to the close-confirmation dialog.
+    fn confirm_pending_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pending_close_window {
+            self.pending_close_window = false;
+            self.pending_close_tab = None;
+            window.remove_window();
+        } else if let Some(index) = self.pending_close_tab.take() {
+            self.close_tab_now(index, cx);
+            self.focus_main(window);
+        }
+    }
+
+    /// Dismiss the close-confirmation dialog without closing anything.
+    fn cancel_pending_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_close_tab = None;
+        self.pending_close_window = false;
+        self.focus_main(window);
+        cx.notify();
+    }
+
     /// Restart the active pane of a tab with a fresh session.
     pub(crate) fn restart_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         let (id, profile, pane_ix) = match self.tabs.get(index) {
@@ -709,7 +804,13 @@ impl AtlasView {
         self.next_epoch += 1;
 
         let (init_cols, init_rows) = self.default_grid_size();
-        match Session::spawn(init_cols, init_rows, home_dir(), profile) {
+        match Session::spawn(
+            init_cols,
+            init_rows,
+            home_dir(),
+            profile,
+            self.app_settings.scrollback_lines,
+        ) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd);
@@ -749,7 +850,13 @@ impl AtlasView {
 
         let spawn_cwd = inherit_cwd.or_else(home_dir);
         let (init_cols, init_rows) = self.default_grid_size();
-        match Session::spawn(init_cols, init_rows, spawn_cwd.clone(), profile) {
+        match Session::spawn(
+            init_cols,
+            init_rows,
+            spawn_cwd.clone(),
+            profile,
+            self.app_settings.scrollback_lines,
+        ) {
             Ok((session, rx)) => {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd).or(spawn_cwd);
@@ -1626,6 +1733,17 @@ impl AtlasView {
         self.cursor_on = true;
         self.cursor_last_typing = std::time::Instant::now();
 
+        // The close-confirmation dialog is modal: Enter confirms, Esc cancels,
+        // and every other keystroke is swallowed instead of reaching the shell.
+        if self.pending_close_tab.is_some() || self.pending_close_window {
+            match key {
+                "escape" => self.cancel_pending_close(window, cx),
+                "enter" => self.confirm_pending_close(window, cx),
+                _ => {}
+            }
+            return;
+        }
+
         // Clear hovered link if control is released
         if self.hovered_link.is_some() && !modifiers.control {
             self.hovered_link = None;
@@ -1997,9 +2115,121 @@ impl AtlasView {
             cx.notify();
         }
     }
+
+    /// Modal confirmation shown when `confirm_close_process` is on and the
+    /// target tab (or the window) still has a live shell.
+    fn confirm_close_dialog(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let window_close = self.pending_close_window;
+        let title = if window_close {
+            "Close Atlas Terminal?"
+        } else {
+            "Close running tab?"
+        };
+        let body = if window_close {
+            "One or more shells are still running. Close the window anyway?"
+        } else {
+            "This tab is still running. Close it anyway?"
+        };
+        let confirm_label = if window_close { "Close window" } else { "Close tab" };
+
+        let cancel = div()
+            .id(ElementId::named_usize("confirm-close-cancel", 0))
+            .h(px(28.0))
+            .px(px(12.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(theme.elevated_border)
+            .bg(theme.card_hover)
+            .text_size(px(12.0))
+            .text_color(theme.chrome_fg_active)
+            .hover({
+                let hover = theme.card_hover;
+                move |style| style.bg(hover)
+            })
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.cancel_pending_close(window, cx);
+            }))
+            .child("Cancel");
+
+        let confirm = div()
+            .id(ElementId::named_usize("confirm-close-ok", 0))
+            .h(px(28.0))
+            .px(px(12.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(theme.accent)
+            .bg(Rgba {
+                a: 0.22,
+                ..theme.accent
+            })
+            .text_size(px(12.0))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(theme.accent)
+            .hover({
+                let hover = Rgba {
+                    a: 0.32,
+                    ..theme.accent
+                };
+                move |style| style.bg(hover)
+            })
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.confirm_pending_close(window, cx);
+            }))
+            .child(confirm_label);
+
+        div()
+            .absolute()
+            .top(px(140.0))
+            .left(px(0.0))
+            .right(px(0.0))
+            .flex()
+            .flex_row()
+            .justify_center()
+            .child(
+                div()
+                    .id(ElementId::named_usize("confirm-close-panel", 0))
+                    .w(px(400.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.0))
+                    .p(px(16.0))
+                    .rounded(px(12.0))
+                    .bg(theme.elevated_bg)
+                    .border_1()
+                    .border_color(theme.elevated_border)
+                    .shadow_lg()
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.chrome_fg_active)
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .text_color(theme.chrome_fg)
+                            .child(body),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .justify_end()
+                            .gap(px(8.0))
+                            .child(cancel)
+                            .child(confirm),
+                    ),
+            )
+            .into_any_element()
+    }
 }
-
-
 
 impl Render for AtlasView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3160,6 +3390,18 @@ impl Render for AtlasView {
                 cx,
             ));
             root = root.child(self.render_update_panel(&theme, closing, cx));
+        }
+        // Close confirmation is topmost: it must win over every other overlay.
+        if self.pending_close_tab.is_some() || self.pending_close_window {
+            root = root.child(overlay_backdrop(
+                5,
+                false,
+                |view, window, cx| {
+                    view.cancel_pending_close(window, cx);
+                },
+                cx,
+            ));
+            root = root.child(self.confirm_close_dialog(&theme, cx));
         }
 
         root

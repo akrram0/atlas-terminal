@@ -58,13 +58,6 @@ impl AtlasView {
         save_app_settings(&self.app_settings);
     }
 
-    pub fn set_font_family(&mut self, family: &str, cx: &mut Context<Self>) {
-        self.font_family = family.to_string();
-        self.font = crate::view::resolve_terminal_font(&self.font_family);
-        self.sync_and_save_settings();
-        cx.notify();
-    }
-
     pub fn settings_page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let lum = 0.2126 * theme.elevated_bg.r + 0.7152 * theme.elevated_bg.g + 0.0722 * theme.elevated_bg.b;
         let is_dark = lum < 0.45;
@@ -197,35 +190,6 @@ impl AtlasView {
 
 
         // --- Appearance Tab ---
-        let fonts = [
-            "Cascadia Code",
-            "Consolas",
-            "Fira Code",
-            "JetBrains Mono",
-            "Cascadia Mono",
-        ];
-        let mut font_family_row = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Font family"));
-        for (idx, &family) in fonts.iter().enumerate() {
-            let is_active = self.font_family.eq_ignore_ascii_case(family);
-            let fam_str = family.to_string();
-            font_family_row = font_family_row.child(pill_button(
-                fam_str.clone(),
-                100 + idx,
-                is_active,
-                theme,
-                move |view, cx| {
-                    view.set_font_family(&fam_str, cx);
-                },
-                cx,
-            ));
-        }
-
         let font_size_row = div()
             .flex()
             .flex_row()
@@ -562,7 +526,6 @@ impl AtlasView {
             .child(
                 card()
                     .child(section("FONT & TYPOGRAPHY"))
-                    .child(font_family_row)
                     .child(font_size_row)
                     .child(line_height_row),
             )
