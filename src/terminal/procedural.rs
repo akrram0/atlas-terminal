@@ -2,6 +2,30 @@
 
 use gpui::Rgba;
 
+/// Rasterise a quarter-circle stroke as overlapping 1px quads.
+///
+/// Box-drawing corners are painted geometrically (never as font glyphs) so
+/// runs of `─` stay seam-free. The rounded corner pieces still have to *look*
+/// rounded, so this walks the arc between `start` and `end` radians and lays a
+/// pixel quad on each step. Callers pass the arc centre on the cell's stroke
+/// centre line.
+fn arc_stroke(
+    rects: &mut Vec<(f32, f32, f32, f32)>,
+    center_x: f32,
+    center_y: f32,
+    radius: f32,
+    start: f32,
+    end: f32,
+) {
+    let steps = (radius * 4.0).ceil().max(6.0) as usize;
+    for step in 0..=steps {
+        let t = start + (end - start) * (step as f32 / steps as f32);
+        let x = center_x + radius * t.cos();
+        let y = center_y + radius * t.sin();
+        rects.push((x - 0.5, y - 0.5, x + 0.5, y + 0.5));
+    }
+}
+
 /// How a cell's glyph is drawn: shaped with the terminal font, isolated from
 /// its neighbours (emoji, CJK…), with the bundled Nerd symbols font, or
 /// painted procedurally as pixel-exact quads (block elements, box drawing).
@@ -80,10 +104,10 @@ pub fn procedural_cell(
     let half_h = (lh / 2.0).floor();
     // Light strokes are 1px, heavy 2px, both pinned to the cell centre.
     let hline = |rects: &mut Vec<(f32, f32, f32, f32)>, x0: f32, x1: f32, th: f32| {
-        rects.push((x0, cy + 1.0 - th, x1, cy + 1.0));
+        rects.push((x0.min(x1), cy + 1.0 - th, x0.max(x1), cy + 1.0));
     };
     let vline = |rects: &mut Vec<(f32, f32, f32, f32)>, y0: f32, y1: f32, th: f32| {
-        rects.push((cx + 1.0 - th, y0, cx + 1.0, y1));
+        rects.push((cx + 1.0 - th, y0.min(y1), cx + 1.0, y0.max(y1)));
     };
     let alpha = match u {
         // Linear fractional blocks: upper/lower eighths, left eighths,
@@ -175,24 +199,59 @@ pub fn procedural_cell(
             vline(&mut rects, 0.0, lh, 2.0);
             1.0
         }
-        0x250C | 0x256D => {
+        0x250C => {
             hline(&mut rects, cx, cw, 1.0);
             vline(&mut rects, cy, lh, 1.0);
             1.0
         }
-        0x2510 | 0x256E => {
+        0x2510 => {
             hline(&mut rects, 0.0, cx + 1.0, 1.0);
             vline(&mut rects, cy, lh, 1.0);
             1.0
         }
-        0x2514 | 0x256F => {
+        0x2514 => {
             hline(&mut rects, cx, cw, 1.0);
             vline(&mut rects, 0.0, cy + 1.0, 1.0);
             1.0
         }
-        0x2518 | 0x2570 => {
+        0x2518 => {
             hline(&mut rects, 0.0, cx + 1.0, 1.0);
             vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            1.0
+        }
+        // Rounded corners ╭ ╮ ╯ ╰: same strokes as the square corners, but the
+        // junction is a quarter arc instead of a right angle.
+        0x256D..=0x2570 => {
+            use std::f32::consts::{FRAC_PI_2, PI};
+            let r = (cx - 0.5).min(cy - 0.5).max(1.5);
+            let sx = cx + 0.5;
+            let sy = cy + 0.5;
+            match u {
+                0x256D => {
+                    // ╭ top-left: stem down, bar right, arc left→top.
+                    hline(&mut rects, cx + r, cw, 1.0);
+                    vline(&mut rects, cy + r, lh, 1.0);
+                    arc_stroke(&mut rects, sx + r, sy + r, r, PI, PI + FRAC_PI_2);
+                }
+                0x256E => {
+                    // ╮ top-right: bar left, stem down, arc top→right.
+                    hline(&mut rects, 0.0, cx - r, 1.0);
+                    vline(&mut rects, cy + r, lh, 1.0);
+                    arc_stroke(&mut rects, sx - r, sy + r, r, PI + FRAC_PI_2, 2.0 * PI);
+                }
+                0x256F => {
+                    // ╯ bottom-right: bar left, stem up, arc right→bottom.
+                    hline(&mut rects, 0.0, cx - r, 1.0);
+                    vline(&mut rects, 0.0, cy - r, 1.0);
+                    arc_stroke(&mut rects, sx - r, sy - r, r, 0.0, FRAC_PI_2);
+                }
+                _ => {
+                    // ╰ bottom-left: stem up, bar right, arc bottom→left.
+                    hline(&mut rects, cx + r, cw, 1.0);
+                    vline(&mut rects, 0.0, cy - r, 1.0);
+                    arc_stroke(&mut rects, sx + r, sy - r, r, FRAC_PI_2, PI);
+                }
+            }
             1.0
         }
         0x250F => {
@@ -272,4 +331,42 @@ pub fn procedural_cell(
         ..fg
     };
     Some((rects, color))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn white() -> Rgba {
+        Rgba {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 1.0,
+        }
+    }
+
+    #[test]
+    fn rounded_corners_are_drawn_as_arcs() {
+        for ch in ['\u{256d}', '\u{256e}', '\u{256f}', '\u{2570}'] {
+            let (rects, _) = procedural_cell(ch, 9.0, 18.0, white()).expect("rounded corner");
+            assert!(
+                rects.len() > 10,
+                "{ch} should be an arc, got {} rects",
+                rects.len()
+            );
+            for (x0, y0, x1, y1) in &rects {
+                assert!(*x0 >= -0.6, "{ch}: x0 {x0} out of cell");
+                assert!(*x1 <= 9.6, "{ch}: x1 {x1} out of cell");
+                assert!(*y0 >= -0.6, "{ch}: y0 {y0} out of cell");
+                assert!(*y1 <= 18.6, "{ch}: y1 {y1} out of cell");
+            }
+        }
+    }
+
+    #[test]
+    fn square_corners_stay_square() {
+        let (rects, _) = procedural_cell('\u{250c}', 9.0, 18.0, white()).expect("square corner");
+        assert_eq!(rects.len(), 2);
+    }
 }

@@ -174,6 +174,16 @@ pub(crate) fn resolve_terminal_font(family: &str) -> gpui::Font {
     font
 }
 
+/// A saved 100% opacity is a real user choice (the settings toggle offers it),
+/// so loading must not silently turn it back into the old 85% acrylic default.
+pub(crate) fn normalize_opacity(saved: f32) -> f32 {
+    if saved >= 0.999 {
+        1.0
+    } else {
+        saved.clamp(0.15, 1.0)
+    }
+}
+
 impl AtlasView {
     pub fn new(window: &mut Window, initial_dir: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
         let focus = cx.focus_handle();
@@ -199,12 +209,17 @@ impl AtlasView {
         let font_size = app_settings.font_size.clamp(10.0, 24.0);
         let line_height = app_settings.line_height.clamp(1.0, 1.8);
         let corner_radius = app_settings.corner_radius.clamp(0.0, 20.0);
-        let opacity = if app_settings.opacity >= 0.999 {
-            0.85
-        } else {
-            app_settings.opacity.clamp(0.15, 1.0)
-        };
+        let opacity = normalize_opacity(app_settings.opacity);
         let cursor_blink = app_settings.cursor_blink;
+        crate::log_line(&format!(
+            "settings loaded: theme={} mode={} font={} size={:.1} line={:.2} opacity={:.2}",
+            app_settings.theme,
+            app_settings.theme_mode,
+            font_family,
+            font_size,
+            line_height,
+            opacity
+        ));
 
         let font = resolve_terminal_font(&font_family);
 
@@ -3123,5 +3138,19 @@ impl Render for AtlasView {
         }
 
         root
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_opacity;
+
+    #[test]
+    fn saved_full_opacity_survives_load() {
+        assert_eq!(normalize_opacity(1.0), 1.0);
+        assert_eq!(normalize_opacity(0.999), 1.0);
+        assert_eq!(normalize_opacity(0.85), 0.85);
+        assert_eq!(normalize_opacity(0.15), 0.15);
+        assert_eq!(normalize_opacity(0.0), 0.15);
     }
 }
