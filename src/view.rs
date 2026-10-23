@@ -2045,17 +2045,38 @@ impl Render for AtlasView {
         let tb = theme.clone();
 
         let term_base = if self.settings_open { theme.elevated_bg } else { active_bg };
+
+        // Inactive chrome ink (tab titles, bar icons). In translucent mode the
+        // muted token sits on a semi-transparent bar, so over a bright blurred
+        // wallpaper it washes out; lift it 40% of the way toward the active
+        // tone to hold roughly 3:1. Opaque mode keeps the theme token as-is.
+        let chrome_ink = if is_translucent {
+            crate::theme::lerp_color(tb.chrome_fg, tb.chrome_fg_active, 0.40)
+        } else {
+            tb.chrome_fg
+        };
+
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             // In translucent mode: sheet and container must be fully transparent so
             // the native acrylic accent (GPUI's `Blurred` background) shows
-            // through. Only the titlebar chrome gets a subtle semi-transparent
-            // tint for legibility.
+            // through. Only the titlebar chrome gets a semi-transparent tint
+            // for legibility.
+            //
+            // The bar fill ramps from a 0.56 floor up to 0.90 as the slider
+            // approaches opaque. The old `opacity * 0.70` curve collapsed to
+            // 0.105 at 15% opacity, which let the wallpaper swallow the tab
+            // titles; the floor keeps the 36px bar dark (or light) enough for
+            // text at every slider position while the wallpaper still reads
+            // through it.
             //
             // The terminal element also skips default-cell backgrounds, so the
             // cleared swapchain keeps alpha 0 across the terminal area. GPUI 0.2.2's
             // DestBlendAlpha=ONE only over-accumulates overlapping translucent
             // chrome layers; it does not force the empty terminal area opaque.
-            let chrome = Rgba { a: (self.opacity * 0.70).clamp(0.10, 0.85), ..tb.panel_bg };
+            let chrome = Rgba {
+                a: (0.56 + self.opacity * 0.34).clamp(0.56, 0.90),
+                ..tb.panel_bg
+            };
             (chrome, rgba(0x00000000), rgba(0x00000000))
         } else {
             (tb.panel_bg, term_base, tb.panel_bg)
@@ -2077,7 +2098,7 @@ impl Render for AtlasView {
         // sidebar mark from the reference chrome. Opens the new-tab profile
         // menu (this shell has no sidebar).
         let ws_bg = tb.soft_bg;
-        let ws_idle = tb.chrome_fg;
+        let ws_idle = chrome_ink;
         let ws_hot = tb.chrome_fg_active;
         bar = bar.child(
             div()
@@ -2123,14 +2144,16 @@ impl Render for AtlasView {
                     tb.accent,
                 )
             } else {
-                (
-                    rgba(0x00000000),
-                    rgba(0x00000000),
-                    tb.chrome_fg,
-                    tb.chrome_fg,
-                )
+                (rgba(0x00000000), rgba(0x00000000), chrome_ink, chrome_ink)
             };
-            let pill_hover = tb.card_hover;
+            // The active pill must stay an opaque fill on hover: card_hover is
+            // a translucent wash that would drop the title over a bright
+            // blurred wallpaper in translucent mode.
+            let pill_hover = if active {
+                crate::theme::lerp_color(tb.elevated_bg, tb.accent, 0.10)
+            } else {
+                tb.card_hover
+            };
             let pill_hot = tb.chrome_fg_active;
 
             let (max_w, min_w, px_pad, opacity) = if tab.closing {
@@ -2250,14 +2273,16 @@ impl Render for AtlasView {
                     tb.accent,
                 )
             } else {
-                (
-                    rgba(0x00000000),
-                    rgba(0x00000000),
-                    tb.chrome_fg,
-                    tb.chrome_fg,
-                )
+                (rgba(0x00000000), rgba(0x00000000), chrome_ink, chrome_ink)
             };
-            let pill_hover = tb.card_hover;
+            // The active pill must stay an opaque fill on hover: card_hover is
+            // a translucent wash that would drop the title over a bright
+            // blurred wallpaper in translucent mode.
+            let pill_hover = if active {
+                crate::theme::lerp_color(tb.elevated_bg, tb.accent, 0.10)
+            } else {
+                tb.card_hover
+            };
             let pill_hot = tb.chrome_fg_active;
 
             let mut settings_pill = div()
@@ -2349,7 +2374,7 @@ impl Render for AtlasView {
         let plus_ink = if self.hover_mark == Some(HOVER_MARK_NEW_TAB) {
             tb.chrome_fg_active
         } else {
-            tb.chrome_fg
+            chrome_ink
         };
         bar = bar.child(
             div()
@@ -2458,7 +2483,7 @@ impl Render for AtlasView {
                     .rounded(px(6.0))
                     .hover(move |s| s.bg(top_btn_hover))
                     .active(move |s| s.opacity(0.78))
-                    .child(icons::icon(icons::REFRESH).size(px(15.0)).text_color(tb.chrome_fg))
+                    .child(icons::icon(icons::REFRESH).size(px(15.0)).text_color(chrome_ink))
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                         view.toggle_update_panel(cx);
                     })),
@@ -2476,7 +2501,7 @@ impl Render for AtlasView {
                 .rounded(px(6.0))
                 .hover(move |s| s.bg(top_btn_hover))
                 .active(move |s| s.opacity(0.78))
-                .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(tb.chrome_fg))
+                .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(chrome_ink))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = !view.settings_open;
                     if view.settings_open {
@@ -2524,7 +2549,7 @@ impl Render for AtlasView {
                     button_theme.chrome_fg_active
                 }
             } else {
-                button_theme.chrome_fg
+                chrome_ink
             };
             let btn = div()
                 .id(ElementId::named_usize("window-control", index))

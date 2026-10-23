@@ -212,6 +212,7 @@ pub(crate) mod rounded_corners {
     const SWP_FRAMECHANGED: u32 = 0x0020;
     // Window messages, hit-test codes and metrics.
     const WM_SIZE: u32 = 0x0005;
+    const WM_GETMINMAXINFO: u32 = 0x0024;
     const WM_NCCALCSIZE: u32 = 0x0083;
     const WM_NCHITTEST: u32 = 0x0084;
     const WM_NCLBUTTONDOWN: u32 = 0x00A1;
@@ -233,8 +234,7 @@ pub(crate) mod rounded_corners {
     const HTBOTTOM: Lresult = 15;
     const HTBOTTOMLEFT: Lresult = 16;
     const HTBOTTOMRIGHT: Lresult = 17;
-    const SM_CXSIZEFRAME: i32 = 32;
-    const SM_CXPADDEDBORDER: i32 = 92;
+    const MONITOR_DEFAULTTONEAREST: u32 = 2;
 
     const WM_SETICON: u32 = 0x0080;
     const ICON_SMALL: usize = 0;
@@ -247,6 +247,10 @@ pub(crate) mod rounded_corners {
     const DWMWA_NCRENDERING_POLICY: u32 = 2;
     const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
     const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    /// Border colour attribute (Windows 11 22000+). `DWMWA_COLOR_NONE` removes
+    /// the 1px DWM outline so the acrylic can run all the way to the edge.
+    const DWMWA_BORDER_COLOR: u32 = 34;
+    const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
     // Windows 11 22H2+ system backdrop (the supported replacement for the
     // undocumented accent acrylic on build 22621 and newer).
     const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
@@ -265,9 +269,31 @@ pub(crate) mod rounded_corners {
     }
 
     #[repr(C)]
-    struct NcCalcSizeParams {
-        rgrc: [Rect; 3],
-        _lppos: *mut core::ffi::c_void,
+    #[derive(Clone, Copy, Default)]
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+
+    /// Filled by the system for `WM_GETMINMAXINFO`; `ptMaxPosition` is relative
+    /// to the monitor origin and `ptMaxSize` is the maximized window size.
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct MinMaxInfo {
+        pt_reserved: Point,
+        pt_max_size: Point,
+        pt_max_position: Point,
+        pt_max_track_size: Point,
+        pt_min_track_size: Point,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct MonitorInfo {
+        cb_size: u32,
+        rc_monitor: Rect,
+        rc_work: Rect,
+        dw_flags: u32,
     }
 
     /// gpui's original window procedure, called for every message we do not
@@ -331,7 +357,8 @@ pub(crate) mod rounded_corners {
         fn GetClientRect(hwnd: Hwnd, rect: *mut Rect) -> i32;
         fn IsZoomed(hwnd: Hwnd) -> i32;
         fn GetDpiForWindow(hwnd: Hwnd) -> u32;
-        fn GetSystemMetricsForDpi(index: i32, dpi: u32) -> i32;
+        fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> Hwnd;
+        fn GetMonitorInfoW(hwnd: Hwnd, info: *mut MonitorInfo) -> i32;
         fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
         fn GetForegroundWindow() -> Hwnd;
@@ -682,25 +709,55 @@ pub(crate) mod rounded_corners {
         lparam: Lparam,
     ) -> Lresult {
         match msg {
-            WM_NCCALCSIZE => {
-                // On input `rgrc[0]` is the proposed *window* rect; leaving it
-                // untouched makes the client cover the whole window.
-                if wparam != 0 && unsafe { IsZoomed(hwnd) } != 0 {
-                    // Maximized windows are outdented past the screen edges;
-                    // inset by the frame so content stays on-screen.
-                    // Safety: `lparam` points to NCCALCSIZE_PARAMS here.
-                    unsafe {
-                        let dpi = GetDpiForWindow(hwnd);
-                        let frame = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi)
-                            + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
-                        let params = lparam as *mut NcCalcSizeParams;
-                        let rect = &mut (*params).rgrc[0];
-                        rect.left += frame;
-                        rect.top += frame;
-                        rect.right -= frame;
-                        rect.bottom -= frame;
+            WM_GETMINMAXINFO => {
+                // A frameless WS_THICKFRAME window is normally maximized to the
+                // work area *plus* the resize frame, outdented past the screen.
+                // Pinning the maximized rect to the work area lets the client
+                // cover the whole window (see WM_NCCALCSIZE), so the acrylic
+                // backdrop reaches the screen edges instead of leaving an
+                // unblurred frame ring around a maximized window.
+                let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
+                let result = if prev == 0 {
+                    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                } else {
+                    unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+                };
+                let info = lparam as *mut MinMaxInfo;
+                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+                if !info.is_null() && !monitor.is_null() {
+                    let mut mi = MonitorInfo {
+                        cb_size: core::mem::size_of::<MonitorInfo>() as u32,
+                        rc_monitor: Rect::default(),
+                        rc_work: Rect::default(),
+                        dw_flags: 0,
+                    };
+                    if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
+                        unsafe {
+                            (*info).pt_max_position.x = mi.rc_work.left - mi.rc_monitor.left;
+                            (*info).pt_max_position.y = mi.rc_work.top - mi.rc_monitor.top;
+                            (*info).pt_max_size.x = mi.rc_work.right - mi.rc_work.left;
+                            (*info).pt_max_size.y = mi.rc_work.bottom - mi.rc_work.top;
+                            // DefWindowProc normally fills the tracking limits;
+                            // keep a sane fallback if a custom wndproc did not.
+                            if (*info).pt_max_track_size.x <= 0 {
+                                (*info).pt_max_track_size.x =
+                                    mi.rc_monitor.right - mi.rc_monitor.left;
+                            }
+                            if (*info).pt_max_track_size.y <= 0 {
+                                (*info).pt_max_track_size.y =
+                                    mi.rc_monitor.bottom - mi.rc_monitor.top;
+                            }
+                        }
                     }
                 }
+                result
+            }
+            WM_NCCALCSIZE => {
+                // The maximized rect is pinned to the work area by
+                // WM_GETMINMAXINFO, so the client can cover the whole window at
+                // every size. Leaving `rgrc[0]` untouched gives the acrylic a
+                // full-bleed surface; the old maximized frame inset left a
+                // non-blurred ring at the screen edges.
                 0
             }
             WM_NCHITTEST => {
@@ -715,20 +772,10 @@ pub(crate) mod rounded_corners {
                             return hit;
                         }
                     }
-                    // While maximized the client is inset by the frame the
-                    // WM_NCCALCSIZE arm above keeps.
-                    let frame = if zoomed {
-                        // Safety: pure metrics lookups on a live hwnd.
-                        unsafe {
-                            let dpi = GetDpiForWindow(hwnd);
-                            GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi)
-                                + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi)
-                        }
-                    } else {
-                        0
-                    };
-                    let client_x = (x - rect.left - frame) as f32;
-                    let client_y = (y - rect.top - frame) as f32;
+                    // The client covers the whole window at every size (see
+                    // WM_NCCALCSIZE), so no frame offset is needed here.
+                    let client_x = (x - rect.left) as f32;
+                    let client_y = (y - rect.top) as f32;
                     if caption_hit(hwnd, client_x, client_y) {
                         return HTCAPTION;
                     }
@@ -772,6 +819,21 @@ pub(crate) mod rounded_corners {
                     let opacity = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
                     if opacity < 0.999 {
                         crate::log_line(&format!("backdrop: zoomed={zoomed}, reasserting acrylic"));
+                        if zoomed {
+                            let mut wr = Rect::default();
+                            let mut cr = Rect::default();
+                            unsafe {
+                                GetWindowRect(hwnd, &mut wr);
+                                GetClientRect(hwnd, &mut cr);
+                            }
+                            crate::log_line(&format!(
+                                "backdrop: maximized window {}x{} client {}x{}",
+                                wr.right - wr.left,
+                                wr.bottom - wr.top,
+                                cr.right,
+                                cr.bottom
+                            ));
+                        }
                         unsafe { PostMessageW(hwnd, WM_APP_BACKDROP, 0, 0) };
                     }
                 }
@@ -921,6 +983,15 @@ pub(crate) mod rounded_corners {
                             DWMWA_WINDOW_CORNER_PREFERENCE,
                             &preference as *const i32 as *const core::ffi::c_void,
                             core::mem::size_of::<i32>() as u32,
+                        );
+                        // Remove the 1px DWM outline: at full size it reads as a
+                        // sharp, unblurred rim around the acrylic.
+                        let border: u32 = DWMWA_COLOR_NONE;
+                        let _ = DwmSetWindowAttribute(
+                            hwnd,
+                            DWMWA_BORDER_COLOR,
+                            &border as *const u32 as *const core::ffi::c_void,
+                            core::mem::size_of::<u32>() as u32,
                         );
 
                         // 5. Set initial immersive dark mode (1 for dark default theme).
