@@ -70,6 +70,7 @@
 - `icons/sun.svg` / `icons/moon.svg` — Theme toggle
 - `icons/folder.svg` — Inactive directory / workspace
 - `icons/claude-mark.svg`, `icons/opencode-mark.svg`, `icons/ubuntu.svg` — Agent & runtime brands
+- `icons/arch.svg`, `icons/debian.svg`, `icons/fedora.svg`, `icons/kali.svg`, `icons/alpine.svg`, `icons/opensuse.svg`, `icons/linux-mint.svg`, `icons/nixos.svg`, `icons/pop-os.svg`, `icons/rocky.svg`, `icons/alma.svg`, `icons/gentoo.svg`, `icons/docker.svg`, `icons/linux.svg` — WSL distro marks, selected from the detected default distribution and tinted by `currentColor`
 - `icons/window-minimize.svg`, `icons/window-maximize.svg`, `icons/window-restore.svg` — Window controls fallback
 
 ---

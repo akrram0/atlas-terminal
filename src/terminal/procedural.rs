@@ -2,13 +2,14 @@
 
 use gpui::Rgba;
 
-/// Rasterise a quarter-circle stroke as overlapping 1px quads.
+/// Rasterise a quarter-circle stroke as overlapping quads of `thickness`
+/// (normal-weight light strokes, matching the straight lines they join).
 ///
 /// Box-drawing corners are painted geometrically (never as font glyphs) so
 /// runs of `─` stay seam-free. The rounded corner pieces still have to *look*
 /// rounded, so this walks the arc between `start` and `end` radians and lays a
-/// pixel quad on each step. Callers pass the arc centre on the cell's stroke
-/// centre line.
+/// quad on each step. Callers pass the arc centre on the cell's stroke centre
+/// line.
 fn arc_stroke(
     rects: &mut Vec<(f32, f32, f32, f32)>,
     center_x: f32,
@@ -16,13 +17,15 @@ fn arc_stroke(
     radius: f32,
     start: f32,
     end: f32,
+    thickness: f32,
 ) {
     let steps = (radius * 4.0).ceil().max(6.0) as usize;
+    let half = thickness / 2.0;
     for step in 0..=steps {
         let t = start + (end - start) * (step as f32 / steps as f32);
         let x = center_x + radius * t.cos();
         let y = center_y + radius * t.sin();
-        rects.push((x - 0.5, y - 0.5, x + 0.5, y + 0.5));
+        rects.push((x - half, y - half, x + half, y + half));
     }
 }
 
@@ -88,8 +91,9 @@ pub fn is_procedural(c: char) -> bool {
 
 /// Cell-local rects `(x0, y0, x1, y1)` + paint colour for a procedurally
 /// drawn character: block elements fill exact fractions of the cell, box
-/// drawing turns into centred 1px/2px strokes, shades become translucent
-/// full-cell fills — all seam-free by construction.
+/// drawing turns into centred normal-weight light strokes with heavy strokes
+/// one pixel thicker, shades become translucent full-cell fills — all
+/// seam-free by construction.
 pub fn procedural_cell(
     ch: char,
     cw: f32,
@@ -102,12 +106,22 @@ pub fn procedural_cell(
     let cy = (lh / 2.0).floor();
     let half_w = (cw / 2.0).floor();
     let half_h = (lh / 2.0).floor();
-    // Light strokes are 1px, heavy 2px, both pinned to the cell centre.
+    // Stroke weight is fixed rather than derived from the cell height: light
+    // strokes render at a normal 2px and heavy strokes at 3px, so box drawing
+    // keeps its weight (and its light/heavy contrast) at every font size
+    // instead of collapsing to a hairline.
+    let light = 2.0;
+    let heavy = 3.0;
+    // Every stroke is centred on the same lines the arcs use (`cy + 0.5` /
+    // `cx + 0.5`), so straight and rounded pieces join without a jog at any
+    // thickness (identical to the old geometry when th == 1.0).
     let hline = |rects: &mut Vec<(f32, f32, f32, f32)>, x0: f32, x1: f32, th: f32| {
-        rects.push((x0.min(x1), cy + 1.0 - th, x0.max(x1), cy + 1.0));
+        let y = cy + 0.5;
+        rects.push((x0.min(x1), y - th / 2.0, x0.max(x1), y + th / 2.0));
     };
     let vline = |rects: &mut Vec<(f32, f32, f32, f32)>, y0: f32, y1: f32, th: f32| {
-        rects.push((cx + 1.0 - th, y0.min(y1), cx + 1.0, y0.max(y1)));
+        let x = cx + 0.5;
+        rects.push((x - th / 2.0, y0.min(y1), x + th / 2.0, y0.max(y1)));
     };
     let alpha = match u {
         // Linear fractional blocks: upper/lower eighths, left eighths,
@@ -181,42 +195,42 @@ pub fn procedural_cell(
             }
             1.0
         }
-        // Box drawing: light (1px) and heavy (2px) lines, corners, tees and
-        // crosses; rounded corners reuse the square geometry at this size.
+        // Box drawing: normal-weight light and heavy (one pixel thicker)
+        // lines, corners, tees, crosses and quarter-arc rounded corners.
         0x2500 => {
-            hline(&mut rects, 0.0, cw, 1.0);
+            hline(&mut rects, 0.0, cw, light);
             1.0
         }
         0x2501 => {
-            hline(&mut rects, 0.0, cw, 2.0);
+            hline(&mut rects, 0.0, cw, heavy);
             1.0
         }
         0x2502 => {
-            vline(&mut rects, 0.0, lh, 1.0);
+            vline(&mut rects, 0.0, lh, light);
             1.0
         }
         0x2503 => {
-            vline(&mut rects, 0.0, lh, 2.0);
+            vline(&mut rects, 0.0, lh, heavy);
             1.0
         }
         0x250C => {
-            hline(&mut rects, cx, cw, 1.0);
-            vline(&mut rects, cy, lh, 1.0);
+            hline(&mut rects, cx, cw, light);
+            vline(&mut rects, cy, lh, light);
             1.0
         }
         0x2510 => {
-            hline(&mut rects, 0.0, cx + 1.0, 1.0);
-            vline(&mut rects, cy, lh, 1.0);
+            hline(&mut rects, 0.0, cx + 1.0, light);
+            vline(&mut rects, cy, lh, light);
             1.0
         }
         0x2514 => {
-            hline(&mut rects, cx, cw, 1.0);
-            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            hline(&mut rects, cx, cw, light);
+            vline(&mut rects, 0.0, cy + 1.0, light);
             1.0
         }
         0x2518 => {
-            hline(&mut rects, 0.0, cx + 1.0, 1.0);
-            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            hline(&mut rects, 0.0, cx + 1.0, light);
+            vline(&mut rects, 0.0, cy + 1.0, light);
             1.0
         }
         // Rounded corners ╭ ╮ ╯ ╰: same strokes as the square corners, but the
@@ -229,99 +243,107 @@ pub fn procedural_cell(
             match u {
                 0x256D => {
                     // ╭ top-left: stem down, bar right, arc left→top.
-                    hline(&mut rects, cx + r, cw, 1.0);
-                    vline(&mut rects, cy + r, lh, 1.0);
-                    arc_stroke(&mut rects, sx + r, sy + r, r, PI, PI + FRAC_PI_2);
+                    hline(&mut rects, cx + r, cw, light);
+                    vline(&mut rects, cy + r, lh, light);
+                    arc_stroke(&mut rects, sx + r, sy + r, r, PI, PI + FRAC_PI_2, light);
                 }
                 0x256E => {
                     // ╮ top-right: bar left, stem down, arc top→right.
-                    hline(&mut rects, 0.0, cx - r, 1.0);
-                    vline(&mut rects, cy + r, lh, 1.0);
-                    arc_stroke(&mut rects, sx - r, sy + r, r, PI + FRAC_PI_2, 2.0 * PI);
+                    hline(&mut rects, 0.0, cx - r, light);
+                    vline(&mut rects, cy + r, lh, light);
+                    arc_stroke(
+                        &mut rects,
+                        sx - r,
+                        sy + r,
+                        r,
+                        PI + FRAC_PI_2,
+                        2.0 * PI,
+                        light,
+                    );
                 }
                 0x256F => {
                     // ╯ bottom-right: bar left, stem up, arc right→bottom.
-                    hline(&mut rects, 0.0, cx - r, 1.0);
-                    vline(&mut rects, 0.0, cy - r, 1.0);
-                    arc_stroke(&mut rects, sx - r, sy - r, r, 0.0, FRAC_PI_2);
+                    hline(&mut rects, 0.0, cx - r, light);
+                    vline(&mut rects, 0.0, cy - r, light);
+                    arc_stroke(&mut rects, sx - r, sy - r, r, 0.0, FRAC_PI_2, light);
                 }
                 _ => {
                     // ╰ bottom-left: stem up, bar right, arc bottom→left.
-                    hline(&mut rects, cx + r, cw, 1.0);
-                    vline(&mut rects, 0.0, cy - r, 1.0);
-                    arc_stroke(&mut rects, sx + r, sy - r, r, FRAC_PI_2, PI);
+                    hline(&mut rects, cx + r, cw, light);
+                    vline(&mut rects, 0.0, cy - r, light);
+                    arc_stroke(&mut rects, sx + r, sy - r, r, FRAC_PI_2, PI, light);
                 }
             }
             1.0
         }
         0x250F => {
-            hline(&mut rects, cx - 1.0, cw, 2.0);
-            vline(&mut rects, cy - 1.0, lh, 2.0);
+            hline(&mut rects, cx - 1.0, cw, heavy);
+            vline(&mut rects, cy - 1.0, lh, heavy);
             1.0
         }
         0x2513 => {
-            hline(&mut rects, 0.0, cx + 1.0, 2.0);
-            vline(&mut rects, cy - 1.0, lh, 2.0);
+            hline(&mut rects, 0.0, cx + 1.0, heavy);
+            vline(&mut rects, cy - 1.0, lh, heavy);
             1.0
         }
         0x2517 => {
-            hline(&mut rects, cx - 1.0, cw, 2.0);
-            vline(&mut rects, 0.0, cy + 1.0, 2.0);
+            hline(&mut rects, cx - 1.0, cw, heavy);
+            vline(&mut rects, 0.0, cy + 1.0, heavy);
             1.0
         }
         0x251B => {
-            hline(&mut rects, 0.0, cx + 1.0, 2.0);
-            vline(&mut rects, 0.0, cy + 1.0, 2.0);
+            hline(&mut rects, 0.0, cx + 1.0, heavy);
+            vline(&mut rects, 0.0, cy + 1.0, heavy);
             1.0
         }
         0x251C => {
-            vline(&mut rects, 0.0, lh, 1.0);
-            hline(&mut rects, cx, cw, 1.0);
+            vline(&mut rects, 0.0, lh, light);
+            hline(&mut rects, cx, cw, light);
             1.0
         }
         0x2524 => {
-            vline(&mut rects, 0.0, lh, 1.0);
-            hline(&mut rects, 0.0, cx + 1.0, 1.0);
+            vline(&mut rects, 0.0, lh, light);
+            hline(&mut rects, 0.0, cx + 1.0, light);
             1.0
         }
         0x252C => {
-            hline(&mut rects, 0.0, cw, 1.0);
-            vline(&mut rects, cy, lh, 1.0);
+            hline(&mut rects, 0.0, cw, light);
+            vline(&mut rects, cy, lh, light);
             1.0
         }
         0x2534 => {
-            hline(&mut rects, 0.0, cw, 1.0);
-            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            hline(&mut rects, 0.0, cw, light);
+            vline(&mut rects, 0.0, cy + 1.0, light);
             1.0
         }
         0x253C => {
-            hline(&mut rects, 0.0, cw, 1.0);
-            vline(&mut rects, 0.0, lh, 1.0);
+            hline(&mut rects, 0.0, cw, light);
+            vline(&mut rects, 0.0, lh, light);
             1.0
         }
         0x2523 => {
-            vline(&mut rects, 0.0, lh, 2.0);
-            hline(&mut rects, cx, cw, 1.0);
+            vline(&mut rects, 0.0, lh, heavy);
+            hline(&mut rects, cx, cw, light);
             1.0
         }
         0x252B => {
-            vline(&mut rects, 0.0, lh, 2.0);
-            hline(&mut rects, 0.0, cx + 1.0, 1.0);
+            vline(&mut rects, 0.0, lh, heavy);
+            hline(&mut rects, 0.0, cx + 1.0, light);
             1.0
         }
         0x2533 => {
-            hline(&mut rects, 0.0, cw, 2.0);
-            vline(&mut rects, cy, lh, 1.0);
+            hline(&mut rects, 0.0, cw, heavy);
+            vline(&mut rects, cy, lh, light);
             1.0
         }
         0x253B => {
-            hline(&mut rects, 0.0, cw, 2.0);
-            vline(&mut rects, 0.0, cy + 1.0, 1.0);
+            hline(&mut rects, 0.0, cw, heavy);
+            vline(&mut rects, 0.0, cy + 1.0, light);
             1.0
         }
         0x254B => {
-            hline(&mut rects, 0.0, cw, 2.0);
-            vline(&mut rects, 0.0, lh, 2.0);
+            hline(&mut rects, 0.0, cw, heavy);
+            vline(&mut rects, 0.0, lh, heavy);
             1.0
         }
         _ => return None,
@@ -368,5 +390,44 @@ mod tests {
     fn square_corners_stay_square() {
         let (rects, _) = procedural_cell('\u{250c}', 9.0, 18.0, white()).expect("square corner");
         assert_eq!(rects.len(), 2);
+    }
+
+    #[test]
+    fn light_strokes_use_a_normal_weight_at_large_fonts() {
+        // 29px cell: light strokes are 2px, heavy 3px.
+        let (light, _) =
+            procedural_cell('\u{2500}', 14.4, 29.0, white()).expect("light horizontal");
+        assert_eq!(light.len(), 1);
+        assert_eq!(light[0].3 - light[0].1, 2.0);
+
+        let (heavy, _) =
+            procedural_cell('\u{2501}', 14.4, 29.0, white()).expect("heavy horizontal");
+        assert_eq!(heavy.len(), 1);
+        assert_eq!(heavy[0].3 - heavy[0].1, 3.0);
+    }
+
+    #[test]
+    fn rounded_corner_arcs_match_the_stroke_weight() {
+        // Even at the 9x18 fixture the arc must be a normal-weight 2px stroke.
+        let (rects, _) = procedural_cell('\u{256d}', 9.0, 18.0, white()).expect("rounded corner");
+        // The two straight strokes come first; the arc quads follow.
+        assert!(
+            rects[2..]
+                .iter()
+                .any(|(x0, y0, x1, y1)| x1 - x0 >= 2.0 && y1 - y0 >= 2.0),
+            "arc quads should be at least 2px wide and tall: {rects:?}"
+        );
+    }
+
+    #[test]
+    fn normal_weight_at_default_font() {
+        // 14px font / ~17px cell: still a normal-weight 2px stroke.
+        let (rects, _) = procedural_cell('\u{2500}', 8.0, 17.0, white()).expect("light horizontal");
+        assert_eq!(rects.len(), 1);
+        assert_eq!(rects[0].3 - rects[0].1, 2.0);
+
+        let (heavy, _) = procedural_cell('\u{2501}', 8.0, 17.0, white()).expect("heavy horizontal");
+        assert_eq!(heavy.len(), 1);
+        assert_eq!(heavy[0].3 - heavy[0].1, 3.0);
     }
 }

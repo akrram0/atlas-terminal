@@ -14,6 +14,7 @@ use crate::session::Profile;
 use crate::theme::Theme;
 use crate::view::AtlasView;
 use crate::workspace::SplitAxis;
+use crate::wsl;
 use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 
 /// Commands offered by the palette.
@@ -62,7 +63,7 @@ pub enum PaletteAction {
 /// Palette entries: command, vector icon path, label, shortcut hint.
 pub const COMMANDS: [(Command, &str, &str, &str); 31] = [
     (Command::NewTab, icons::PLUS, "New tab (PowerShell)", "Ctrl Shift N"),
-    (Command::NewTabWsl, icons::UBUNTU, "New Ubuntu (WSL) tab", ""),
+    (Command::NewTabWsl, icons::LINUX, "New WSL tab", ""),
     (Command::NewTabCmd, icons::CMD, "New Command Prompt tab", ""),
     (Command::NewTabGitBash, icons::GIT, "New Git Bash tab", ""),
     (Command::NewTabOpenCode, icons::OPENCODE_MARK, "New OpenCode tab", ""),
@@ -149,7 +150,20 @@ impl AtlasView {
     pub fn palette_matches(&self) -> Vec<(PaletteAction, &'static str, String, &'static str)> {
         let mut items = Vec::new();
         for (cmd, icon, label, shortcut) in &COMMANDS {
-            items.push((PaletteAction::Command(*cmd), *icon, label.to_string(), *shortcut));
+            if matches!(cmd, Command::NewTabWsl) {
+                let (icon, label) = match wsl::default_distro() {
+                    Some(distro) => (distro.icon, format!("New {} (WSL) tab", distro.title)),
+                    None => (icons::LINUX, "New WSL tab".to_string()),
+                };
+                items.push((PaletteAction::Command(*cmd), icon, label, *shortcut));
+            } else {
+                items.push((
+                    PaletteAction::Command(*cmd),
+                    *icon,
+                    label.to_string(),
+                    *shortcut,
+                ));
+            }
         }
 
         // Add dynamically detected URLs from active terminal viewport

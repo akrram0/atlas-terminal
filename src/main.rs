@@ -15,6 +15,7 @@ pub mod updater;
 pub mod url;
 mod view;
 mod workspace;
+mod wsl;
 
 use gpui::{
     App, AppContext as _, Application, Bounds, WindowBackgroundAppearance, WindowBounds,
@@ -970,6 +971,13 @@ fn main() {
     let _ = std::fs::write(debug_log_path(), "atlas-terminal starting\n");
     let app_log = user_data_dir().join("logs").join("app.log");
     let _ = std::fs::write(&app_log, "atlas-terminal starting\n");
+    match wsl::default_distro() {
+        Some(distro) => log_line(&format!(
+            "wsl: default distro {} -> {} ({})",
+            distro.name, distro.title, distro.icon
+        )),
+        None => log_line("wsl: default distro not detected"),
+    }
     std::panic::set_hook(Box::new(|info| {
         let mut msg = format!("PANIC: {info}\n");
         if let Some(loc) = info.location() {

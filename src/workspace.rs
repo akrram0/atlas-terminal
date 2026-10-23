@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use crate::icons;
 use crate::session::{Profile, Session};
+use crate::wsl;
 
 /// How a tab's panes tile the sheet.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -236,15 +237,28 @@ pub fn session_icon(title: &str, profile: Profile) -> &'static str {
         icons::CURSOR_MARK
     } else if lower.contains("antigravity") || lower.contains("agy") {
         icons::ANTIGRAVITY_MARK
-    } else if matches!(profile, Profile::OpenCode) || lower.contains("opencode") || lower.contains("open-code") {
+    } else if matches!(profile, Profile::OpenCode)
+        || lower.contains("opencode")
+        || lower.contains("open-code")
+    {
         icons::OPENCODE_MARK
-    } else if matches!(profile, Profile::Wsl) || lower.contains("ubuntu") || lower.contains("wsl") {
-        icons::UBUNTU
-    } else if matches!(profile, Profile::Cmd) || lower.contains("cmd.exe") || lower == "cmd" {
+    } else if matches!(profile, Profile::Wsl) {
+        wsl::default_distro()
+            .map(|distro| distro.icon)
+            .unwrap_or(icons::LINUX)
+    } else if matches!(profile, Profile::Cmd) {
         icons::CMD
-    } else if matches!(profile, Profile::GitBash) || lower.contains("bash") || lower.contains("git") {
+    } else if matches!(profile, Profile::GitBash) {
         icons::GIT
-    } else if matches!(profile, Profile::PowerShell) || lower.contains("powershell") || lower.contains("pwsh") {
+    } else if matches!(profile, Profile::PowerShell) {
+        icons::POWERSHELL
+    } else if lower.contains("ubuntu") || lower.contains("wsl") {
+        icons::UBUNTU
+    } else if lower.contains("cmd.exe") || lower == "cmd" {
+        icons::CMD
+    } else if lower.contains("bash") || lower.contains("git") {
+        icons::GIT
+    } else if lower.contains("powershell") || lower.contains("pwsh") {
         icons::POWERSHELL
     } else {
         icons::TERMINAL
@@ -256,7 +270,9 @@ pub fn profile_title(profile: Profile) -> String {
     match profile {
         Profile::PowerShell => "PowerShell".to_string(),
         Profile::Cmd => "Command Prompt".to_string(),
-        Profile::Wsl => "Ubuntu".to_string(),
+        Profile::Wsl => wsl::default_distro()
+            .map(|distro| distro.title.clone())
+            .unwrap_or_else(|| "WSL".to_string()),
         Profile::GitBash => "Git Bash".to_string(),
         Profile::OpenCode => "OpenCode".to_string(),
     }
