@@ -177,6 +177,90 @@ impl Theme {
         }
     }
 
+    /// Classic CRT terminal: pure-black sheet (#000000), neutral light-gray
+    /// ink (#CCCCCC), white cursor, electric cyan (#00FFFF) accents — the
+    /// look of a stock xterm/Windows console with a `1;36` prompt.
+    pub fn classic() -> Self {
+        Self {
+            bg: rgb(0x000000),
+            fg: rgb(0xCCCCCC),
+            cursor: rgb(0xFFFFFF),
+            panel_bg: rgb(0x0A0A0A),
+            elevated_bg: rgb(0x1A1A1A),
+            elevated_border: rgba(0xFFFFFF1A),
+            chrome_fg: rgb(0x8A8A8A),
+            chrome_fg_active: rgb(0xFFFFFF),
+            faint_fg: rgb(0x666666),
+            hairline: rgba(0xFFFFFF14),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x00FFFF1E),
+            accent: rgb(0x00FFFF),
+            good: rgb(0x0DBC79),
+            sheet_border: rgba(0xFFFFFF18),
+            soft_bg: rgba(0xFFFFFF10),
+            ansi: [
+                rgb(0x0C0C0C), // 0 black
+                rgb(0xCD3131), // 1 red
+                rgb(0x0DBC79), // 2 green
+                rgb(0xE5E510), // 3 yellow
+                rgb(0x2472C8), // 4 blue
+                rgb(0xBC3FBC), // 5 magenta
+                rgb(0x00FFFF), // 6 cyan — bold `1;36` prompt paths
+                rgb(0xCCCCCC), // 7 white — `1;37` hostname
+                rgb(0x808080), // 8 bright black — `90` timestamps
+                rgb(0xF14C4C), // 9 bright red
+                rgb(0x23D18B), // 10 bright green
+                rgb(0xF5F543), // 11 bright yellow
+                rgb(0x3B8EEA), // 12 bright blue
+                rgb(0xD670D6), // 13 bright magenta
+                rgb(0x00FFFF), // 14 bright cyan
+                rgb(0xFFFFFF), // 15 bright white
+            ],
+        }
+    }
+
+    /// Classic flipped for daylight: off-white sheet (#F2F2F2), near-black
+    /// ink, classic blue (#2472C8) accent, and a Campbell-flavoured ANSI set
+    /// with the illegible-on-white hues (yellow, cyan, white) darkened.
+    pub fn classic_light() -> Self {
+        Self {
+            bg: rgb(0xF2F2F2),
+            fg: rgb(0x1F1F1F),
+            cursor: rgb(0x2472C8),
+            panel_bg: rgb(0xE8E8E8),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgba(0x0000001A),
+            chrome_fg: rgb(0x6B6B6B),
+            chrome_fg_active: rgb(0x1F1F1F),
+            faint_fg: rgb(0x8F8F8F),
+            hairline: rgba(0x00000018),
+            card_hover: rgba(0x0000000D),
+            card_active: rgba(0x2472C81E),
+            accent: rgb(0x2472C8),
+            good: rgb(0x13A10E),
+            sheet_border: rgba(0x00000018),
+            soft_bg: rgba(0x0000000F),
+            ansi: [
+                rgb(0x0C0C0C), // 0 black
+                rgb(0xC50F1F), // 1 red
+                rgb(0x13A10E), // 2 green
+                rgb(0xC19C00), // 3 yellow
+                rgb(0x2472C8), // 4 blue
+                rgb(0x881798), // 5 magenta
+                rgb(0x0E7490), // 6 cyan
+                rgb(0x555555), // 7 white — mid gray on the light sheet
+                rgb(0x808080), // 8 bright black
+                rgb(0xE74856), // 9 bright red
+                rgb(0x16C60C), // 10 bright green
+                rgb(0xD9A406), // 11 bright yellow
+                rgb(0x3B8EEA), // 12 bright blue
+                rgb(0xB4009E), // 13 bright magenta
+                rgb(0x1295A3), // 14 bright cyan
+                rgb(0x1F1F1F), // 15 bright white — default ink, like other light themes
+            ],
+        }
+    }
+
     /// Resolve an alacritty cell color into a concrete RGBA.
     ///
     /// `over` is the terminal's OSC override table (`Term::colors()`): OSC 4
@@ -589,6 +673,13 @@ impl ThemeRegistry {
                     dark: Theme::nord_dark(),
                     light: Theme::nord_light(),
                 },
+                Preset {
+                    id: "classic",
+                    name: "Classic",
+                    description: "Pure black sheet, neutral gray ink, and electric cyan — the stock terminal look.",
+                    dark: Theme::classic(),
+                    light: Theme::classic_light(),
+                },
             ],
         }
     }
@@ -630,5 +721,43 @@ impl ThemeRegistry {
 
     pub fn next(&self, index: usize) -> usize {
         (index + 1) % self.presets.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn near(a: f32, b: f32) -> bool {
+        (a - b).abs() < 0.001
+    }
+
+    fn is(color: Rgba, r: u32, g: u32, b: u32) -> bool {
+        near(color.r, r as f32 / 255.0)
+            && near(color.g, g as f32 / 255.0)
+            && near(color.b, b as f32 / 255.0)
+            && near(color.a, 1.0)
+    }
+
+    #[test]
+    fn classic_matches_reference_prompt_palette() {
+        let t = Theme::classic();
+        assert!(is(t.bg, 0x00, 0x00, 0x00));
+        assert!(is(t.fg, 0xCC, 0xCC, 0xCC));
+        assert!(is(t.cursor, 0xFF, 0xFF, 0xFF));
+        assert!(is(t.ansi[0], 0x0C, 0x0C, 0x0C));
+        assert!(is(t.ansi[6], 0x00, 0xFF, 0xFF));
+        assert!(is(t.ansi[7], 0xCC, 0xCC, 0xCC));
+        assert!(is(t.ansi[8], 0x80, 0x80, 0x80));
+        assert!(is(t.ansi[14], 0x00, 0xFF, 0xFF));
+        assert!(is(t.ansi[15], 0xFF, 0xFF, 0xFF));
+    }
+
+    #[test]
+    fn classic_is_registered() {
+        let registry = ThemeRegistry::standard();
+        let idx = registry.find_by_name_or_id("classic").expect("classic preset");
+        assert_eq!(registry.preset(idx).name, "Classic");
+        assert_eq!(registry.len(), 5);
     }
 }

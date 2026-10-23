@@ -43,7 +43,32 @@ impl DetectedUrl {
     }
 }
 
-/// Find all URLs and their [start, end) character byte ranges in `text`.
+/// Returns true for characters that terminate a URL scan.
+///
+/// Whitespace and ASCII control characters end a URL, as do the delimiters
+/// used around links in terminal output. Non-ASCII characters (Nerd Font
+/// glyphs, box drawing, emoji, ...) also terminate: they are not valid URL
+/// characters and must never be swallowed into an adjacent URL.
+fn is_url_terminator(c: char) -> bool {
+    !c.is_ascii()
+        || (c as u32) <= 0x20
+        || matches!(c, '"' | '\'' | '`' | '<' | '>')
+}
+
+/// Returns true for trailing punctuation that should be trimmed from a URL.
+fn is_trailing_punctuation(c: char) -> bool {
+    matches!(
+        c,
+        '.' | ',' | ':' | ';' | ')' | ']' | '}' | '\'' | '"' | '!' | '?'
+    )
+}
+
+/// Find all URLs and their `[start, end)` CHARACTER ranges in `text`.
+///
+/// Offsets count characters (not bytes), so they can index parallel
+/// per-character data such as the grid points collected alongside a terminal
+/// line. Scanning only ever slices at UTF-8 char boundaries, so multibyte
+/// glyphs in the prompt cannot panic the detector.
 pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
     let mut results = Vec::new();
     let schemes = [
@@ -57,12 +82,10 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
         "www.",
     ];
 
-    let bytes = text.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
-
-    while i < len {
-        let remaining = &text[i..];
+    // `pos` is always a UTF-8 char boundary; advance one char at a time.
+    let mut pos = 0;
+    while pos < text.len() {
+        let remaining = &text[pos..];
         let mut matched_scheme = None;
         for scheme in &schemes {
             if remaining.starts_with(scheme) {
@@ -72,45 +95,51 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
         }
 
         if let Some(scheme) = matched_scheme {
-            let start = i;
+            let start = pos;
             let mut end = start + scheme.len();
 
-            // Scan forward while characters are valid URL characters
-            while end < len {
-                let b = bytes[end];
-                if b <= 0x20 || b == b'"' || b == b'\'' || b == b'`' || b == b'<' || b == b'>' {
+            // Scan forward while characters are valid URL characters.
+            for c in text[end..].chars() {
+                if is_url_terminator(c) {
                     break;
                 }
-                end += 1;
+                end += c.len_utf8();
             }
 
-            // Trim common trailing punctuation that is not part of the URL
-            let mut raw = &text[start..end];
-            let mut trimmed_len = raw.len();
-            while trimmed_len > scheme.len() {
-                let last = raw.as_bytes()[trimmed_len - 1];
-                if matches!(
-                    last,
-                    b'.' | b',' | b':' | b';' | b')' | b']' | b'}' | b'\'' | b'"' | b'!' | b'?'
-                ) {
-                    trimmed_len -= 1;
-                    raw = &raw[..trimmed_len];
+            // Trim common trailing punctuation that is not part of the URL.
+            let mut trimmed_end = end;
+            while trimmed_end > start + scheme.len() {
+                let last = text[start..trimmed_end]
+                    .chars()
+                    .next_back()
+                    .expect("non-empty URL slice");
+                if is_trailing_punctuation(last) {
+                    trimmed_end -= last.len_utf8();
                 } else {
                     break;
                 }
             }
 
-            if trimmed_len > scheme.len() {
+            if trimmed_end > start + scheme.len() {
+                let raw = &text[start..trimmed_end];
                 let mut url = raw.to_string();
                 if scheme == "www." {
                     url = format!("https://{url}");
                 }
-                results.push((url, start, start + trimmed_len));
-                i = start + trimmed_len;
+                let start_char = text[..start].chars().count();
+                let end_char = start_char + raw.chars().count();
+                results.push((url, start_char, end_char));
+                pos = trimmed_end;
                 continue;
             }
         }
-        i += 1;
+
+        // Skip exactly one character so `pos` stays on a char boundary.
+        pos += text[pos..]
+            .chars()
+            .next()
+            .map(char::len_utf8)
+            .unwrap_or(1);
     }
 
     results
@@ -180,6 +209,9 @@ fn collect_logical_lines<T: EventListener>(term: &Term<T>) -> Vec<LogicalLine> {
 }
 
 /// Find a clickable URL at the specified terminal grid `Point`, walking wrapped lines.
+///
+/// `find_urls_in_text` reports character offsets, and `LogicalLine::points`
+/// holds one grid point per character, so the two can be indexed directly.
 pub fn find_url_at_point<T: EventListener>(term: &Term<T>, target: Point) -> Option<DetectedUrl> {
     let logical_lines = collect_logical_lines(term);
 
@@ -285,6 +317,51 @@ mod tests {
         assert_eq!(urls.len(), 2);
         assert_eq!(urls[0].0, "https://example.com/test");
         assert_eq!(urls[1].0, "http://test.com/path");
+    }
+
+    #[test]
+    fn test_find_urls_multibyte_glyph_only_does_not_panic() {
+        assert!(find_urls_in_text("\u{f0322}").is_empty());
+    }
+
+    #[test]
+    fn test_find_urls_prompt_like_line_does_not_panic() {
+        // Regression: a Nerd Font glyph in the prompt used to make the
+        // byte-oriented scanner slice mid-codepoint and panic.
+        let text = "\u{f0322} AKRAM-PC in ~/.config [18:54]";
+        assert!(find_urls_in_text(text).is_empty());
+    }
+
+    #[test]
+    fn test_find_url_after_multibyte_glyphs_uses_character_offsets() {
+        let text = "\u{f0322}\u{f0322}https://example.com/path";
+        let urls = find_urls_in_text(text);
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].0, "https://example.com/path");
+        // Character offsets, not byte offsets: the two glyphs are 8 bytes
+        // but only 2 characters.
+        assert_eq!(urls[0].1, 2);
+        assert_eq!(urls[0].2, 2 + "https://example.com/path".chars().count());
+    }
+
+    #[test]
+    fn test_find_url_followed_by_multibyte_glyph_excludes_glyph() {
+        let text = "https://example.com\u{f0322}next";
+        let urls = find_urls_in_text(text);
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].0, "https://example.com");
+        assert_eq!(urls[0].1, 0);
+        assert_eq!(urls[0].2, "https://example.com".chars().count());
+    }
+
+    #[test]
+    fn test_find_url_between_multibyte_glyphs_in_prompt_line() {
+        let text = "\u{f0322} run: https://example.com/a?b=1\u{f0322} done";
+        let urls = find_urls_in_text(text);
+        assert_eq!(urls.len(), 1);
+        assert_eq!(urls[0].0, "https://example.com/a?b=1");
+        assert_eq!(urls[0].1, 7);
+        assert_eq!(urls[0].2, 7 + "https://example.com/a?b=1".chars().count());
     }
 
     #[test]

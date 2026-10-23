@@ -1660,6 +1660,12 @@ impl AtlasView {
             }
 
             if !self.settings_open {
+                // Palette first: Ctrl+K must always open the command palette,
+                // even if a user remapped it onto another action's chord.
+                if chord == self.get_shortcut(ACTION_PALETTE) || chord == "ctrl+k" || chord == "ctrl+shift+p" {
+                    self.open_palette(window, cx);
+                    return;
+                }
                 if chord == self.get_shortcut(ACTION_NEW_TAB) {
                     let prof = self.get_default_profile();
                     self.new_tab(prof, cx);
@@ -1712,10 +1718,6 @@ impl AtlasView {
                             return;
                         }
                     }
-                }
-                if chord == self.get_shortcut(ACTION_PALETTE) || chord == "ctrl+k" || chord == "ctrl+shift+p" {
-                    self.open_palette(window, cx);
-                    return;
                 }
                 if chord == self.get_shortcut(ACTION_FULLSCREEN) {
                     crate::rounded_corners::window_button(1);
@@ -1864,20 +1866,31 @@ impl AtlasView {
         }
 
         // Standard terminal behavior: Ctrl+C copies if there is an active text selection,
-        // otherwise sends \x03 (SIGINT) to running process.
-        if modifiers.control && !modifiers.shift && !modifiers.alt && key == "c" {
-            let has_selection = self.active_pane().map(|p| {
-                let s = p.session.borrow();
-                s.term.selection.is_some()
-                    && s.term.selection_to_string().map(|t| !t.is_empty()).unwrap_or(false)
-            }).unwrap_or(false);
-            if has_selection {
-                self.copy_selection(cx);
-                if let Some(p) = self.active_pane() {
-                    p.session.borrow_mut().term.selection = None;
+        // otherwise falls through to the keymap (SIGINT); Ctrl+V always pastes.
+        if modifiers.control && !modifiers.shift && !modifiers.alt {
+            match key {
+                "c" => {
+                    let has_selection = self.active_pane().map(|p| {
+                        let s = p.session.borrow();
+                        s.term.selection.is_some()
+                            && s.term.selection_to_string().map(|t| !t.is_empty()).unwrap_or(false)
+                    }).unwrap_or(false);
+                    if has_selection {
+                        self.copy_selection(cx);
+                        if let Some(p) = self.active_pane() {
+                            p.session.borrow_mut().term.selection = None;
+                        }
+                        cx.notify();
+                        return;
+                    }
+                    // No selection: let Ctrl+C reach `keymap::to_bytes` as \x03.
                 }
-                cx.notify();
-                return;
+                "v" => {
+                    self.paste(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                _ => {}
             }
         }
 
