@@ -85,6 +85,51 @@ pub enum Profile {
     OpenCode,
 }
 
+/// Absolute candidates for Git for Windows' bash, most preferred first.
+///
+/// `bash.exe` on PATH is ambiguous: the Microsoft Store WSL alias lives in
+/// `%LOCALAPPDATA%\Microsoft\WindowsApps`, so spawning a bare `bash.exe` can
+/// silently open a WSL distro instead of Git Bash. Only explicit Git
+/// installations are considered here.
+fn git_bash_candidates() -> Vec<String> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for var in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(dir) = std::env::var_os(var) {
+            roots.push(PathBuf::from(dir).join("Git"));
+        }
+    }
+    if let Some(dir) = std::env::var_os("LOCALAPPDATA") {
+        roots.push(PathBuf::from(dir).join("Programs").join("Git"));
+    }
+    // Non-standard installs that expose `git.exe` on PATH: derive the Git
+    // root from `<root>\cmd\git.exe`.
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            if dir.join("git.exe").is_file() {
+                if let Some(root) = dir.parent() {
+                    roots.push(root.to_path_buf());
+                }
+            }
+        }
+    }
+    // Standard install location last so environment-derived roots win.
+    roots.push(PathBuf::from(r"C:\Program Files\Git"));
+
+    let mut candidates = Vec::new();
+    for root in roots {
+        for rel in [r"bin\bash.exe", r"usr\bin\bash.exe"] {
+            let candidate = root.join(rel);
+            if candidate.is_file() {
+                let candidate = candidate.to_string_lossy().into_owned();
+                if !candidates.contains(&candidate) {
+                    candidates.push(candidate);
+                }
+            }
+        }
+    }
+    candidates
+}
+
 pub struct Session {
     pub term: Term<EventProxy>,
     pub parser: Processor,
@@ -162,7 +207,11 @@ impl Session {
             Profile::PowerShell => vec!["pwsh".into(), "powershell.exe".into()],
             Profile::Cmd => vec!["cmd.exe".into()],
             Profile::Wsl => vec!["wsl.exe".into()],
-            Profile::GitBash => vec!["bash.exe".into(), "C:\\Program Files\\Git\\bin\\bash.exe".into()],
+            // Never fall back to a bare `bash.exe`: on Windows that name is
+            // usually the Microsoft Store WSL launcher (WindowsApps), not Git
+            // for Windows. Resolve Git's own bash explicitly so the Git Bash
+            // profile cannot silently open a WSL distro.
+            Profile::GitBash => git_bash_candidates(),
             Profile::OpenCode => {
                 let mut v = Vec::new();
                 if let Some(ref path) = opencode_path {
@@ -236,6 +285,10 @@ impl Session {
         }
         let child =
             child.ok_or_else(|| anyhow::anyhow!("no shell found (tried {candidates_vec:?})"))?;
+        if matches!(profile, Profile::GitBash) {
+            // The whole point of the explicit resolver: prove which bash won.
+            crate::log_line(&format!("git bash: using {shell_used}"));
+        }
         let pid = child.process_id();
         drop(slave);
 

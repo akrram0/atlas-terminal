@@ -211,6 +211,7 @@ pub(crate) mod rounded_corners {
     const SWP_NOACTIVATE: u32 = 0x0010;
     const SWP_FRAMECHANGED: u32 = 0x0020;
     // Window messages, hit-test codes and metrics.
+    const WM_SIZE: u32 = 0x0005;
     const WM_NCCALCSIZE: u32 = 0x0083;
     const WM_NCHITTEST: u32 = 0x0084;
     const WM_NCLBUTTONDOWN: u32 = 0x00A1;
@@ -276,6 +277,11 @@ pub(crate) mod rounded_corners {
     /// Top-level window handle, published once `apply` finds it.
     static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
     static INITIAL_OPACITY: AtomicU32 = AtomicU32::new(f32::to_bits(0.15));
+    /// Whether the app theme is dark; picks the acrylic frost tint colour.
+    static DARK_MODE: AtomicBool = AtomicBool::new(true);
+    /// Last observed maximize state, so the backdrop is reasserted only on
+    /// restore <-> maximize transitions rather than on every WM_SIZE.
+    static LAST_ZOOMED: AtomicBool = AtomicBool::new(false);
 
     /// Titlebar drag bands reported by the view on every paint, in logical
     /// client pixels: 4 slots of two f32 bit patterns (top-left, bottom-right).
@@ -381,12 +387,22 @@ pub(crate) mod rounded_corners {
         let set_composition: SetWindowCompositionAttributeFn = core::mem::transmute(p_fn);
 
         let mut policy = if enabled {
+            // Acrylic requires a non-zero alpha tint. At normal sizes keep it
+            // almost transparent so the wallpaper stays vivid. DWM's blur
+            // radius is fixed, so a full-screen window reads as *less* frosted
+            // than a small one; add a modest theme-matched veil while maximized
+            // to keep the perceived frost constant.
+            let zoomed = unsafe { IsZoomed(hwnd) } != 0;
+            let alpha: u32 = if zoomed { 0x26 } else { 0x01 };
+            let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
+                0x000000
+            } else {
+                0xFFFFFF
+            };
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
                 accent_flags: 0,
-                // Acrylic requires a non-zero alpha tint. Keep it almost
-                // transparent black so light and dark themes both work.
-                gradient_color: 0x01000000,
+                gradient_color: (alpha << 24) | rgb,
                 animation_id: 0,
             }
         } else {
@@ -404,8 +420,11 @@ pub(crate) mod rounded_corners {
             size_of_data: core::mem::size_of::<AccentPolicy>(),
         };
 
+        let tint = policy.gradient_color;
         let res = set_composition(hwnd, &mut data);
-        crate::log_line(&format!("composition accent: enabled={enabled}, res={res}"));
+        crate::log_line(&format!(
+            "composition accent: enabled={enabled}, res={res}, tint={tint:#010x}"
+        ));
         res
     }
 
@@ -416,7 +435,10 @@ pub(crate) mod rounded_corners {
     /// `SetWindowCompositionAttribute` with `ACCENT_ENABLE_ACRYLICBLURBEHIND`
     /// and a nearly transparent black tint. That thin tint keeps the wallpaper
     /// and the windows behind visible, whereas the DWM system backdrop's fixed
-    /// gray acrylic tint washes them out into a flat gray sheet.
+    /// gray acrylic tint washes them out into a flat gray sheet. While
+    /// maximized the tint is raised to a theme-matched veil: DWM's blur radius
+    /// is fixed, so a full-screen window otherwise reads as less frosted than a
+    /// small one.
     ///
     /// The Windows 11 `DWMSBT_TRANSIENTWINDOW` system backdrop is only the
     /// fallback if the accent API is unavailable. `DwmExtendFrameIntoClientArea`
@@ -603,9 +625,17 @@ pub(crate) mod rounded_corners {
 
     /// Update Windows 11 DWM immersive dark mode to match theme luminance.
     pub fn set_dark_mode(dark: bool) {
+        let previous = DARK_MODE.swap(dark, Ordering::SeqCst);
         let raw = MAIN_HWND.load(Ordering::SeqCst);
         if raw == 0 {
             return;
+        }
+        if previous != dark {
+            // The acrylic veil colour follows the theme; repaint the accent so
+            // a light/dark switch does not leave the old tint behind.
+            unsafe {
+                PostMessageW(raw as Hwnd, WM_APP_BACKDROP, 0, 0);
+            }
         }
         let hwnd = raw as Hwnd;
         unsafe {
@@ -731,6 +761,25 @@ pub(crate) mod rounded_corners {
                     } else {
                         unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
                     }
+                }
+            }
+            WM_SIZE => {
+                // A maximize/restore transition can leave DWM with a stale or
+                // dropped accent. Reassert it once per state change (never on
+                // every resize: re-applying a visible accent briefly flashes).
+                let zoomed = unsafe { IsZoomed(hwnd) } != 0;
+                if LAST_ZOOMED.swap(zoomed, Ordering::SeqCst) != zoomed {
+                    let opacity = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
+                    if opacity < 0.999 {
+                        crate::log_line(&format!("backdrop: zoomed={zoomed}, reasserting acrylic"));
+                        unsafe { PostMessageW(hwnd, WM_APP_BACKDROP, 0, 0) };
+                    }
+                }
+                let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
+                if prev == 0 {
+                    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+                } else {
+                    unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
                 }
             }
             WM_APP_BACKDROP => {
@@ -875,6 +924,7 @@ pub(crate) mod rounded_corners {
                         );
 
                         // 5. Set initial immersive dark mode (1 for dark default theme).
+                        LAST_ZOOMED.store(IsZoomed(hwnd) != 0, Ordering::SeqCst);
                         let dark_mode: i32 = 1;
                         let _ = DwmSetWindowAttribute(
                             hwnd,
