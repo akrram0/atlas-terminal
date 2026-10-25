@@ -431,6 +431,16 @@ impl Session {
                         let cursor = self.term.renderable_content().cursor;
                         (cursor.point.column.0, cursor.point.line.0)
                     };
+
+                    // Robust column positioning:
+                    // If cursor_col is past half the screen or would cause the image to overflow
+                    // the screen's right edge, snap to column 0. Otherwise keep cursor_col (e.g. 1 for padding).
+                    let col = if cursor_col + img_cols > self.cols || cursor_col > self.cols / 2 {
+                        0
+                    } else {
+                        cursor_col
+                    };
+
                     let history = if is_alt_screen {
                         0
                     } else {
@@ -445,15 +455,16 @@ impl Session {
                         id,
                         image: decoded.render_image,
                         anchor_line,
-                        col: cursor_col,
+                        col,
                         cols: img_cols,
                         rows: img_rows,
                         is_alt_screen,
                     });
 
-                    // Advance cursor below the image so that shell prompt, command output,
-                    // and scrollback wrap naturally underneath the image, matching iTerm2 behavior.
-                    if !decoded.params.do_not_move_cursor {
+                    // Advance cursor below the image ONLY for standalone images.
+                    // For side-by-side images (Fastfetch) or when do_not_move_cursor is set,
+                    // the accompanying text lines naturally advance the cursor row by row.
+                    if !decoded.is_side_by_side && !decoded.params.do_not_move_cursor {
                         let advance_rows = match decoded.params.height {
                             Some(crate::image_osc::LengthSpec::Cells(r)) => r,
                             _ => img_rows,

@@ -51,6 +51,7 @@ pub struct DecodedImage {
     pub render_image: Arc<gpui::RenderImage>,
     pub pixel_width: u32,
     pub pixel_height: u32,
+    pub is_side_by_side: bool,
 }
 
 /// Chronologically ordered event yielded by the streaming scanner.
@@ -68,7 +69,65 @@ enum ScannerState {
     Params,
     Payload,
     PayloadEscape,
+    PostImage,
     DropUntilEnd,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum MatchResult {
+    Prefix,
+    Matched,
+    Mismatch,
+}
+
+fn check_post_image_sequence(buf: &[u8]) -> MatchResult {
+    if buf.is_empty() {
+        return MatchResult::Prefix;
+    }
+    let mut i = 0;
+    // Allow up to 4 leading whitespace / newline bytes (\r, \n, space)
+    while i < buf.len() && (buf[i] == b'\r' || buf[i] == b'\n' || buf[i] == b' ') {
+        if i >= 4 {
+            return MatchResult::Mismatch;
+        }
+        i += 1;
+    }
+    if i == buf.len() {
+        return MatchResult::Prefix;
+    }
+    // Must start escape sequence with 0x1B
+    if buf[i] != 0x1B {
+        return MatchResult::Mismatch;
+    }
+    i += 1;
+    if i == buf.len() {
+        return MatchResult::Prefix;
+    }
+    // Must be CSI '['
+    if buf[i] != b'[' {
+        return MatchResult::Mismatch;
+    }
+    i += 1;
+    if i == buf.len() {
+        return MatchResult::Prefix;
+    }
+    // Must have at least one ASCII digit
+    let digit_start = i;
+    while i < buf.len() && buf[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == digit_start {
+        return MatchResult::Mismatch;
+    }
+    if i == buf.len() {
+        return MatchResult::Prefix;
+    }
+    // Final byte must be 'A' (CUU: Cursor Up)
+    if buf[i] == b'A' && i == buf.len() - 1 {
+        MatchResult::Matched
+    } else {
+        MatchResult::Mismatch
+    }
 }
 
 /// Stateful scanner that intercepts `ESC ] 1337 ; File = ... : <base64> (BEL | ESC \)`
@@ -79,6 +138,8 @@ pub struct Osc1337Scanner {
     header_buf: Vec<u8>,
     params_buf: Vec<u8>,
     payload_buf: Vec<u8>,
+    pending_image: Option<DecodedImage>,
+    post_image_buf: Vec<u8>,
 }
 
 impl Default for Osc1337Scanner {
@@ -94,6 +155,8 @@ impl Osc1337Scanner {
             header_buf: Vec::with_capacity(16),
             params_buf: Vec::with_capacity(256),
             payload_buf: Vec::with_capacity(8192),
+            pending_image: None,
+            post_image_buf: Vec::with_capacity(32),
         }
     }
 
@@ -171,9 +234,12 @@ impl Osc1337Scanner {
                     if byte == 0x07 {
                         // Terminated with BEL
                         if let Some(img) = self.decode_current() {
-                            events.push(OscScannerEvent::Image(img));
+                            self.pending_image = Some(img);
+                            self.post_image_buf.clear();
+                            self.state = ScannerState::PostImage;
+                        } else {
+                            self.state = ScannerState::Ground;
                         }
-                        self.state = ScannerState::Ground;
                     } else if byte == 0x1B {
                         self.state = ScannerState::PayloadEscape;
                     } else if self.payload_buf.len() >= MAX_PAYLOAD_BYTES {
@@ -188,14 +254,77 @@ impl Osc1337Scanner {
                     if byte == b'\\' || byte == 0x07 {
                         // Terminated with ST (`\x1b\\`) or fallback BEL
                         if let Some(img) = self.decode_current() {
-                            events.push(OscScannerEvent::Image(img));
+                            self.pending_image = Some(img);
+                            self.post_image_buf.clear();
+                            self.state = ScannerState::PostImage;
+                        } else {
+                            self.state = ScannerState::Ground;
                         }
-                        self.state = ScannerState::Ground;
                     } else {
                         // Malformed escape sequence in payload
                         self.params_buf.clear();
                         self.payload_buf.clear();
                         self.state = ScannerState::Ground;
+                    }
+                }
+                ScannerState::PostImage => {
+                    self.post_image_buf.push(byte);
+                    match check_post_image_sequence(&self.post_image_buf) {
+                        MatchResult::Matched => {
+                            // Fastfetch side-by-side cursor compensation sequence matched (e.g. \n\x1b[20A).
+                            // Absorbed completely so cursor stays anchored on the image line.
+                            if let Some(mut img) = self.pending_image.take() {
+                                img.is_side_by_side = true;
+                                events.push(OscScannerEvent::Image(img));
+                            }
+                            self.post_image_buf.clear();
+                            self.state = ScannerState::Ground;
+                        }
+                        MatchResult::Prefix => {
+                            if self.post_image_buf.len() > 16 {
+                                if let Some(mut img) = self.pending_image.take() {
+                                    img.is_side_by_side = false;
+                                    events.push(OscScannerEvent::Image(img));
+                                }
+                                clean_bytes.extend_from_slice(&self.post_image_buf);
+                                self.post_image_buf.clear();
+                                self.state = ScannerState::Ground;
+                            }
+                        }
+                        MatchResult::Mismatch => {
+                            if let Some(mut img) = self.pending_image.take() {
+                                img.is_side_by_side = false;
+                                events.push(OscScannerEvent::Image(img));
+                            }
+                            let buffered = std::mem::take(&mut self.post_image_buf);
+                            self.state = ScannerState::Ground;
+                            for &b in &buffered {
+                                match self.state {
+                                    ScannerState::Ground => {
+                                        if b == 0x1B {
+                                            self.state = ScannerState::Escape;
+                                        } else {
+                                            clean_bytes.push(b);
+                                        }
+                                    }
+                                    ScannerState::Escape => {
+                                        if b == b']' {
+                                            self.state = ScannerState::Osc;
+                                            self.header_buf.clear();
+                                        } else {
+                                            clean_bytes.push(0x1B);
+                                            if b == 0x1B {
+                                                // Stay in Escape
+                                            } else {
+                                                clean_bytes.push(b);
+                                                self.state = ScannerState::Ground;
+                                            }
+                                        }
+                                    }
+                                    _ => clean_bytes.push(b),
+                                }
+                            }
+                        }
                     }
                 }
                 ScannerState::DropUntilEnd => {
@@ -247,6 +376,7 @@ impl Osc1337Scanner {
                         render_image,
                         pixel_width: width,
                         pixel_height: height,
+                        is_side_by_side: false,
                     });
                 }
             }
@@ -618,5 +748,40 @@ mod tests {
         let params2 = parse_params("inline=1;doNotMoveCursor=0");
         assert!(params2.inline);
         assert!(!params2.do_not_move_cursor);
+    }
+
+    #[test]
+    fn test_check_post_image_sequence() {
+        assert_eq!(check_post_image_sequence(b"\n\x1b[20A"), MatchResult::Matched);
+        assert_eq!(check_post_image_sequence(b"\r\n\x1b[19A"), MatchResult::Matched);
+        assert_eq!(check_post_image_sequence(b"\x1b[25A"), MatchResult::Matched);
+        assert_eq!(check_post_image_sequence(b"\n\x1b[42C"), MatchResult::Mismatch);
+        assert_eq!(check_post_image_sequence(b"Hello"), MatchResult::Mismatch);
+        assert_eq!(check_post_image_sequence(b"\n"), MatchResult::Prefix);
+        assert_eq!(check_post_image_sequence(b"\n\x1b"), MatchResult::Prefix);
+        assert_eq!(check_post_image_sequence(b"\n\x1b["), MatchResult::Prefix);
+        assert_eq!(check_post_image_sequence(b"\n\x1b[20"), MatchResult::Prefix);
+    }
+
+    #[test]
+    fn test_fastfetch_side_by_side_absorption() {
+        let mut scanner = Osc1337Scanner::new();
+        let seq = format!("\x1b[1C\x1b]1337;File=inline=1:{TINY_PNG_B64}\x07\n\x1b[20A\x1b[42CNeweye@PC");
+        let events = scanner.process(seq.as_bytes());
+        assert_eq!(events.len(), 3);
+        match &events[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[1C"),
+            _ => panic!("Expected Bytes for leading padding"),
+        }
+        match &events[1] {
+            OscScannerEvent::Image(img) => {
+                assert!(img.is_side_by_side);
+            }
+            _ => panic!("Expected Image"),
+        }
+        match &events[2] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[42CNeweye@PC"),
+            _ => panic!("Expected Bytes for specs text"),
+        }
     }
 }
