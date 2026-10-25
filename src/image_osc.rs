@@ -337,6 +337,15 @@ impl Osc1337Scanner {
             }
         }
 
+        if let Some(img) = self.pending_image.take() {
+            events.push(OscScannerEvent::Image(img));
+            self.state = ScannerState::Ground;
+        }
+        if !self.post_image_buf.is_empty() {
+            clean_bytes.extend_from_slice(&self.post_image_buf);
+            self.post_image_buf.clear();
+        }
+
         if !clean_bytes.is_empty() {
             events.push(OscScannerEvent::Bytes(clean_bytes));
         }
