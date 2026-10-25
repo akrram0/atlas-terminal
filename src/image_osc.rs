@@ -625,12 +625,38 @@ mod tests {
                 match ev {
                     OscScannerEvent::Bytes(b) => all_clean.extend_from_slice(&b),
                     OscScannerEvent::Image(img) => all_images.push(img),
+                    OscScannerEvent::SideBySideCompensation => {}
                 }
             }
         }
 
         assert_eq!(all_clean, b"BeforeAfter");
         assert_eq!(all_images.len(), 1);
+    }
+
+    #[test]
+    fn test_fastfetch_byte_by_byte() {
+        let mut scanner = Osc1337Scanner::new();
+        let seq = format!("\x1b[1C\x1b]1337;File=inline=1:{TINY_PNG_B64}\x07\n\x1b[20A\x1b[42CNeweye@PC");
+        let bytes = seq.as_bytes();
+
+        let mut all_clean = Vec::new();
+        let mut images_count = 0;
+        let mut compensation_count = 0;
+
+        for &b in bytes {
+            for ev in scanner.process(&[b]) {
+                match ev {
+                    OscScannerEvent::Bytes(b) => all_clean.extend_from_slice(&b),
+                    OscScannerEvent::Image(_) => images_count += 1,
+                    OscScannerEvent::SideBySideCompensation => compensation_count += 1,
+                }
+            }
+        }
+
+        assert_eq!(images_count, 1);
+        assert_eq!(compensation_count, 1);
+        assert_eq!(all_clean, b"\x1b[1C\x1b[42CNeweye@PC");
     }
 
     #[test]
