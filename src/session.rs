@@ -157,6 +157,7 @@ pub struct Session {
     pub placed_images: Vec<PlacedImage>,
     next_image_id: usize,
     osc_scanner: Osc1337Scanner,
+    pending_image_advance: Option<usize>,
     writer: Option<Box<dyn Write + Send>>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
@@ -373,6 +374,7 @@ impl Session {
                 placed_images: Vec::new(),
                 next_image_id: 1,
                 osc_scanner: Osc1337Scanner::new(),
+                pending_image_advance: None,
                 writer: Some(writer),
                 master,
                 child,
@@ -395,6 +397,7 @@ impl Session {
                         || clean_bytes.windows(2).any(|w| w == b"\x1bc")
                     {
                         self.placed_images.clear();
+                        self.pending_image_advance = None;
                     } else if clean_bytes.windows(4).any(|w| w == b"\x1b[2J") {
                         // Clear images on the active screen for ED 2 (e.g. `cls` or `clear`)
                         if was_alt_screen {
@@ -403,6 +406,16 @@ impl Session {
                             let cur_history = self.term.history_size() as i32;
                             self.placed_images.retain(|img| img.is_alt_screen || img.anchor_line < cur_history);
                         }
+                        self.pending_image_advance = None;
+                    }
+
+                    // Advance cursor down for standalone images before processing following text/prompts.
+                    if let Some(advance_rows) = self.pending_image_advance.take() {
+                        let mut advance_bytes = Vec::with_capacity(advance_rows);
+                        for _ in 0..advance_rows {
+                            advance_bytes.push(b'\n');
+                        }
+                        self.parser.advance(&mut self.term, &advance_bytes);
                     }
 
                     if !clean_bytes.is_empty() {
@@ -414,6 +427,11 @@ impl Session {
                         // Exited alternate screen: purge images placed in alternate screen
                         self.placed_images.retain(|img| !img.is_alt_screen);
                     }
+                }
+                OscScannerEvent::SideBySideCompensation => {
+                    // Fastfetch side-by-side compensation sequence detected and absorbed.
+                    // Cancel synthetic newline advance so the specs print directly beside the image.
+                    self.pending_image_advance = None;
                 }
                 OscScannerEvent::Image(decoded) => {
                     let is_alt_screen = self.term.mode().contains(TermMode::ALT_SCREEN);
@@ -461,19 +479,14 @@ impl Session {
                         is_alt_screen,
                     });
 
-                    // Advance cursor below the image ONLY for standalone images.
-                    // For side-by-side images (Fastfetch) or when do_not_move_cursor is set,
-                    // the accompanying text lines naturally advance the cursor row by row.
-                    if !decoded.is_side_by_side && !decoded.params.do_not_move_cursor {
+                    // Queue cursor advance for standalone images (unless do_not_move_cursor is set).
+                    // If a Fastfetch side-by-side compensation sequence follows, it cancels this advance.
+                    if !decoded.params.do_not_move_cursor {
                         let advance_rows = match decoded.params.height {
                             Some(crate::image_osc::LengthSpec::Cells(r)) => r,
                             _ => img_rows,
                         };
-                        let mut advance_bytes = Vec::with_capacity(advance_rows);
-                        for _ in 0..advance_rows {
-                            advance_bytes.push(b'\n');
-                        }
-                        self.parser.advance(&mut self.term, &advance_bytes);
+                        self.pending_image_advance = Some(advance_rows);
                     }
                 }
             }

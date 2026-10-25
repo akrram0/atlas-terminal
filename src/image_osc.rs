@@ -51,7 +51,6 @@ pub struct DecodedImage {
     pub render_image: Arc<gpui::RenderImage>,
     pub pixel_width: u32,
     pub pixel_height: u32,
-    pub is_side_by_side: bool,
 }
 
 /// Chronologically ordered event yielded by the streaming scanner.
@@ -59,6 +58,7 @@ pub struct DecodedImage {
 pub enum OscScannerEvent {
     Bytes(Vec<u8>),
     Image(DecodedImage),
+    SideBySideCompensation,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,7 +138,6 @@ pub struct Osc1337Scanner {
     header_buf: Vec<u8>,
     params_buf: Vec<u8>,
     payload_buf: Vec<u8>,
-    pending_image: Option<DecodedImage>,
     post_image_buf: Vec<u8>,
 }
 
@@ -155,7 +154,6 @@ impl Osc1337Scanner {
             header_buf: Vec::with_capacity(16),
             params_buf: Vec::with_capacity(256),
             payload_buf: Vec::with_capacity(8192),
-            pending_image: None,
             post_image_buf: Vec::with_capacity(32),
         }
     }
@@ -234,7 +232,7 @@ impl Osc1337Scanner {
                     if byte == 0x07 {
                         // Terminated with BEL
                         if let Some(img) = self.decode_current() {
-                            self.pending_image = Some(img);
+                            events.push(OscScannerEvent::Image(img));
                             self.post_image_buf.clear();
                             self.state = ScannerState::PostImage;
                         } else {
@@ -254,7 +252,7 @@ impl Osc1337Scanner {
                     if byte == b'\\' || byte == 0x07 {
                         // Terminated with ST (`\x1b\\`) or fallback BEL
                         if let Some(img) = self.decode_current() {
-                            self.pending_image = Some(img);
+                            events.push(OscScannerEvent::Image(img));
                             self.post_image_buf.clear();
                             self.state = ScannerState::PostImage;
                         } else {
@@ -273,29 +271,18 @@ impl Osc1337Scanner {
                         MatchResult::Matched => {
                             // Fastfetch side-by-side cursor compensation sequence matched (e.g. \n\x1b[20A).
                             // Absorbed completely so cursor stays anchored on the image line.
-                            if let Some(mut img) = self.pending_image.take() {
-                                img.is_side_by_side = true;
-                                events.push(OscScannerEvent::Image(img));
-                            }
+                            events.push(OscScannerEvent::SideBySideCompensation);
                             self.post_image_buf.clear();
                             self.state = ScannerState::Ground;
                         }
                         MatchResult::Prefix => {
                             if self.post_image_buf.len() > 16 {
-                                if let Some(mut img) = self.pending_image.take() {
-                                    img.is_side_by_side = false;
-                                    events.push(OscScannerEvent::Image(img));
-                                }
-                                clean_bytes.extend_from_slice(&self.post_image_buf);
-                                self.post_image_buf.clear();
+                                let buffered = std::mem::take(&mut self.post_image_buf);
                                 self.state = ScannerState::Ground;
+                                clean_bytes.extend_from_slice(&buffered);
                             }
                         }
                         MatchResult::Mismatch => {
-                            if let Some(mut img) = self.pending_image.take() {
-                                img.is_side_by_side = false;
-                                events.push(OscScannerEvent::Image(img));
-                            }
                             let buffered = std::mem::take(&mut self.post_image_buf);
                             self.state = ScannerState::Ground;
                             for &b in &buffered {
@@ -337,15 +324,6 @@ impl Osc1337Scanner {
             }
         }
 
-        if let Some(img) = self.pending_image.take() {
-            events.push(OscScannerEvent::Image(img));
-            self.state = ScannerState::Ground;
-        }
-        if !self.post_image_buf.is_empty() {
-            clean_bytes.extend_from_slice(&self.post_image_buf);
-            self.post_image_buf.clear();
-        }
-
         if !clean_bytes.is_empty() {
             events.push(OscScannerEvent::Bytes(clean_bytes));
         }
@@ -385,7 +363,6 @@ impl Osc1337Scanner {
                         render_image,
                         pixel_width: width,
                         pixel_height: height,
-                        is_side_by_side: false,
                     });
                 }
             }
@@ -777,20 +754,51 @@ mod tests {
         let mut scanner = Osc1337Scanner::new();
         let seq = format!("\x1b[1C\x1b]1337;File=inline=1:{TINY_PNG_B64}\x07\n\x1b[20A\x1b[42CNeweye@PC");
         let events = scanner.process(seq.as_bytes());
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.len(), 4);
         match &events[0] {
             OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[1C"),
             _ => panic!("Expected Bytes for leading padding"),
         }
         match &events[1] {
-            OscScannerEvent::Image(img) => {
-                assert!(img.is_side_by_side);
-            }
+            OscScannerEvent::Image(_) => {}
             _ => panic!("Expected Image"),
         }
         match &events[2] {
+            OscScannerEvent::SideBySideCompensation => {}
+            _ => panic!("Expected SideBySideCompensation"),
+        }
+        match &events[3] {
             OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[42CNeweye@PC"),
             _ => panic!("Expected Bytes for specs text"),
+        }
+    }
+
+    #[test]
+    fn test_fastfetch_split_chunks_absorption() {
+        let mut scanner = Osc1337Scanner::new();
+        let chunk1 = format!("\x1b[1C\x1b]1337;File=inline=1:{TINY_PNG_B64}\x07");
+        let chunk2 = b"\n\x1b[20A\x1b[42CNeweye@PC";
+
+        let ev1 = scanner.process(chunk1.as_bytes());
+        assert_eq!(ev1.len(), 2);
+        match &ev1[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[1C"),
+            _ => panic!("Expected Bytes in chunk 1"),
+        }
+        match &ev1[1] {
+            OscScannerEvent::Image(_) => {}
+            _ => panic!("Expected Image in chunk 1"),
+        }
+
+        let ev2 = scanner.process(chunk2);
+        assert_eq!(ev2.len(), 2);
+        match &ev2[0] {
+            OscScannerEvent::SideBySideCompensation => {}
+            _ => panic!("Expected SideBySideCompensation in chunk 2"),
+        }
+        match &ev2[1] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[42CNeweye@PC"),
+            _ => panic!("Expected specs in chunk 2"),
         }
     }
 }
