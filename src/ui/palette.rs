@@ -406,22 +406,16 @@ impl AtlasView {
                 cx.notify();
             }
             Command::FontInc => {
-                self.font_size = (self.font_size + 1.0).min(24.0);
-                self.sync_and_save_settings();
+                self.adjust_font_size(self.font_size + 1.0, cx);
                 self.focus_main(window);
-                cx.notify();
             }
             Command::FontDec => {
-                self.font_size = (self.font_size - 1.0).max(10.0);
-                self.sync_and_save_settings();
+                self.adjust_font_size(self.font_size - 1.0, cx);
                 self.focus_main(window);
-                cx.notify();
             }
             Command::FontReset => {
-                self.font_size = self.app_settings.font_size.clamp(10.0, 24.0);
-                self.sync_and_save_settings();
+                self.adjust_font_size(self.app_settings.font_size, cx);
                 self.focus_main(window);
-                cx.notify();
             }
             Command::CheckUpdates => {
                 self.check_updates_manual(cx);

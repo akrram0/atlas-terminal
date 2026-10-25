@@ -1168,6 +1168,17 @@ impl AtlasView {
         }
     }
 
+    pub fn adjust_font_size(&mut self, new_size: f32, cx: &mut Context<Self>) {
+        self.font_size = new_size.clamp(10.0, 24.0);
+        for tab in &mut self.tabs {
+            for pane in &mut tab.panes {
+                pane.cursor_pos = None;
+            }
+        }
+        self.sync_and_save_settings();
+        cx.notify();
+    }
+
     pub fn copy_selection(&self, cx: &mut Context<Self>) {
         let Some(pane) = self.active_pane() else {
             return;
@@ -1872,21 +1883,15 @@ impl AtlasView {
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_ZOOM_IN) {
-                    self.font_size = (self.font_size + 1.0).min(24.0);
-                    self.sync_and_save_settings();
-                    cx.notify();
+                    self.adjust_font_size(self.font_size + 1.0, cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_ZOOM_OUT) {
-                    self.font_size = (self.font_size - 1.0).max(10.0);
-                    self.sync_and_save_settings();
-                    cx.notify();
+                    self.adjust_font_size(self.font_size - 1.0, cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_ZOOM_RESET) {
-                    self.font_size = self.app_settings.font_size.clamp(10.0, 24.0);
-                    self.sync_and_save_settings();
-                    cx.notify();
+                    self.adjust_font_size(self.app_settings.font_size, cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_SELECT_ALL) {
@@ -1960,9 +1965,7 @@ impl AtlasView {
                     return;
                 }
                 "0" => {
-                    self.font_size = self.app_settings.font_size.clamp(10.0, 24.0);
-                    self.sync_and_save_settings();
-                    cx.notify();
+                    self.adjust_font_size(self.app_settings.font_size, cx);
                     return;
                 }
                 _ => {}
@@ -3181,6 +3184,18 @@ impl Render for AtlasView {
                         }
                     }))
                     .on_scroll_wheel(cx.listener(move |view, event: &ScrollWheelEvent, _window, cx| {
+                        if event.modifiers.control {
+                            let delta = match event.delta {
+                                gpui::ScrollDelta::Lines(d) => d.y,
+                                gpui::ScrollDelta::Pixels(d) => f32::from(d.y),
+                            };
+                            if delta > 0.0 {
+                                view.adjust_font_size(view.font_size + 1.0, cx);
+                            } else if delta < 0.0 {
+                                view.adjust_font_size(view.font_size - 1.0, cx);
+                            }
+                            return;
+                        }
                         if !event.modifiers.shift {
                             if let Some(tab) = view.tabs.get(view.active) {
                                 if let Some(pane) = tab.panes.get(pane_down) {

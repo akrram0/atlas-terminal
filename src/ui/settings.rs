@@ -201,14 +201,10 @@ impl AtlasView {
                 format!("{} pt", self.font_size as i32),
                 theme,
                 |view, cx| {
-                    view.font_size = (view.font_size - 1.0).max(10.0);
-                    view.sync_and_save_settings();
-                    cx.notify();
+                    view.adjust_font_size(view.font_size - 1.0, cx);
                 },
                 |view, cx| {
-                    view.font_size = (view.font_size + 1.0).min(24.0);
-                    view.sync_and_save_settings();
-                    cx.notify();
+                    view.adjust_font_size(view.font_size + 1.0, cx);
                 },
                 cx,
             ));
@@ -1488,6 +1484,11 @@ impl AtlasView {
                     view.theme_mode = view.app_settings.theme_mode.clone();
                     view.font_family = view.app_settings.font_family.clone();
                     view.font_size = view.app_settings.font_size;
+                    for tab in &mut view.tabs {
+                        for pane in &mut tab.panes {
+                            pane.cursor_pos = None;
+                        }
+                    }
                     view.line_height = view.app_settings.line_height;
                     view.corner_radius = view.app_settings.corner_radius;
                     view.opacity = view.app_settings.opacity;
