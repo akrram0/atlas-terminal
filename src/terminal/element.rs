@@ -211,7 +211,7 @@ impl Element for TerminalElement {
             };
             let cursor_inverts = matches!(
                 cursor_shape,
-                CursorShape::Block | CursorShape::HollowBlock
+                CursorShape::Block
             );
 
             let selection_range = session.term.selection.as_ref().and_then(|s| s.to_range(&session.term));
@@ -259,7 +259,10 @@ impl Element for TerminalElement {
                     std::mem::swap(&mut fg, &mut bg);
                 }
                 if cursor_inverts && self.cursor_on && cursor_cell == Some((row_index, col)) {
-                    std::mem::swap(&mut fg, &mut bg);
+                    // Invert foreground ink only so text remains crisp and legible on top of the kinetic cursor.
+                    // NEVER swap or modify cell background: modifying bg causes the cell background pass to
+                    // paint a static duplicate quad that separates from the animated cursor during motion.
+                    fg = default_bg;
                 }
 
                 let ch = if flags.contains(Flags::HIDDEN)
