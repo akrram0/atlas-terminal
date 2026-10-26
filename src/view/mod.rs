@@ -715,11 +715,11 @@ impl Render for AtlasView {
             div()
                 .id(ElementId::named_usize("workspace-pill", 0))
                 .w(px(26.0))
-                .h(px(22.0))
+                .h(px(26.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.0))
+                .rounded(px(6.0))
                 .bg(ws_bg)
                 .text_color(ws_idle)
                 .hover(move |style| style.text_color(ws_hot))
@@ -776,7 +776,7 @@ impl Render for AtlasView {
 
             let mut pill = div()
                 .id(ElementId::named_usize("tab-pill", ix))
-                .h(px(24.0))
+                .h(px(26.0))
                 .flex()
                 .flex_row()
                 .items_center()
@@ -898,7 +898,7 @@ impl Render for AtlasView {
 
             let mut settings_pill = div()
                 .id(ElementId::named_usize("tab-pill-settings", 0))
-                .h(px(24.0))
+                .h(px(26.0))
                 .flex()
                 .flex_row()
                 .items_center()
@@ -1039,7 +1039,7 @@ impl Render for AtlasView {
             };
             let mut badge = div()
                 .id(ElementId::named_usize("topbar-update-badge", 0))
-                .h(px(24.0))
+                .h(px(26.0))
                 .px(px(9.0))
                 .flex()
                 .flex_row()
@@ -1080,21 +1080,21 @@ impl Render for AtlasView {
                     .rounded(px(6.0))
                     .text_color(tb.faint_fg)
                     .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb.faint_fg))
-                    .child(div().text_size(px(11.5)).child("Checkingâ€¦")),
+                    .child(div().text_size(px(11.5)).child("Checking...")),
             );
         } else {
             bar = bar.child(
                 div()
                     .id(ElementId::named_usize("topbar-update-btn", 0))
-                    .w(px(28.0))
-                    .h(px(28.0))
+                    .w(px(26.0))
+                    .h(px(26.0))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(px(6.0))
                     .hover(move |s| s.bg(top_btn_hover))
                     .active(move |s| s.opacity(0.78))
-                    .child(icons::icon(icons::REFRESH).size(px(15.0)).text_color(chrome_ink))
+                    .child(icons::icon(icons::REFRESH).size(px(14.0)).text_color(chrome_ink))
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                         view.toggle_update_panel(cx);
                     })),
@@ -1104,15 +1104,15 @@ impl Render for AtlasView {
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("topbar-settings-btn", 0))
-                .w(px(28.0))
-                .h(px(28.0))
+                .w(px(26.0))
+                .h(px(26.0))
                 .flex()
                 .items_center()
                 .justify_center()
                 .rounded(px(6.0))
                 .hover(move |s| s.bg(top_btn_hover))
                 .active(move |s| s.opacity(0.78))
-                .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(chrome_ink))
+                .child(icons::icon(icons::SETTINGS).size(px(14.0)).text_color(chrome_ink))
                 .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                     view.settings_open = !view.settings_open;
                     if view.settings_open {
@@ -1165,7 +1165,7 @@ impl Render for AtlasView {
             let is_close = index == 2;
             let mut btn = div()
                 .id(ElementId::named_usize("window-control", index))
-                .w(px(46.0))
+                .w(px(38.0))
                 .h(relative(1.0))
                 .flex()
                 .items_center()
@@ -1181,7 +1181,7 @@ impl Render for AtlasView {
                 }))
                 .child(
                     icons::icon(icon_path)
-                        .size(px(15.0))
+                        .size(px(14.0))
                         .text_color(ink),
                 )
                 .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {

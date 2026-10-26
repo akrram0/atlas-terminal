@@ -67,8 +67,8 @@ pub const COMMANDS: [(Command, &str, &str, &str); 31] = [
     (Command::NewTabCmd, icons::CMD, "New Command Prompt tab", ""),
     (Command::NewTabGitBash, icons::GIT, "New Git Bash tab", ""),
     (Command::NewTabOpenCode, icons::OPENCODE_MARK, "New OpenCode tab", ""),
-    (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right (columns)", "Ctrl Shift D"),
-    (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down (rows)", "Ctrl Shift E"),
+    (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right (columns)", "Ctrl Shift E"),
+    (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down (rows)", "Ctrl Shift D"),
     (Command::FocusNextPane, icons::CHEVRON_RIGHT, "Focus next split pane", "Alt Right"),
     (Command::FocusPrevPane, icons::CHEVRON_LEFT, "Focus previous split pane", "Alt Left"),
     (

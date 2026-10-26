@@ -62,7 +62,7 @@ struct Row {
 
 impl TerminalElement {
     pub const PAD_X: f32 = 10.0;
-    pub const PAD_Y: f32 = 8.0;
+    pub const PAD_Y: f32 = 10.0;
 }
 
 impl IntoElement for TerminalElement {
@@ -513,8 +513,17 @@ impl Element for TerminalElement {
                 }
                 _ => (tgt_col_f, tgt_row_f),
             };
-            let cx0 = (left + cell_width * cur_col).clamp(left, left + avail_w);
-            let cy0 = (top + cell_height * cur_row + self.subpixel_y).clamp(top, top + avail_h);
+            let is_settled = (cur_col - tgt_col_f).abs() < 0.01 && (cur_row - tgt_row_f).abs() < 0.01;
+            let cx0 = if is_settled {
+                (left + cell_width * tgt_col_f).round().clamp(left, left + avail_w)
+            } else {
+                (left + cell_width * cur_col).clamp(left, left + avail_w)
+            };
+            let cy0 = if is_settled {
+                (top + cell_height * tgt_row_f + self.subpixel_y).round().clamp(top, top + avail_h)
+            } else {
+                (top + cell_height * cur_row + self.subpixel_y).clamp(top, top + avail_h)
+            };
             let cx1 = (cx0 + cell_width).min(left + avail_w);
             let cy1 = (cy0 + cell_height).min(top + avail_h);
             let cursor_color = Rgba {
@@ -722,8 +731,8 @@ impl Element for TerminalElement {
                     .min(view_height - 8.0);
                 let scroll_ratio = (history.saturating_sub(offset)) as f32 / history.max(1) as f32;
                 let travel_space = (view_height - thumb_height - 8.0).max(0.0);
-                let thumb_top = top + 4.0 + travel_space * scroll_ratio;
-                let thumb_right = left + f32::from(bounds.size.width) - 4.0;
+                let thumb_top = f32::from(bounds.top()) + 4.0 + travel_space * scroll_ratio;
+                let thumb_right = f32::from(bounds.right()) - 4.0;
                 let thumb_left = thumb_right - 4.0;
 
                 let mut thumb_quad = fill(
