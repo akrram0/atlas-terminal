@@ -182,6 +182,8 @@ impl Element for TerminalElement {
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
         let avail_w = (f32::from(bounds.size.width) - Self::PAD_X * 2.0).max(cell_width);
         let cols = (avail_w / cell_width).floor().max(1.0) as usize;
+        let avail_h = (f32::from(bounds.size.height) - Self::PAD_Y * 2.0).max(cell_height);
+        let max_rows = (avail_h / cell_height).floor().max(1.0) as usize;
 
         // Integer pixel snapping: rounded cell sizes + whole-pixel origin with padding
         let left = (f32::from(bounds.left()) + Self::PAD_X).round();
@@ -199,7 +201,10 @@ impl Element for TerminalElement {
             let cursor_shape = self.cursor_override.unwrap_or(content.cursor.shape);
             let cursor_row = content.cursor.point.line.0 + offset;
             let cursor_col = content.cursor.point.column.0;
-            let cursor_cell = if cursor_row >= 0 {
+            // The cursor is logically linked to the input field / prompt line.
+            // When the user scrolls up into history, the input line moves below the visible
+            // viewport (cursor_row >= max_rows), so the cursor must NOT be drawn over history text.
+            let cursor_cell = if cursor_row >= 0 && (cursor_row as usize) < max_rows {
                 Some((cursor_row as usize, cursor_col))
             } else {
                 None
