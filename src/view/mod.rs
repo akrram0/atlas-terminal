@@ -25,10 +25,10 @@ use gpui::{
 
 use crate::config::{load_app_settings, AppSettingsFile, SettingsTab};
 use crate::icons;
-use crate::session::{Profile, Session, SessionMsg};
+use crate::session::{Profile, Session};
 use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};
-use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS};
+use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, EASE_OUT};
 use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_NEW_TAB,
     HOVER_MARK_WINDOW,
