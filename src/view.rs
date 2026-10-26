@@ -3289,7 +3289,9 @@ impl Render for AtlasView {
                     cell = cell.child(TerminalElement {
                         session: pane.session.clone(),
                         theme: theme.clone(),
-                        active_bg,
+                        // In translucent mode, keep active_bg transparent so TUI apps like OpenCode
+                        // paint their solid backgrounds with rounded edge quads rather than becoming transparent blur.
+                        active_bg: if is_translucent { rgba(0x00000000) } else { active_bg },
                         font: self.font.clone(),
                         font_size: self.font_size,
                         line_height: self.line_height,

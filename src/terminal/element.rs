@@ -331,7 +331,7 @@ impl Element for TerminalElement {
             let mut span_start = 0usize;
             let active_bg = self.active_bg;
             let mut span_bg = active_bg;
-            let is_bottom_row = row_index + 1 >= total_rows;
+            let is_bottom_row = row_index + 1 >= total_rows || row_index + 1 >= max_rows;
             let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
                 if span_bg != default_bg && span_bg != active_bg && col > span_start {
                     let is_left_edge = span_start == 0;
