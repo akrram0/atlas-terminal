@@ -11,6 +11,9 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use alacritty_terminal::grid::Scroll;
+use alacritty_terminal::index::Side;
+use alacritty_terminal::selection::{Selection, SelectionType};
+use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
@@ -25,14 +28,14 @@ use crate::icons;
 use crate::session::{Profile, Session, SessionMsg};
 use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};
-use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, OVERLAY_OUT_MS, EASE_OUT};
+use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS};
 use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_NEW_TAB,
     HOVER_MARK_WINDOW,
 };
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
-    format_tab_title, git_branch, git_cwd, home_dir, profile_title, session_icon, Pane,
+    format_tab_title, git_branch, git_cwd, session_icon,
     SplitAxis, Tab,
 };
 
