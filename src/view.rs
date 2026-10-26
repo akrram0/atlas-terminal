@@ -2332,6 +2332,7 @@ impl Render for AtlasView {
             .w(relative(1.0))
             .h(px(36.0))
             .pl(px(8.0))
+            .rounded_t(px(if zoomed { 0.0 } else { 13.0 }))
             .bg(chrome_bg)
             .border_b_1()
             .border_color(tb.hairline);
@@ -2793,7 +2794,8 @@ impl Render for AtlasView {
             } else {
                 chrome_ink
             };
-            let btn = div()
+            let is_close = index == 2;
+            let mut btn = div()
                 .id(ElementId::named_usize("window-control", index))
                 .w(px(46.0))
                 .h(relative(1.0))
@@ -2801,7 +2803,11 @@ impl Render for AtlasView {
                 .items_center()
                 .justify_center()
                 .hover(move |style| style.bg(hover_bg))
-                .active(move |style| style.opacity(0.80))
+                .active(move |style| style.opacity(0.80));
+            if is_close {
+                btn = btn.rounded_tr(px(if zoomed { 0.0 } else { 13.0 }));
+            }
+            let btn = btn
                 .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
                     set_hover_mark(view, hover_id, *hovered, cx);
                 }))
@@ -2916,6 +2922,9 @@ impl Render for AtlasView {
                     } else {
                         rgba(0x00000000)
                     });
+                if tab.panes.len() == 1 {
+                    cell = cell.rounded_b(px(if zoomed { 0.0 } else { 13.0 }));
+                }
                 if tab.panes.len() > 1 {
                     cell = cell
                         .border_1()
@@ -3280,9 +3289,7 @@ impl Render for AtlasView {
                     cell = cell.child(TerminalElement {
                         session: pane.session.clone(),
                         theme: theme.clone(),
-                        // In translucent mode pass transparent so cell backgrounds matching
-                        // the terminal default are not painted — the native acrylic shows through.
-                        active_bg: if is_translucent { rgba(0x00000000) } else { active_bg },
+                        active_bg,
                         font: self.font.clone(),
                         font_size: self.font_size,
                         line_height: self.line_height,
@@ -3337,6 +3344,7 @@ impl Render for AtlasView {
             .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_hidden()
+            .rounded_b(px(if zoomed { 0.0 } else { 13.0 }))
             .bg(sheet_bg)
             .child(body);
 
@@ -3351,6 +3359,7 @@ impl Render for AtlasView {
             .min_w(px(0.0))
             .min_h(px(0.0))
             .bg(container_bg)
+            .rounded(px(if zoomed { 0.0 } else { 14.0 }))
             .overflow_hidden()
             .child(bar)
             .child(sheet);

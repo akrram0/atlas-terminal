@@ -316,7 +316,10 @@ impl Element for TerminalElement {
             )
         };
 
-        let _total_rows = rows.len();
+        let is_zoomed = crate::rounded_corners::is_zoomed();
+        let corner_r = if is_zoomed { px(0.0) } else { px(13.0) };
+        let total_rows = rows.len();
+
         for (row_index, row) in rows.iter().enumerate() {
             let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
             let y1 = y0 + cell_height;
@@ -328,15 +331,30 @@ impl Element for TerminalElement {
             let mut span_start = 0usize;
             let active_bg = self.active_bg;
             let mut span_bg = active_bg;
+            let is_bottom_row = row_index + 1 >= total_rows;
             let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
                 if span_bg != default_bg && span_bg != active_bg && col > span_start {
-                    let quad = fill(
+                    let is_left_edge = span_start == 0;
+                    let is_right_edge = col >= cols;
+                    let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(span_start) };
+                    let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(col) };
+                    let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
+
+                    let mut quad = fill(
                         Bounds::from_corners(
-                            point(px(x(span_start)), px(y0)),
-                            point(px(x(col)), px(y1)),
+                            point(px(rx0), px(y0)),
+                            point(px(rx1), px(ry1)),
                         ),
                         span_bg,
                     );
+                    if is_bottom_row && (is_left_edge || is_right_edge) {
+                        quad.corner_radii = Corners {
+                            top_left: px(0.0),
+                            top_right: px(0.0),
+                            bottom_left: if is_left_edge { corner_r } else { px(0.0) },
+                            bottom_right: if is_right_edge { corner_r } else { px(0.0) },
+                        };
+                    }
                     window.paint_quad(quad);
                 }
             };
@@ -397,13 +415,27 @@ impl Element for TerminalElement {
                             b: theme.accent.b,
                             a: 0.38,
                         };
-                        let quad = fill(
+                        let is_left_edge = sel_c0 == 0;
+                        let is_right_edge = sel_c1 + 1 >= cols;
+                        let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(sel_c0) };
+                        let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(sel_c1 + 1) };
+                        let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
+
+                        let mut quad = fill(
                             Bounds::from_corners(
-                                point(px(x(sel_c0)), px(y0)),
-                                point(px(x(sel_c1 + 1)), px(y1)),
+                                point(px(rx0), px(y0)),
+                                point(px(rx1), px(ry1)),
                             ),
                             sel_bg,
                         );
+                        if is_bottom_row && (is_left_edge || is_right_edge) {
+                            quad.corner_radii = Corners {
+                                top_left: px(0.0),
+                                top_right: px(0.0),
+                                bottom_left: if is_left_edge { corner_r } else { px(0.0) },
+                                bottom_right: if is_right_edge { corner_r } else { px(0.0) },
+                            };
+                        }
                         window.paint_quad(quad);
                     }
                 }
