@@ -666,6 +666,19 @@ impl Render for AtlasView {
             tb.chrome_fg
         };
 
+        let is_tui_active = if let Some(tab) = self.tabs.get(self.active) {
+            if let Some(pane) = tab.panes.get(tab.active_pane) {
+                pane.session.borrow().term.mode().contains(TermMode::ALT_SCREEN)
+                    || pane.profile == Profile::OpenCode
+                    || pane.title.starts_with("OC")
+                    || pane.title.to_lowercase().contains("opencode")
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             // In translucent mode: sheet and container must be fully transparent so
             // the native acrylic accent (GPUI's `Blurred` background) shows
@@ -687,7 +700,11 @@ impl Render for AtlasView {
                 a: (0.56 + self.opacity * 0.34).clamp(0.56, 0.90),
                 ..tb.panel_bg
             };
-            (chrome, rgba(0x00000000), rgba(0x00000000))
+            if is_tui_active {
+                (chrome, active_bg, tb.panel_bg)
+            } else {
+                (chrome, rgba(0x00000000), rgba(0x00000000))
+            }
         } else {
             (tb.panel_bg, term_base, tb.panel_bg)
         };
@@ -1275,6 +1292,18 @@ impl Render for AtlasView {
                 let pane_up = pane_ix;
                 let pane_rc = pane_ix;
 
+                let pane_is_tui = pane.session.borrow().term.mode().contains(TermMode::ALT_SCREEN)
+                    || pane.profile == Profile::OpenCode
+                    || pane.title.starts_with("OC")
+                    || pane.title.to_lowercase().contains("opencode");
+                let pane_bg = if pane_is_tui {
+                    Self::detect_pane_bg(pane, &theme)
+                } else if is_translucent {
+                    rgba(0x00000000)
+                } else {
+                    active_bg
+                };
+
                 let is_focused_pane = pane_ix == tab.active_pane && tab.panes.len() > 1;
                 let mut cell = div()
                     .id(ElementId::named_usize("pane-cell", pane_ix))
@@ -1285,7 +1314,9 @@ impl Render for AtlasView {
                     .min_h(px(0.0))
                     .opacity(pane.pane_expansion)
                     .overflow_hidden()
-                    .bg(if tab.panes.len() > 1 && !is_focused_pane {
+                    .bg(if pane_is_tui {
+                        pane_bg
+                    } else if tab.panes.len() > 1 && !is_focused_pane {
                         Rgba { a: 0.05, ..theme.chrome_fg }
                     } else {
                         rgba(0x00000000)
@@ -1659,7 +1690,7 @@ impl Render for AtlasView {
                         theme: theme.clone(),
                         // In translucent mode, keep active_bg transparent so TUI apps like OpenCode
                         // paint their solid backgrounds with rounded edge quads rather than becoming transparent blur.
-                        active_bg: if is_translucent { rgba(0x00000000) } else { active_bg },
+                        active_bg: if is_translucent && !pane_is_tui { rgba(0x00000000) } else { pane_bg },
                         font: self.font.clone(),
                         font_size: self.font_size,
                         line_height: self.line_height,

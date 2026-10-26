@@ -335,8 +335,14 @@ impl Element for TerminalElement {
             let active_bg = self.active_bg;
             let mut span_bg = active_bg;
             let is_bottom_row = row_index + 1 >= total_rows || row_index + 1 >= max_rows;
+            let is_tui = is_alt_screen || active_bg.a > 0.01;
             let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
-                if span_bg != default_bg && span_bg != active_bg && col > span_start {
+                let should_skip = if is_tui {
+                    span_bg == active_bg
+                } else {
+                    span_bg == default_bg || span_bg == active_bg
+                };
+                if !should_skip && col > span_start {
                     let is_left_edge = span_start == 0;
                     let is_right_edge = col >= cols;
                     let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(span_start) };
