@@ -1170,6 +1170,7 @@ impl AtlasView {
 
     pub fn adjust_font_size(&mut self, new_size: f32, cx: &mut Context<Self>) {
         self.font_size = new_size.clamp(10.0, 24.0);
+        self.scroll_anim = None;
         for tab in &mut self.tabs {
             for pane in &mut tab.panes {
                 pane.cursor_pos = None;

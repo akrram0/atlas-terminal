@@ -474,6 +474,9 @@ pub fn compute_image_grid_size(
 
     let (cols, rows) = match (target_cols, target_rows) {
         (Some(c), Some(r)) => {
+            // Responsive layout: clamp target cols so side-by-side specs have space on zoom in
+            let max_c = (grid_cols as f32 * 0.50).max(10.0).min(grid_cols.saturating_sub(10) as f32).max(1.0);
+            let c = c.min(max_c);
             if params.preserve_aspect_ratio {
                 let box_pixel_w = c * cell_w;
                 let box_pixel_h = r * cell_h;

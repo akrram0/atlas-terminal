@@ -130,35 +130,6 @@ fn git_bash_candidates() -> Vec<String> {
     candidates
 }
 
-fn is_side_by_side_indent(bytes: &[u8]) -> bool {
-    let limit = bytes.len().min(128);
-    let mut i = 0;
-    while i < limit {
-        if bytes[i] == 0x1B && i + 1 < limit && bytes[i + 1] == b'[' {
-            let mut j = i + 2;
-            let start = j;
-            while j < limit && bytes[j].is_ascii_digit() {
-                j += 1;
-            }
-            if j > start && j < limit && (bytes[j] == b'C' || bytes[j] == b'G') {
-                if let Ok(col) = std::str::from_utf8(&bytes[start..j]).unwrap_or("0").parse::<usize>() {
-                    if col >= 10 {
-                        return true;
-                    }
-                }
-            }
-            // Skip past the termination of this CSI sequence
-            while j < limit && !bytes[j].is_ascii_alphabetic() {
-                j += 1;
-            }
-            i = j + 1;
-        } else {
-            i += 1;
-        }
-    }
-    false
-}
-
 pub struct Session {
     pub term: Term<EventProxy>,
     pub parser: Processor,
@@ -186,7 +157,6 @@ pub struct Session {
     pub placed_images: Vec<PlacedImage>,
     next_image_id: usize,
     osc_scanner: Osc1337Scanner,
-    pending_image_advance: Option<usize>,
     writer: Option<Box<dyn Write + Send>>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
@@ -405,7 +375,6 @@ impl Session {
                 placed_images: Vec::new(),
                 next_image_id: 1,
                 osc_scanner: Osc1337Scanner::new(),
-                pending_image_advance: None,
                 writer: Some(writer),
                 master,
                 child,
@@ -428,32 +397,6 @@ impl Session {
                         || clean_bytes.windows(2).any(|w| w == b"\x1bc")
                     {
                         self.placed_images.clear();
-                        self.pending_image_advance = None;
-                    } else if clean_bytes.windows(4).any(|w| w == b"\x1b[2J") {
-                        // Clear images on the active screen for ED 2 (e.g. `cls` or `clear`)
-                        if was_alt_screen {
-                            self.placed_images.retain(|img| !img.is_alt_screen);
-                        } else {
-                            let cur_history = self.term.history_size() as i32;
-                            self.placed_images.retain(|img| img.is_alt_screen || img.anchor_line < cur_history);
-                        }
-                        self.pending_image_advance = None;
-                    }
-
-                    // Advance cursor down for standalone images before processing following text/prompts.
-                    // If side-by-side indented text follows (e.g. Fastfetch specs at col 42),
-                    // cancel the synthetic advance so text renders directly beside the image.
-                    if let Some(advance_rows) = self.pending_image_advance {
-                        if is_side_by_side_indent(&clean_bytes) {
-                            self.pending_image_advance = None;
-                        } else {
-                            self.pending_image_advance = None;
-                            let mut advance_bytes = Vec::with_capacity(advance_rows);
-                            for _ in 0..advance_rows {
-                                advance_bytes.push(b'\n');
-                            }
-                            self.parser.advance(&mut self.term, &advance_bytes);
-                        }
                     }
 
                     if !clean_bytes.is_empty() {
@@ -468,8 +411,6 @@ impl Session {
                 }
                 OscScannerEvent::SideBySideCompensation => {
                     // Fastfetch side-by-side compensation sequence detected and absorbed.
-                    // Cancel synthetic newline advance so the specs print directly beside the image.
-                    self.pending_image_advance = None;
                 }
                 OscScannerEvent::Image(decoded) => {
                     let is_alt_screen = self.term.mode().contains(TermMode::ALT_SCREEN);
@@ -516,16 +457,6 @@ impl Session {
                         rows: img_rows,
                         is_alt_screen,
                     });
-
-                    // Queue cursor advance for standalone images (unless do_not_move_cursor is set).
-                    // If a Fastfetch side-by-side compensation sequence follows, it cancels this advance.
-                    if !decoded.params.do_not_move_cursor {
-                        let advance_rows = match decoded.params.height {
-                            Some(crate::image_osc::LengthSpec::Cells(r)) => r,
-                            _ => img_rows,
-                        };
-                        self.pending_image_advance = Some(advance_rows);
-                    }
                 }
             }
         }
@@ -572,7 +503,7 @@ impl Session {
         if history_delta != 0 {
             for img in &mut self.placed_images {
                 if !img.is_alt_screen {
-                    img.anchor_line += history_delta;
+                    img.anchor_line = (img.anchor_line + history_delta).max(0);
                 }
             }
         }

@@ -431,14 +431,20 @@ impl Element for TerminalElement {
                         continue;
                     }
 
+                    let max_cols = cols.saturating_sub(img.col);
+                    let render_cols = img.cols.min(max_cols);
+                    if render_cols == 0 {
+                        continue;
+                    }
+
                     let img_x = left + cell_width * img.col as f32;
                     let img_y = top + cell_height * screen_row as f32 + self.subpixel_y;
-                    let img_w = cell_width * img.cols as f32;
+                    let img_w = (cell_width * render_cols as f32).min(avail_w);
                     let img_h = cell_height * img.rows as f32;
 
                     let image_bounds = Bounds::from_corners(
                         point(px(img_x), px(img_y)),
-                        point(px(img_x + img_w), px(img_y + img_h)),
+                        point(px((img_x + img_w).min(left + avail_w)), px(img_y + img_h)),
                     );
 
                     let _ = window.paint_image(
@@ -462,7 +468,9 @@ impl Element for TerminalElement {
             let tgt_col_f = target_col as f32;
             let tgt_row_f = target_row as f32;
             let (cur_col, cur_row) = match self.cursor_pos {
-                Some((c, r)) if (c - tgt_col_f).abs() < 15.0 && (r - tgt_row_f).abs() < 10.0 => (c, r),
+                Some((c, r)) if (c - tgt_col_f).abs() < 15.0 && (r - tgt_row_f).abs() < 10.0 => {
+                    (c.min(cols.saturating_sub(1) as f32), r.min(max_rows.saturating_sub(1) as f32))
+                }
                 _ => (tgt_col_f, tgt_row_f),
             };
             let cx0 = (left + cell_width * cur_col).clamp(left, left + avail_w);
