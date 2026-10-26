@@ -3,12 +3,12 @@
 pub mod actions;
 pub mod input;
 pub mod scroll;
-pub mod updater;
+pub mod update;
 
 pub use actions::*;
 pub use input::*;
 pub use scroll::*;
-pub use updater::*;
+pub use update::*;
 
 use std::cell::RefCell;
 use std::path::PathBuf;

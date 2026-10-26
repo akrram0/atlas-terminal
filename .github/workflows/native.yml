@@ -115,7 +115,13 @@ jobs:
       - name: cargo test (unit tests)
         shell: pwsh
         run: |
-          cargo test --release --bin atlas-terminal -- --nocapture
+          cargo test --release --bin atlas-terminal -- --nocapture 2>&1 | Tee-Object -FilePath test-output.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            "## cargo test failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content test-output.log -Tail 150 | Out-String >> $env:GITHUB_STEP_SUMMARY
+            exit $code
+          }
 
       - name: cargo build (release — final exe)
         shell: pwsh
