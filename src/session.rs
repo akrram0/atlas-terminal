@@ -443,7 +443,12 @@ impl Session {
                     } else {
                         self.term.history_size() as i32
                     };
-                    let anchor_line = history + cursor_line;
+                    // For side-by-side inline graphics (e.g. Fastfetch on the left with specs on the right),
+                    // apply 2 rows of vertical padding so the image sits in the vertical center ("f waset")
+                    // directly beneath the title and separator, rather than being attached to the prompt line.
+                    let is_side_by_side = col <= 2 && img_cols * 2 <= self.cols;
+                    let v_pad = if is_side_by_side && !is_alt_screen { 2 } else { 0 };
+                    let anchor_line = history + cursor_line + v_pad;
 
                     let id = self.next_image_id;
                     self.next_image_id += 1;

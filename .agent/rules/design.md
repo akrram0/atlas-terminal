@@ -13,6 +13,12 @@
    - **Restrained Chrome**: A single unified 36px top bar with minimal tabs (flat, quiet when inactive, crisp rounded rectangle with process icon + title when active) and tight, proportional window controls (38×30px, not bulky 46×36px).
    - **No Redundant Secondary Bars**: No second pane header bar. Process titles and icons live on the active tab pill in the top bar. Pane splitting and management rely entirely on keyboard shortcuts (`Ctrl+Shift+D` / `Ctrl+Shift+E` / `Ctrl+Shift+W` / `Ctrl+Shift+M`) and the Command Palette (`Ctrl+Shift+P`).
 
+3. **PERSONALITY DIRECTIVE: PIXEL-PERFECT & METICULOUS BALANCE**:
+   - The visual personality of Atlas Terminal is meticulous, pixel-perfect, and restrained.
+   - Command outputs and shells align strictly to the left margin of the terminal canvas.
+   - Side-by-side inline graphics (e.g. Fastfetch) must have intentional vertical centering ("f waset") relative to their companion spec blocks with balanced breathing margins, never glued to or cramped against preceding prompt lines.
+   - Reflow, inline graphic placement, and kinetic cursor kinematics must be native and mathematically sound in the terminal engine, never relying on fragile text munging.
+
 ---
 
 ## Design Tokens
