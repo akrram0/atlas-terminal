@@ -8,41 +8,45 @@ Welcome to **Atlas Terminal**, the fastest and most aesthetic GPU-accelerated te
 1. [Installation & Setup](#1-installation--setup)
 2. [Interface Anatomy](#2-interface-anatomy)
 3. [Keyboard Shortcuts Reference](#3-keyboard-shortcuts-reference)
-4. [Customization & Settings](#4-customization--settings)
-   - [Acrylic Blur & Opacity](#acrylic-blur--opacity)
-   - [Themes & Luminance](#themes--luminance)
-   - [Fonts & Sizing](#fonts--sizing)
-5. [Inline Image Graphics (iTerm2 OSC 1337)](#5-inline-image-graphics-iterm2-osc-1337)
+4. [Workspaces: Tabs & Split Panes](#4-workspaces-tabs--split-panes)
+5. [Command Palette (`Ctrl+K` / `Ctrl+Shift+P`)](#5-command-palette-ctrlk--ctrlshiftp)
+6. [Hyperlinks & Mouse Interactions](#6-hyperlinks--mouse-interactions)
+7. [Inline Image Graphics (iTerm2 OSC 1337)](#7-inline-image-graphics-iterm2-osc-1337)
    - [Fastfetch Setup](#fastfetch-setup)
-   - [Shell Scripts & CLI Tools](#shell-scripts--cli-tools)
-6. [Tabs & Split Panes](#6-tabs--split-panes)
-7. [Mouse Interactions & Hyperlinks](#7-mouse-interactions--hyperlinks)
-8. [TUI Applications (OpenCode, Neovim, Tmux)](#8-tui-applications-opencode-neovim-tmux)
-9. [WSL & Custom Shell Profiles](#9-wsl--custom-shell-profiles)
+   - [CLI Overrides](#cli-overrides)
+   - [Shell Scripts & Python Examples](#shell-scripts--python-examples)
+8. [Interactive TUI Applications](#8-interactive-tui-applications)
+9. [Customization & Settings (`Ctrl+,`)](#9-customization--settings-ctrl)
+   - [Themes & Luminance](#themes--luminance)
+   - [Acrylic Blur & Opacity](#acrylic-blur--opacity)
+   - [Typography & Fonts](#typography--fonts)
+   - [Cursor Aesthetics](#cursor-aesthetics)
+10. [WSL & Shell Profiles](#10-wsl--shell-profiles)
+11. [Auto-Updater & Releases](#11-auto-updater--releases)
 
 ---
 
 ## 1. Installation & Setup
 
-### Installer (Recommended)
+### Windows Installer (Recommended)
 Download the installer executable from the latest release:
 - 📦 **[Download Latest Installer (`.exe`)](https://github.com/akrram0/atlas-terminal/releases/latest)**
 
 The installer automatically:
 - Installs Atlas Terminal into `%LOCALAPPDATA%\Programs\Atlas Terminal`
 - Creates Start Menu and Desktop shortcuts
-- Enables background delta updates
+- Enables background delta updates and file associations
 
 ### Portable Archive
-If you prefer a portable setup without an installer:
-- 🗜️ **[Download Latest Portable (`.zip`)](https://github.com/akrram0/atlas-terminal/releases/latest)**
-- Extract anywhere and run `atlas-terminal.exe`.
+If you prefer a standalone setup without an installer:
+- 🗜️ **[Download Latest Portable (`.zip`)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
+- Extract the archive to any directory and run `atlas-terminal.exe`. All configuration files are cleanly isolated in `%USERPROFILE%\.config\atlas`.
 
 ---
 
 ## 2. Interface Anatomy
 
-Atlas Terminal is designed around a restrained, flat Apple/macOS aesthetic with zero unnecessary borders or nested cards:
+Atlas Terminal is designed around a restrained Apple/macOS aesthetic with zero unnecessary borders or nested cards:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -68,73 +72,101 @@ Atlas Terminal is designed around a restrained, flat Apple/macOS aesthetic with 
 
 ## 3. Keyboard Shortcuts Reference
 
-| Shortcut | Action | Description |
-| :--- | :--- | :--- |
-| `Ctrl + Shift + T` | **New Tab** | Opens a new terminal tab with your default profile |
-| `Ctrl + Shift + W` | **Close Tab / Pane** | Closes the active pane (or entire tab if single pane) |
-| `Ctrl + Tab` | **Next Tab** | Cycle to the next tab |
-| `Ctrl + Shift + Tab` | **Previous Tab** | Cycle to the previous tab |
-| `Ctrl + 1` … `Ctrl + 9` | **Switch Tab** | Jump directly to tab index 1 through 9 |
-| `Ctrl + Shift + D` | **Split Horizontal** | Splits current tab horizontally into two panes |
-| `Ctrl + Shift + E` | **Split Vertical** | Splits current tab vertically into two panes |
-| `Ctrl + Shift + ]` | **Focus Next Pane** | Move focus to adjacent pane in split view |
-| `Ctrl + Shift + [` | **Focus Prev Pane** | Move focus to previous pane in split view |
-| `Ctrl + Shift + M` | **Toggle Pane Maximize**| Temporarily maximize the active pane |
-| `Ctrl + Shift + P` / `Ctrl + K` | **Command Palette** | Open palette to search actions and switch tabs |
-| `Ctrl + ,` | **Settings** | Open Atlas settings dashboard |
-| `Ctrl + Shift + C` | **Copy** | Copy selected terminal text |
-| `Ctrl + Shift + V` | **Paste** | Paste clipboard into shell |
-| `Ctrl + +` / `Ctrl + =` | **Zoom In** | Increase font size by 1px |
-| `Ctrl + -` | **Zoom Out** | Decrease font size by 1px |
-| `Ctrl + 0` | **Reset Zoom** | Reset font size to default (12px) |
-| `Ctrl + Shift + K` | **Clear Scrollback** | Clear terminal history and reset viewport |
-| `Shift + PageUp` | **Page Up** | Smooth kinetic scroll up one page |
-| `Shift + PageDown` | **Page Down** | Smooth kinetic scroll down one page |
-| `F11` | **Toggle Fullscreen** | Enter or exit borderless fullscreen mode |
+Atlas Terminal is designed from the ground up to be completely operable from the keyboard:
+
+| Category | Shortcut | Action | Description |
+| :--- | :--- | :--- | :--- |
+| **Command Palette** | `Ctrl+K` / `Ctrl+Shift+P` | **Open Palette** | Open Command Palette with multi-word search |
+| **Tabs** | `Ctrl+Shift+T` / `Ctrl+Shift+N` | **New Tab** | Open a new tab with the default shell profile |
+| | `Ctrl+Shift+W` | **Close Tab / Pane** | Close active pane (or tab if single pane) |
+| | `Ctrl+Tab` / `Ctrl+PageDown` | **Next Tab** | Cycle focus to the next tab |
+| | `Ctrl+Shift+Tab` / `Ctrl+PageUp` | **Previous Tab** | Cycle focus to the previous tab |
+| | `Ctrl+1` … `Ctrl+8` | **Switch Tab** | Jump directly to tab index 1 through 8 |
+| | `Ctrl+9` | **Last Tab** | Jump directly to the last tab |
+| **Split Panes** | `Ctrl+Shift+E` | **Split Vertical** | Divide active pane into side-by-side columns |
+| | `Ctrl+Shift+D` | **Split Horizontal** | Divide active pane into top-and-bottom rows |
+| | `Ctrl+Shift+]` / `Alt+Right` | **Focus Next Pane** | Move keyboard focus to the adjacent pane |
+| | `Ctrl+Shift+[` / `Alt+Left` | **Focus Prev Pane** | Move keyboard focus to the previous pane |
+| | `Ctrl+Shift+M` | **Toggle Maximize** | Temporarily maximize active pane (toggle) |
+| **Scrolling** | `Shift+PageUp` | **Page Up** | Smooth kinetic scroll up 15 lines |
+| | `Shift+PageDown` | **Page Down** | Smooth kinetic scroll down 15 lines |
+| | `Ctrl+Shift+Up` | **Scroll 1 Line Up** | Fine-grained scroll up by single line |
+| | `Ctrl+Shift+Down` | **Scroll 1 Line Down** | Fine-grained scroll down by single line |
+| | `Shift+Home` | **Scroll to Top** | Jump immediately to top of scrollback history |
+| | `Shift+End` | **Scroll to Bottom** | Return immediately to prompt / bottom of history |
+| | `Ctrl+Shift+K` | **Clear Scrollback** | Clear terminal history and reset viewport |
+| **Selection & Clipboard** | `Ctrl+Shift+A` | **Select All** | Select all visible text in current viewport |
+| | `Ctrl+Shift+C` (or `Ctrl+C`) | **Copy** | Copy selected text to system clipboard |
+| | `Ctrl+Shift+V` | **Paste** | Paste system clipboard into active shell |
+| | `Shift + Mouse Drag` | **Bypass Mouse** | Force text selection in mouse-aware TUI apps |
+| **Zoom & Sizing** | `Ctrl+=` / `Ctrl++` | **Zoom In** | Increase font size by 1px |
+| | `Ctrl+-` | **Zoom Out** | Decrease font size by 1px |
+| | `Ctrl+0` | **Reset Zoom** | Reset font size to default (12px) |
+| **Links & URLs** | `Ctrl + Click` | **Open Link** | Open hovered URL in default browser |
+| | `Ctrl+Shift+O` | **Link Picker** | Pre-filter Command Palette with visible URLs |
+| **Window & Shell** | `F11` | **Fullscreen** | Toggle borderless fullscreen |
+| | `Ctrl+,` | **Settings** | Open Atlas settings dashboard |
+| | `Ctrl+Shift+T` | **Toggle Theme** | Toggle Dark / Light theme preset |
+| | `R` | **Restart Process** | Restart an exited process or dead shell pane |
 
 ---
 
-## 4. Customization & Settings
+## 4. Workspaces: Tabs & Split Panes
 
-Open settings anytime with `Ctrl + ,` or click the gear icon (`⚙`) in the top right.
+Organize multiple concurrent tasks, builds, and long-running services in a single window:
 
-### Acrylic Blur & Opacity
-Atlas Terminal uses native Windows Desktop Window Manager (DWM) composition attributes (`SetWindowCompositionAttribute`) to render true hardware-accelerated Acrylic blur behind a transparent swapchain:
-- **Opacity Slider (15% to 100%)**: Adjusts background transparency. At 15%–85%, your desktop wallpaper and background apps blur smoothly through the terminal canvas.
-- **100% Solid Mode**: Completely disables transparency for maximum contrast in bright environments.
-
-### Themes & Luminance
-Atlas includes a curated selection of refined themes inspired by Zed and Claude Code:
-1. **Warm Paper (Light)**: `#EDE8DC` warm cream surface with `#1C1A16` text and terracotta accents.
-2. **Matte Dark (Default)**: `#0E0E0D` near-black surface with `#E8E4DC` text and `#D08A5C` cursor.
-3. **Nord**: Arctic cool slate palette.
-4. **Tokyo Night**: Vibrant cyber-dark palette.
-5. **Catppuccin Macchiato & Mocha**: Soft pastel contrast themes.
-
-### Fonts & Sizing
-- **Font Family**: Configure any monospaced font installed on your system (`Cascadia Code`, `JetBrains Mono NF`, `Fira Code`, `Consolas`). Fallbacks for Nerd Font symbols and emojis (`Segoe UI Emoji`) are automatically chained.
-- **Font Size**: Adjustable in 0.5px increments (Default: `12.0px`).
-- **Line Height**: Line spacing multiplier from `1.0` to `1.6` (Default: `1.2`).
+- **New Tabs**: Press `Ctrl+Shift+T` or click the `+` button in the top bar. New tabs inherit the directory or default profile configured in settings.
+- **Split Panes**:
+  - `Ctrl+Shift+E` splits vertically into side-by-side columns.
+  - `Ctrl+Shift+D` splits horizontally into rows.
+  - Press `Ctrl+Shift+]` / `Ctrl+Shift+[` or `Alt+Arrows` to navigate between active panes.
+- **Maximize Active Pane**: Press `Ctrl+Shift+M` to temporarily expand the active pane to fill the entire window canvas. Press `Ctrl+Shift+M` again to restore the split layout without interrupting running processes.
+- **Close Pane vs Tab**: `Ctrl+Shift+W` closes the active focused pane. When only one pane remains, `Ctrl+Shift+W` closes the tab. If only one tab remains, closing it gracefully closes the window.
 
 ---
 
-## 5. Inline Image Graphics (iTerm2 OSC 1337)
+## 5. Command Palette (`Ctrl+K` / `Ctrl+Shift+P`)
 
-Atlas Terminal natively intercepts and decodes inline graphics via the standard iTerm2 OSC 1337 protocol on the GPU, avoiding legacy Sixel limitations.
+Press `Ctrl+K` or `Ctrl+Shift+P` at any time to open the floating, Raycast-style Command Palette:
+
+- **Multi-Word Search**: Filter actions naturally using conversational keywords (e.g., `new wsl`, `split rows`, `open link`, `clear`).
+- **Direct Shell Spawning**: Launch dedicated tabs for **PowerShell**, **Ubuntu (WSL)**, **Command Prompt (`cmd.exe`)**, **Git Bash**, or **OpenCode CLI**.
+- **Buffer Link Opener**: Any URLs currently visible in your active terminal viewport appear automatically as actionable items (`Open link: https://...`).
+- **Keyboard Navigation**: Navigate entries with `↑` and `↓`, execute with `Enter`, or dismiss with `Esc`.
+
+---
+
+## 6. Hyperlinks & Mouse Interactions
+
+Atlas Terminal automatically scans visible terminal rows and wrapped lines for hyperlinks:
+
+- **Supported Protocols**: `https://`, `http://`, `file://`, `www.`, `git://`, `ssh://`, `ftp://`, and `mailto:`.
+- **Hover Affordance**: Hold **`Ctrl`** and hover your mouse over any URL. The link highlights in your theme's accent color with an underline and hand pointer cursor.
+- **Instant Launch**: **`Ctrl + Click`** opens the URL directly in your default browser or associated Windows application without disturbing terminal selection.
+- **Smart Soft-Wrapping**: URLs that wrap across multiple terminal columns are seamlessly reassembled and opened intact.
+- **Keyboard Link Picker (`Ctrl+Shift+O`)**: Press `Ctrl+Shift+O` to open links without leaving the keyboard. If multiple links exist in the viewport, the Command Palette opens pre-filtered with every visible link ready for selection with arrow keys and `Enter`.
+- **Copy on Select**: Enable "Copy on select" in Settings (`Ctrl+,`) to automatically copy highlighted text to the clipboard when you release the mouse button.
+
+---
+
+## 7. Inline Image Graphics (iTerm2 OSC 1337)
+
+Atlas Terminal natively intercepts and renders inline images directly inside the terminal grid on the GPU, eliminating the performance penalties and pixel limitations of Sixel or WebViews.
 
 ### Fastfetch Setup
 
 To display your profile picture or logo alongside system info in Fastfetch:
 
-1. Create or edit `%USERPROFILE%\.config\fastfetch\config.jsonc`:
+1. Create or edit `%USERPROFILE%\.config\fastfetch\config.jsonc` (or `~/.config/fastfetch/config.jsonc`):
+
 ```jsonc
 {
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
   "logo": {
     "type": "iterm",
     "source": "C:/Users/YourUsername/Pictures/avatar.png",
-    "width": 36,
-    "height": 18,
+    "width": 38,
+    "height": 19,
     "padding": {
       "top": 1,
       "left": 1,
@@ -149,56 +181,93 @@ To display your profile picture or logo alongside system info in Fastfetch:
 }
 ```
 
-2. Run `fastfetch` in Atlas Terminal. The graphic renders anchored cleanly on the left with intentional vertical centering ("f waset") relative to the spec block.
+2. Run `fastfetch` in Atlas Terminal. The graphic renders anchored cleanly on the left with vertical centering relative to the spec block.
 
-### Shell Scripts & CLI Tools
+### CLI Overrides
 
-Any script or CLI that outputs iTerm2 inline graphics works out of the box:
+You can also pass images directly on the command line. Specify the grid dimensions (`--logo-width` and `--logo-height` in character cells) so Fastfetch formats the text columns accurately:
 
+```powershell
+fastfetch --logo-type iterm --logo "C:\path\to\your\image.png" --logo-width 40 --logo-height 20
+```
+
+### Shell Scripts & Python Examples
+
+Any script or tool that outputs standard iTerm2 inline image escape sequences renders natively in Atlas:
+
+#### Bash / Zsh
 ```bash
-# Bash / Zsh
 printf '\033]1337;File=inline=1;width=40;height=20:%s\007\n' "$(base64 -w0 photo.png)"
 ```
 
+#### PowerShell
 ```powershell
-# PowerShell
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("photo.png"))
 Write-Host "$([char]27)]1337;File=inline=1;width=40;height=20:$b64$([char]7)"
 ```
 
----
+#### Python
+```python
+import base64, sys
 
-## 6. Tabs & Split Panes
-
-- **New Tab**: Click the `+` button in the top bar or press `Ctrl + Shift + T`.
-- **Rename Tab**: Double click any tab title or press `Ctrl + Shift + P` -> "Rename Tab".
-- **Split Panes**: Split any tab into multiple simultaneous terminals:
-  - `Ctrl + Shift + D` splits horizontally.
-  - `Ctrl + Shift + E` splits vertically.
-  - `Ctrl + Shift + ]` cycles focus to the next pane.
-  - `Ctrl + Shift + M` toggles pane maximization so you can focus on one task and restore the split layout later.
+with open("photo.png", "rb") as f:
+    encoded = base64.b64encode(f.read()).decode("ascii")
+sys.stdout.write(f"\033]1337;File=inline=1;width=40;height=20:{encoded}\007\n")
+sys.stdout.flush()
+```
 
 ---
 
-## 7. Mouse Interactions & Hyperlinks
+## 8. Interactive TUI Applications
 
-- **Clickable URLs**: Hold `Ctrl` and hover over any URL (`http://`, `https://`, `git://`). The URL underlines and turns into a pointer; clicking launches your default browser.
-- **Copy on Select**: Enable "Copy on select" in Settings (`Ctrl + ,`) to automatically copy highlighted text to the clipboard without pressing `Ctrl + Shift + C`.
-- **Smooth Kinetic Scrolling**: Mouse wheel scrolling uses Apple spring easing to glide smoothly across history. Holding `Ctrl` while scrolling the mouse wheel zooms font size up or down.
+Atlas Terminal provides complete SGR mouse reporting (`?1000h`, `?1002h`, `?1003h`, `?1006h`):
 
----
-
-## 8. TUI Applications (OpenCode, Neovim, Tmux)
-
-Atlas Terminal provides specialized handling for alternate screen terminal applications:
-- **Solid Theme Backgrounds Preserved**: Full-screen TUIs like OpenCode, Claude Code, and Neovim preserve their solid theme backgrounds without unreadable transparency.
-- **Rounded Edge Quads**: Edge quads on the bottom row curve seamlessly with the window's 14px outer / 13px inner radius, eliminating sharp 90-degree corner bleed.
-- **Mouse Reporting**: Full support for SGR 1006 mouse tracking (drag selection, button clicks, and scroll wheel events passed to TUIs).
+- **Clickable Interfaces**: Click buttons, select list items, and collapse accordions inside modern terminal apps like **OpenCode**, **Lazygit**, **Micro**, **Helix**, and **Neovim**.
+- **Smooth Mouse Wheel Scrolling**: Scroll through diffs, file trees, and logs directly with the wheel.
+- **Copy Text from Mouse-Aware Apps**: Hold the **`Shift`** key while dragging to bypass application mouse capture and perform standard terminal selection and clipboard copying.
+- **Solid Theme Backgrounds**: Full-screen TUIs like OpenCode preserve their solid theme backgrounds without unreadable transparency bleed.
+- **Dynamic Rounded Corners**: Edge quads on the bottom row curve seamlessly with the window's 14px outer / 13px inner radius, eliminating sharp 90-degree corner clipping.
 
 ---
 
-## 9. WSL & Custom Shell Profiles
+## 9. Customization & Settings (`Ctrl+,`)
 
-Atlas Terminal automatically queries WSL for installed distributions on startup and registers native vector distro marks (`Ubuntu`, `Arch Linux`, `Debian`, `Fedora`, `Kali`, `Alpine`, `Docker`):
-- Click the workspace pill on the left of the top bar to open the shell profile menu.
-- Launch new tabs directly into PowerShell, CMD, or any detected WSL Linux distribution.
+Press `Ctrl+,` or click the gear icon (`⚙`) in the top right to open the Settings dashboard:
+
+### Themes & Luminance
+- **Curated Presets**: Switch instantly between **Matte Dark** (`#0E0E0D` surface) and **Warm Paper** (`#EDE8DC` surface), or select **Nord**, **Tokyo Night**, and **Catppuccin**.
+- **System Sync**: Enable automatic dark/light theme switching based on your Windows system preference.
+
+### Acrylic Blur & Opacity
+- **Opacity Slider (15% to 100%)**: Adjust background transparency. At 15%–85%, your desktop wallpaper and background apps blur smoothly through the terminal canvas via Windows DWM composition attributes (`SetWindowCompositionAttribute`).
+- **100% Solid Mode**: Completely disables transparency for maximum contrast in bright environments.
+
+### Typography & Fonts
+- **Font Family**: Configure any monospaced font installed on your system (`Cascadia Code`, `JetBrains Mono NF`, `Fira Code`, `Consolas`). Fallbacks for Nerd Font symbols and emojis (`Segoe UI Emoji`) are automatically chained.
+- **Font Size**: Adjustable in 0.5px increments (Default: `12.0px`).
+- **Line Height**: Line spacing multiplier from `1.0` to `1.6` (Default: `1.2`).
+
+### Cursor Aesthetics
+- **Cursor Shapes**: Choose between `Block`, `Hollow Block`, `Beam`, and `Underline`.
+- **Kinetic Physics**: Damped spring deceleration glides smoothly when typing and snaps instantly across large page jumps.
+- **Breathing Alpha**: Organic breathing illumination when idle, locking to 100% solid opacity during active typing.
+
+---
+
+## 10. WSL & Shell Profiles
+
+Atlas Terminal automatically detects installed Windows Subsystem for Linux (WSL) distributions on startup and registers native vector distro marks (`Ubuntu`, `Arch Linux`, `Debian`, `Fedora`, `Kali`, `Alpine`, `Docker`):
+
+- **Workspace Profile Menu**: Click the workspace pill on the left of the top bar to open the shell profile menu.
+- **Fast Profile Launching**: Spawn dedicated tabs directly into PowerShell, Command Prompt, or any detected WSL Linux distribution.
+- **Terminal Identity Forwarding**: Atlas forwards terminal identity into WSL environments so tools like `fastfetch` automatically detect and display the Atlas Terminal logo.
+
+---
+
+## 11. Auto-Updater & Releases
+
+Atlas Terminal features a built-in streaming auto-updater:
+- **Silent Update Checks**: Automatically queries GitHub Releases with conditional ETag validation at configurable intervals (30 min, 1 hour, 6 hours, Daily).
+- **Background Streaming**: Downloads binary delta patches asynchronously with real-time percentage indicators in the status bar.
+- **Cryptographic Verification**: Every download is verified via SHA-256 (RFC 6234) against official release checksums before staging.
+- **One-Click Restart**: Click the update pill to silently apply the update in-place and restart.
