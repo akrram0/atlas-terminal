@@ -518,6 +518,7 @@ impl Element for TerminalElement {
             struct Segment<'a> {
                 text: &'a str,
                 x0: f32,
+                col: usize,
                 /// Grid cells this segment covers (wide glyphs span two).
                 cells: usize,
                 font: Font,
@@ -547,6 +548,7 @@ impl Element for TerminalElement {
                         segments.push(Segment {
                             text: &run_text[offset..end],
                             x0: x(cell),
+                            col: cell,
                             cells: 1,
                             font: font.clone(),
                             style: &run.style,
@@ -558,6 +560,7 @@ impl Element for TerminalElement {
                     segments.push(Segment {
                         text: run_text,
                         x0: x(col),
+                        col,
                         cells: run.cells,
                         font,
                         style: &run.style,
@@ -567,6 +570,29 @@ impl Element for TerminalElement {
             }
             for segment in &segments {
                 if segment.text.trim().is_empty() {
+                    continue;
+                }
+                // Do not paint text over placed inline images. In OSC 1337 image protocol,
+                // the graphic occupies these character cells; any ConPTY reflow or wrapped text
+                // landing inside the image's bounds must not deface the image.
+                let covered_by_image = placed_images.iter().any(|img| {
+                    if img.is_alt_screen != is_alt_screen {
+                        return false;
+                    }
+                    let grid_line = if is_alt_screen {
+                        img.anchor_line
+                    } else {
+                        img.anchor_line - cur_history
+                    };
+                    let screen_row = grid_line + offset;
+                    let r = row_index as i32;
+                    let seg_end_col = segment.col + segment.cells;
+                    r >= screen_row
+                        && r < screen_row + img.rows as i32
+                        && segment.col < img.col + img.cols
+                        && seg_end_col > img.col
+                });
+                if covered_by_image {
                     continue;
                 }
                 // Block elements and box drawing: painted as quads on exact

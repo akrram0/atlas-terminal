@@ -492,20 +492,10 @@ impl Session {
         }
         self.cell_width = cell_width;
         self.cell_height = cell_height;
-        let old_history = self.term.history_size();
         if self.cols != cols || self.rows != rows {
             self.cols = cols;
             self.rows = rows;
             self.term.resize(TermSize { cols, rows });
-        }
-        let new_history = self.term.history_size();
-        let history_delta = new_history as i32 - old_history as i32;
-        if history_delta != 0 {
-            for img in &mut self.placed_images {
-                if !img.is_alt_screen {
-                    img.anchor_line = (img.anchor_line + history_delta).max(0);
-                }
-            }
         }
         let p_width = (cols as f32 * cell_width).round() as u16;
         let p_height = (rows as f32 * cell_height).round() as u16;
