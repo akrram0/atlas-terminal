@@ -29,6 +29,21 @@ Desktop.ini
 # Design System documentation
 design-system/
 
+# AI, Agent & Handoff artifacts
+.agent/
+.claude/
+.cursor/
+.cursorrules
+.windsurf/
+.copilot/
+.cline/
+.gemini/
+HANDOFF.md
+*handoff*.md
+*HANDOFF*.md
+handoffs/
+scratch/
+
 
 scripts/ci_check.ps1
 scripts/get_releases.ps1
