@@ -457,45 +457,45 @@ impl Element for TerminalElement {
         let max_rows = (avail_h / cell_height).floor().max(1.0) as usize;
 
         if let Some((target_row, target_col)) = cursor_cell.filter(|_| self.cursor_on) {
-            if target_row < max_rows && target_col < cols {
-                let tgt_col_f = target_col as f32;
-                let tgt_row_f = target_row as f32;
-                let (cur_col, cur_row) = match self.cursor_pos {
-                    Some((c, r)) if (c - tgt_col_f).abs() < 15.0 && (r - tgt_row_f).abs() < 10.0 => (c, r),
-                    _ => (tgt_col_f, tgt_row_f),
-                };
-                let cx0 = (left + cell_width * cur_col).clamp(left, left + avail_w);
-                let cy0 = (top + cell_height * cur_row + self.subpixel_y).clamp(top, top + avail_h);
-                let cx1 = (cx0 + cell_width).min(left + avail_w);
-                let cy1 = (cy0 + cell_height).min(top + avail_h);
-                let cursor_color = Rgba {
-                    r: default_cursor.r,
-                    g: default_cursor.g,
-                    b: default_cursor.b,
-                    a: (default_cursor.a * self.cursor_alpha).clamp(0.0, 1.0),
-                };
-                let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
-                    window.paint_quad(fill(
-                        Bounds::from_corners(
-                            point(px(rx0), px(ry0)),
-                            point(px(rx1), px(ry1)),
-                        ),
-                        cursor_color,
-                    ));
-                };
-                match cursor_shape {
-                    CursorShape::Block => quad(cx0, cy0, cx1, cy1, window),
-                    CursorShape::HollowBlock => {
-                        let t = 1.0;
-                        quad(cx0, cy0, cx1, cy0 + t, window);
-                        quad(cx0, cy1 - t, cx1, cy1, window);
-                        quad(cx0, cy0, cx0 + t, cy1, window);
-                        quad(cx1 - t, cy0, cx1, cy1, window);
-                    }
-                    CursorShape::Beam => quad(cx0, cy0, cx0 + 2.0, cy1, window),
-                    CursorShape::Underline => quad(cx0, cy1 - 2.0, cx1, cy1, window),
-                    CursorShape::Hidden => {}
+            let target_col = target_col.min(cols.saturating_sub(1));
+            let target_row = target_row.min(max_rows.saturating_sub(1));
+            let tgt_col_f = target_col as f32;
+            let tgt_row_f = target_row as f32;
+            let (cur_col, cur_row) = match self.cursor_pos {
+                Some((c, r)) if (c - tgt_col_f).abs() < 15.0 && (r - tgt_row_f).abs() < 10.0 => (c, r),
+                _ => (tgt_col_f, tgt_row_f),
+            };
+            let cx0 = (left + cell_width * cur_col).clamp(left, left + avail_w);
+            let cy0 = (top + cell_height * cur_row + self.subpixel_y).clamp(top, top + avail_h);
+            let cx1 = (cx0 + cell_width).min(left + avail_w);
+            let cy1 = (cy0 + cell_height).min(top + avail_h);
+            let cursor_color = Rgba {
+                r: default_cursor.r,
+                g: default_cursor.g,
+                b: default_cursor.b,
+                a: (default_cursor.a * self.cursor_alpha).clamp(0.0, 1.0),
+            };
+            let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
+                window.paint_quad(fill(
+                    Bounds::from_corners(
+                        point(px(rx0), px(ry0)),
+                        point(px(rx1), px(ry1)),
+                    ),
+                    cursor_color,
+                ));
+            };
+            match cursor_shape {
+                CursorShape::Block => quad(cx0, cy0, cx1, cy1, window),
+                CursorShape::HollowBlock => {
+                    let t = 1.0;
+                    quad(cx0, cy0, cx1, cy0 + t, window);
+                    quad(cx0, cy1 - t, cx1, cy1, window);
+                    quad(cx0, cy0, cx0 + t, cy1, window);
+                    quad(cx1 - t, cy0, cx1, cy1, window);
                 }
+                CursorShape::Beam => quad(cx0, cy0, cx0 + 2.0, cy1, window),
+                CursorShape::Underline => quad(cx0, cy1 - 2.0, cx1, cy1, window),
+                CursorShape::Hidden => {}
             }
         }
 

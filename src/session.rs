@@ -130,6 +130,35 @@ fn git_bash_candidates() -> Vec<String> {
     candidates
 }
 
+fn is_side_by_side_indent(bytes: &[u8]) -> bool {
+    let limit = bytes.len().min(128);
+    let mut i = 0;
+    while i < limit {
+        if bytes[i] == 0x1B && i + 1 < limit && bytes[i + 1] == b'[' {
+            let mut j = i + 2;
+            let start = j;
+            while j < limit && bytes[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j > start && j < limit && (bytes[j] == b'C' || bytes[j] == b'G') {
+                if let Ok(col) = std::str::from_utf8(&bytes[start..j]).unwrap_or("0").parse::<usize>() {
+                    if col >= 10 {
+                        return true;
+                    }
+                }
+            }
+            // Skip past the termination of this CSI sequence
+            while j < limit && !bytes[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            i = j + 1;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
 pub struct Session {
     pub term: Term<EventProxy>,
     pub parser: Processor,
@@ -238,6 +267,8 @@ impl Session {
                     cmd.arg("-Command");
                     cmd.arg(
                         "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; \
+                         $OutputEncoding=[System.Text.Encoding]::UTF8; \
+                         [Console]::InputEncoding=[System.Text.Encoding]::UTF8; \
                          $atlas_old = (Get-Command prompt -ErrorAction SilentlyContinue).ScriptBlock; \
                          function prompt { \
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
@@ -410,12 +441,19 @@ impl Session {
                     }
 
                     // Advance cursor down for standalone images before processing following text/prompts.
-                    if let Some(advance_rows) = self.pending_image_advance.take() {
-                        let mut advance_bytes = Vec::with_capacity(advance_rows);
-                        for _ in 0..advance_rows {
-                            advance_bytes.push(b'\n');
+                    // If side-by-side indented text follows (e.g. Fastfetch specs at col 42),
+                    // cancel the synthetic advance so text renders directly beside the image.
+                    if let Some(advance_rows) = self.pending_image_advance {
+                        if is_side_by_side_indent(&clean_bytes) {
+                            self.pending_image_advance = None;
+                        } else {
+                            self.pending_image_advance = None;
+                            let mut advance_bytes = Vec::with_capacity(advance_rows);
+                            for _ in 0..advance_rows {
+                                advance_bytes.push(b'\n');
+                            }
+                            self.parser.advance(&mut self.term, &advance_bytes);
                         }
-                        self.parser.advance(&mut self.term, &advance_bytes);
                     }
 
                     if !clean_bytes.is_empty() {
@@ -523,10 +561,20 @@ impl Session {
         }
         self.cell_width = cell_width;
         self.cell_height = cell_height;
+        let old_history = self.term.history_size();
         if self.cols != cols || self.rows != rows {
             self.cols = cols;
             self.rows = rows;
             self.term.resize(TermSize { cols, rows });
+        }
+        let new_history = self.term.history_size();
+        let history_delta = new_history as i32 - old_history as i32;
+        if history_delta != 0 {
+            for img in &mut self.placed_images {
+                if !img.is_alt_screen {
+                    img.anchor_line += history_delta;
+                }
+            }
         }
         let p_width = (cols as f32 * cell_width).round() as u16;
         let p_height = (rows as f32 * cell_height).round() as u16;
