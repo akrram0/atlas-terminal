@@ -1,3 +1,5 @@
+#![allow(unsafe_op_in_unsafe_fn)]
+#![allow(dead_code)]
 //! Windows 11 rounded corners, acrylic blur & full-bleed client area.
 //! Subclasses the HWND to handle WM_NCCALCSIZE and WM_NCHITTEST with native DWM composition.
 
@@ -208,59 +210,56 @@ const ACCENT_DISABLED: u32 = 0;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 
 unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
-    let name: Vec<u16> = "user32.dll\0".encode_utf16().collect();
-    let user32 = GetModuleHandleW(name.as_ptr());
-    if user32.is_null() {
-        return 0;
-    }
-    let p_fn = GetProcAddress(user32, b"SetWindowCompositionAttribute\0".as_ptr());
-    if p_fn.is_null() {
-        return 0;
-    }
-    type SetWindowCompositionAttributeFn =
-        unsafe extern "system" fn(Hwnd, *mut WindowCompositionAttributeData) -> i32;
-    let set_composition: SetWindowCompositionAttributeFn = core::mem::transmute(p_fn);
+    unsafe {
+        let name: Vec<u16> = "user32.dll\0".encode_utf16().collect();
+        let user32 = GetModuleHandleW(name.as_ptr());
+        if user32.is_null() {
+            return 0;
+        }
+        let p_fn = GetProcAddress(user32, b"SetWindowCompositionAttribute\0".as_ptr());
+        if p_fn.is_null() {
+            return 0;
+        }
+        type SetWindowCompositionAttributeFn =
+            unsafe extern "system" fn(Hwnd, *mut WindowCompositionAttributeData) -> i32;
+        let set_composition: SetWindowCompositionAttributeFn = core::mem::transmute(p_fn);
 
-    let mut policy = if enabled {
-        // Acrylic requires a non-zero alpha tint. At normal sizes keep it
-        // almost transparent so the wallpaper stays vivid. DWM's blur
-        // radius is fixed, so a full-screen window reads as *less* frosted
-        // than a small one; add a modest theme-matched veil while maximized
-        // to keep the perceived frost constant.
-        let zoomed = unsafe { IsZoomed(hwnd) } != 0;
-        let alpha: u32 = if zoomed { 0x26 } else { 0x01 };
-        let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
-            0x000000
+        let mut policy = if enabled {
+            let zoomed = IsZoomed(hwnd) != 0;
+            let alpha: u32 = if zoomed { 0x26 } else { 0x01 };
+            let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
+                0x000000
+            } else {
+                0xFFFFFF
+            };
+            AccentPolicy {
+                accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
+                accent_flags: 0,
+                gradient_color: (alpha << 24) | rgb,
+                animation_id: 0,
+            }
         } else {
-            0xFFFFFF
+            AccentPolicy {
+                accent_state: ACCENT_DISABLED,
+                accent_flags: 0,
+                gradient_color: 0,
+                animation_id: 0,
+            }
         };
-        AccentPolicy {
-            accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-            accent_flags: 0,
-            gradient_color: (alpha << 24) | rgb,
-            animation_id: 0,
-        }
-    } else {
-        AccentPolicy {
-            accent_state: ACCENT_DISABLED,
-            accent_flags: 0,
-            gradient_color: 0,
-            animation_id: 0,
-        }
-    };
 
-    let mut data = WindowCompositionAttributeData {
-        attribute: WCA_ACCENT_POLICY,
-        data: &mut policy as *mut AccentPolicy as *mut core::ffi::c_void,
-        size_of_data: core::mem::size_of::<AccentPolicy>(),
-    };
+        let mut data = WindowCompositionAttributeData {
+            attribute: WCA_ACCENT_POLICY,
+            data: &mut policy as *mut AccentPolicy as *mut core::ffi::c_void,
+            size_of_data: core::mem::size_of::<AccentPolicy>(),
+        };
 
-    let tint = policy.gradient_color;
-    let res = set_composition(hwnd, &mut data);
-    crate::log_line(&format!(
-        "composition accent: enabled={enabled}, res={res}, tint={tint:#010x}"
-    ));
-    res
+        let tint = policy.gradient_color;
+        let res = set_composition(hwnd, &mut data);
+        crate::log_line(&format!(
+            "composition accent: enabled={enabled}, res={res}, tint={tint:#010x}"
+        ));
+        res
+    }
 }
 
 /// Switch the native desktop backdrop on or off.

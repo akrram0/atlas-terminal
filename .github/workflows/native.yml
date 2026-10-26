@@ -119,13 +119,9 @@ jobs:
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             "## cargo test failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
-            $tlines = Get-Content test-output.log
-            $start = [Math]::Max(0, $tlines.Length - 50)
-            for ($j = $start; $j -lt $tlines.Length; $j++) {
-              if ($tlines[$j].Trim()) {
-                Write-Output ("::error title=test::" + ($tlines[$j] -replace '%','%25'))
-              }
-            }
+            $tail = Get-Content test-output.log -Tail 60
+            $msg = ($tail -join "`n") -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+            Write-Output "::error title=test-failure::$msg"
             exit $code
           }
 
