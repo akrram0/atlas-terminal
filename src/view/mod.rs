@@ -5,41 +5,22 @@ pub mod input;
 pub mod scroll;
 pub mod update;
 
-pub use actions::*;
-pub use input::*;
-pub use scroll::*;
-pub use update::*;
-
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
-use alacritty_terminal::event::Event;
-use alacritty_terminal::grid::{Dimensions, Scroll};
-use alacritty_terminal::index::{Column, Line, Point, Side};
-use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
-    ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent, Keystroke,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Render, Rgba, ScrollHandle,
+    ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Rgba, ScrollHandle,
     ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
 };
 
-use crate::config::{
-    default_shortcuts, format_keystroke_chord, load_app_settings, AppSettingsFile, SettingsTab,
-    ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FOCUS_NEXT_PANE,
-    ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEXT_TAB,
-    ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL,
-    ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN, ACTION_ZOOM_OUT, ACTION_ZOOM_RESET,
-    ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_TO_TOP,
-    ACTION_SCROLL_TO_BOTTOM, ACTION_OPEN_URL_PICKER, ACTION_TOGGLE_THEME, ACTION_TOGGLE_MAXIMIZE,
-};
+use crate::config::{load_app_settings, AppSettingsFile, SettingsTab};
 use crate::icons;
-use crate::keymap;
 use crate::session::{Profile, Session, SessionMsg};
 use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};

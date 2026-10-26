@@ -119,24 +119,12 @@ jobs:
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             "## cargo test failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
-            $n = 0
-            $pending = ""
-            foreach ($line in Get-Content test-output.log) {
-              if ($line -match '^(?<sev>error|warning)(?<rest>.*)$') {
-                $pending = "$($matches['sev'])$($matches['rest'])"
-              } elseif ($pending -ne "" -and $line -match '^\s*-->\s*(?<loc>\S+)\s*$') {
-                if ($n -lt 60) {
-                  $n++
-                  $msg = ("$pending @ $($matches['loc'])") -replace '%','%25'
-                  Write-Output "::error::$msg"
-                }
-                $pending = ""
-              } elseif ($line -match 'FAILED|failures:') {
-                Write-Output ("::error::" + ($line -replace '%','%25'))
+            $tlines = Get-Content test-output.log
+            $start = [Math]::Max(0, $tlines.Length - 50)
+            for ($j = $start; $j -lt $tlines.Length; $j++) {
+              if ($tlines[$j].Trim()) {
+                Write-Output ("::error title=test::" + ($tlines[$j] -replace '%','%25'))
               }
-            }
-            if ($pending -ne "" -and $n -lt 60) {
-              Write-Output ("::error::" + ($pending -replace '%','%25'))
             }
             exit $code
           }
