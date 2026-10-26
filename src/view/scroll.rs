@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use alacritty_terminal::grid::Scroll;
+use alacritty_terminal::grid::{Dimensions, Scroll};
 use gpui::Context;
 
 use super::AtlasView;

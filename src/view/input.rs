@@ -1,5 +1,6 @@
 //! Keyboard chords, mouse drag selection, coordinate hit-testing, and clipboard bridging.
 
+use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
