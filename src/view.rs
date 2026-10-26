@@ -625,7 +625,15 @@ impl AtlasView {
                 (session.cols, session.rows)
             })
             .filter(|(cols, rows)| *cols > 0 && *rows > 0)
-            .unwrap_or((80, 24))
+            .unwrap_or_else(|| {
+                // Compute initial grid columns/rows from the default window bounds (1100x720)
+                // and font metrics so the child shell never spawns in an undersized 80x24 box.
+                let cell_w = 7.8f32;
+                let cell_h = (self.font_size * self.line_height).round().max(1.0);
+                let cols = ((1100.0 - 16.0) / cell_w).floor().max(80.0) as usize;
+                let rows = ((720.0 - 70.0) / cell_h).floor().max(35.0) as usize;
+                (cols, rows)
+            })
     }
 
     pub fn new_tab(&mut self, profile: Profile, cx: &mut Context<Self>) {
