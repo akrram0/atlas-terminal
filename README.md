@@ -43,9 +43,18 @@ Terminal emulators on Windows have historically been forced into a painful compr
 
 Get the latest release for Windows (x64):
 
-* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest/download/AtlasTerminal-Setup-0.1.25.exe)** *(Recommended: Start menu integration, desktop shortcuts, background auto-updates)*
+* 📦 **[Download Windows Installer (.exe)](https://github.com/akrram0/atlas-terminal/releases/latest)** *(Recommended: Start menu integration, desktop shortcuts, background auto-updates)*
 * 🗜️ **[Download Portable (.zip)](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip)**
 * 🚀 **[All Releases & Changelogs](https://github.com/akrram0/atlas-terminal/releases)**
+
+---
+
+## Documentation
+
+Full guides and architecture documentation are located in the [`docs/`](docs/) directory:
+
+* 📖 **[Complete User Guide](docs/user-guide.md)** — Fastfetch setup, keyboard shortcuts, customization, split panes, and WSL.
+* 🏗️ **[Architecture & Engine Design](docs/architecture.md)** — GPUI DirectX rendering, Windows DWM acrylic integration, and kinetic cursor kinematics.
 
 ---
 
