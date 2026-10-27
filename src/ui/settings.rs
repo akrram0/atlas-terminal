@@ -824,6 +824,19 @@ impl AtlasView {
             cx,
         );
 
+        let edit_fastfetch_btn = fastfetch_config_path().map(|ff_path| {
+            pill_button(
+                "Edit config.jsonc".to_string(),
+                385,
+                false,
+                theme,
+                move |_view, _cx| {
+                    open_fastfetch_config(&ff_path);
+                },
+                cx,
+            )
+        });
+
         let general_view = div()
             .flex()
             .flex_col()
@@ -833,14 +846,18 @@ impl AtlasView {
                     .child(section_header("DEFAULT SHELL"))
                     .child(shell_cards),
             )
-            .child(
-                card()
+            .child({
+                let mut config_card = card()
                     .child(section_header("CONFIGURATION & PROMPT FILES"))
                     .child(setting_row("Atlas Config (settings.json)", Some("Font family, opacity %, custom themes, and keybindings"), edit_settings_btn, false))
-                    .child(setting_row("PowerShell Profile ($PROFILE)", Some("Custom prompt name, Oh-My-Posh / Starship prompt, startup script"), edit_profile_btn, false))
+                    .child(setting_row("PowerShell Profile ($PROFILE)", Some("Custom prompt name, Oh-My-Posh / Starship prompt, startup script"), edit_profile_btn, false));
+                if let Some(btn) = edit_fastfetch_btn {
+                    config_card = config_card.child(setting_row("Fastfetch Config (config.jsonc)", Some("Logo image, system specs, modules, and inline layout"), btn, false));
+                }
+                config_card
                     .child(setting_row("Atlas Data Folder", Some("Session histories, logs, and portable overrides (~/.config/atlas)"), reveal_dir_btn, false))
-                    .child(setting_row("Reload Settings", Some("Apply manual edits from settings.json immediately"), reload_settings_btn, true)),
-            )
+                    .child(setting_row("Reload Settings", Some("Apply manual edits from settings.json immediately"), reload_settings_btn, true))
+            })
             .child(
                 card()
                     .child(section_header("STARTUP & WORKSPACE"))
@@ -1290,4 +1307,144 @@ pub fn powershell_profile_path() -> std::path::PathBuf {
     } else {
         std::path::PathBuf::from("Microsoft.PowerShell_profile.ps1")
     }
+}
+
+pub fn open_fastfetch_config(path: &std::path::Path) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if !path.exists() {
+        let default_config = r#"{
+    "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+    "logo": {
+        "type": "iterm",
+        "width": 18,
+        "height": 9,
+        "padding": {
+            "top": 1,
+            "left": 2,
+            "right": 3
+        }
+    },
+    "modules": [
+        "title",
+        "separator",
+        "os",
+        "host",
+        "kernel",
+        "uptime",
+        "terminal",
+        "display",
+        "cpu",
+        "gpu",
+        "memory"
+    ]
+}
+"#;
+        let _ = std::fs::write(path, default_config);
+    }
+    open_file(path);
+}
+
+pub fn is_fastfetch_installed() -> bool {
+    // 1. Check if config directory/file already exists
+    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+        let base = std::path::PathBuf::from(home).join(".config").join("fastfetch");
+        if base.join("config.jsonc").exists() || base.join("config.json").exists() {
+            return true;
+        }
+    }
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let base = std::path::PathBuf::from(appdata).join("fastfetch");
+        if base.join("config.jsonc").exists() || base.join("config.json").exists() {
+            return true;
+        }
+    }
+
+    // 2. Check PATH environment variable
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            if dir.join("fastfetch.exe").exists() || dir.join("fastfetch").exists() {
+                return true;
+            }
+        }
+    }
+
+    // 3. Check Windows package managers (WinGet, Scoop, Chocolatey, LocalAppData)
+    #[cfg(windows)]
+    {
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            let local_p = std::path::PathBuf::from(local);
+            if local_p.join("Programs").join("fastfetch").join("fastfetch.exe").exists() {
+                return true;
+            }
+            let winget_dir = local_p.join("Microsoft").join("WinGet").join("Packages");
+            if let Ok(entries) = std::fs::read_dir(winget_dir) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.contains("fastfetch") && entry.path().join("fastfetch.exe").exists() {
+                        return true;
+                    }
+                }
+            }
+        }
+        if let Some(home) = std::env::var_os("USERPROFILE") {
+            let home_p = std::path::PathBuf::from(home);
+            if home_p.join("scoop").join("apps").join("fastfetch").join("current").join("fastfetch.exe").exists() {
+                return true;
+            }
+        }
+        if std::path::Path::new("C:\\ProgramData\\chocolatey\\bin\\fastfetch.exe").exists() {
+            return true;
+        }
+    }
+
+    // 4. Check Unix standard binary paths
+    #[cfg(not(windows))]
+    {
+        if std::path::Path::new("/usr/bin/fastfetch").exists()
+            || std::path::Path::new("/usr/local/bin/fastfetch").exists()
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+pub fn fastfetch_config_path() -> Option<std::path::PathBuf> {
+    // 1. Check ~/.config/fastfetch/config.jsonc or config.json
+    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+        let base = std::path::PathBuf::from(home).join(".config").join("fastfetch");
+        let jsonc = base.join("config.jsonc");
+        if jsonc.exists() {
+            return Some(jsonc);
+        }
+        let json = base.join("config.json");
+        if json.exists() {
+            return Some(json);
+        }
+    }
+
+    // 2. Check %APPDATA%/fastfetch/config.jsonc or config.json
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let base = std::path::PathBuf::from(appdata).join("fastfetch");
+        let jsonc = base.join("config.jsonc");
+        if jsonc.exists() {
+            return Some(jsonc);
+        }
+        let json = base.join("config.json");
+        if json.exists() {
+            return Some(json);
+        }
+    }
+
+    // 3. If config doesn't exist yet, check if fastfetch binary is installed
+    if is_fastfetch_installed() {
+        if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+            return Some(std::path::PathBuf::from(home).join(".config").join("fastfetch").join("config.jsonc"));
+        }
+    }
+
+    None
 }

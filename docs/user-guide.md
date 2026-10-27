@@ -252,6 +252,11 @@ Press `Ctrl+,` or click the gear icon (`⚙`) in the top right to open the Setti
 - **Kinetic Physics**: Damped spring deceleration glides smoothly when typing and snaps instantly across large page jumps.
 - **Breathing Alpha**: Organic breathing illumination when idle, locking to 100% solid opacity during active typing.
 
+### Configuration & Prompt Files
+- **Atlas Config (`settings.json`)**: Click **Edit settings.json** to directly edit font family, opacity %, themes, and custom keybindings.
+- **PowerShell Profile (`$PROFILE`)**: Click **Edit $PROFILE** to configure your shell prompt, Starship, or Oh-My-Posh theme.
+- **Fastfetch Config (`config.jsonc`)**: When Fastfetch is installed on your system, Settings automatically displays **Edit config.jsonc** to customize logo artwork, padding, and system specs.
+
 ---
 
 ## 10. WSL & Shell Profiles
