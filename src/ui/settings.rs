@@ -1,4 +1,6 @@
 //! Application settings UI: appearance, shortcuts, profiles, and general configuration.
+//! Designed with macOS / Apple SF design language, pixel-perfect metric geometry,
+//! and native vector controls.
 
 use std::time::Duration;
 
@@ -24,7 +26,7 @@ use crate::theme::Theme;
 use crate::updater::{self, format_bytes};
 use crate::view::{AtlasView, UpdateDownloadState};
 use super::animation::{ease_apple_snappy, BODY_IN_MS};
-use super::controls::{pill_button, stepper, toggle_pill};
+use super::controls::{pill_button, segmented_control, stepper, toggle_pill};
 
 impl AtlasView {
     pub fn sync_and_save_settings(&mut self) {
@@ -64,7 +66,7 @@ impl AtlasView {
         let sc_title = if is_dark { rgb(0xFFFFFF) } else { rgb(0x0F172A) };
         let sc_section = theme.accent;
         let sc_label = if is_dark { rgb(0xE2E8F0) } else { rgb(0x1E293B) };
-        let sc_desc = if is_dark { rgb(0x94A3B8) } else { rgb(0x475569) };
+        let sc_desc = if is_dark { rgb(0x94A3B8) } else { rgb(0x64748B) };
         let sc_back_bg = if is_dark { rgba(0xFFFFFF0F) } else { rgba(0x0000000C) };
         let sc_back_border = if is_dark { rgba(0xFFFFFF20) } else { rgba(0x00000018) };
         let sc_back_fg = if is_dark { rgb(0xE2E8F0) } else { rgb(0x1E293B) };
@@ -76,34 +78,63 @@ impl AtlasView {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(14.0))
-                .p(px(16.0))
                 .rounded(px(10.0))
                 .bg(theme.elevated_bg)
                 .border_1()
                 .border_color(theme.elevated_border)
                 .w(relative(1.0))
                 .min_w(px(0.0))
+                .overflow_hidden()
         };
-        let section = |label: &'static str| -> AnyElement {
+
+        let section_header = |label: &'static str| -> AnyElement {
             div()
+                .px(px(14.0))
+                .pt(px(14.0))
+                .pb(px(6.0))
                 .text_size(px(11.0))
                 .font_weight(FontWeight::BOLD)
                 .text_color(sc_section)
                 .child(label)
                 .into_any_element()
         };
-        let row_label = |label: &'static str| -> AnyElement {
-            div()
-                .w(px(110.0))
-                .text_size(px(12.5))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(sc_label)
-                .child(label)
-                .into_any_element()
+
+        let setting_row = |label: &'static str, desc: Option<&'static str>, control: AnyElement, is_last: bool| -> AnyElement {
+            let mut row = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .px(px(14.0))
+                .py(px(11.0))
+                .gap(px(12.0));
+            if !is_last {
+                row = row.border_b_1().border_color(theme.hairline);
+            }
+            row.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(1.5))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(sc_label)
+                            .child(label),
+                    )
+                    .children(desc.map(|d| {
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(sc_desc)
+                            .child(d)
+                    })),
+            )
+            .child(control)
+            .into_any_element()
         };
 
-        // --- Left Sidebar (150px) ---
+        // --- Left Sidebar (160px) ---
         let nav_items = [
             (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance", icons::SLIDERS),
@@ -112,7 +143,7 @@ impl AtlasView {
 
         let mut sidebar = div()
             .id(ElementId::named_usize("settings-sidebar-scroll", 0))
-            .w(px(150.0))
+            .w(px(160.0))
             .flex_shrink_0()
             .h(relative(1.0))
             .min_h(px(0.0))
@@ -129,15 +160,15 @@ impl AtlasView {
                     .items_center()
                     .gap(px(8.0))
                     .px(px(8.0))
-                    .py(px(6.0))
-                    .mb(px(10.0))
+                    .py(px(8.0))
+                    .mb(px(8.0))
                     .child(icons::icon(icons::SETTINGS).size(px(16.0)).text_color(theme.accent))
                     .child(
                         div()
-                            .text_size(px(14.0))
+                            .text_size(px(13.5))
                             .font_weight(FontWeight::BOLD)
                             .text_color(sc_title)
-                            .child("Settings"),
+                            .child("Preferences"),
                     ),
             );
 
@@ -170,7 +201,7 @@ impl AtlasView {
                     .child(icons::icon(icon).size(px(14.0)).text_color(item_fg))
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(12.5))
                             .font_weight(if is_active {
                                 FontWeight::SEMIBOLD
                             } else {
@@ -188,357 +219,586 @@ impl AtlasView {
             );
         }
 
+        // ==========================================
+        // --- Tab 1: Appearance Tab ---
+        // ==========================================
 
-        // --- Appearance Tab ---
-        let font_size_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Font size"))
-            .child(stepper(
-                110,
-                format!("{} pt", self.font_size as i32),
-                theme,
-                |view, cx| {
-                    view.adjust_font_size(view.font_size - 1.0, cx);
-                },
-                |view, cx| {
-                    view.adjust_font_size(view.font_size + 1.0, cx);
-                },
-                cx,
-            ));
+        // Color Mode (Segmented Control)
+        let mode_options = vec![
+            ("auto".to_string(), "Auto".to_string()),
+            ("dark".to_string(), "Dark".to_string()),
+            ("light".to_string(), "Light".to_string()),
+        ];
+        let color_mode_ctrl = segmented_control(
+            118,
+            mode_options,
+            &self.theme_mode,
+            theme,
+            |mode, view, cx| view.set_theme_mode(&mode, cx),
+            cx,
+        );
 
-        let line_height_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Line height"))
-            .child(stepper(
-                111,
-                format!("{:.2}", self.line_height),
-                theme,
-                |view, cx| {
-                    view.line_height =
-                        ((view.line_height - 0.05) * 100.0).round() / 100.0;
-                    view.line_height = view.line_height.max(1.0);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                |view, cx| {
-                    view.line_height =
-                        ((view.line_height + 0.05) * 100.0).round() / 100.0;
-                    view.line_height = view.line_height.min(1.8);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let corner_radius_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Corner radius"))
-            .child(stepper(
-                112,
-                format!("{} px", self.corner_radius as i32),
-                theme,
-                |view, cx| {
-                    view.corner_radius = (view.corner_radius - 1.0).max(0.0);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                |view, cx| {
-                    view.corner_radius = (view.corner_radius + 1.0).min(20.0);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let opacity_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Window opacity"))
-            .child(pill_button(
-                format!("{}%", (self.opacity * 100.0).round() as i32),
-                113,
-                self.opacity < 0.999,
-                theme,
-                |view, cx| {
-                    if view.opacity < 0.999 {
-                        view.opacity = 1.0;
-                    } else {
-                        view.opacity = 0.15;
-                    }
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let mode_row = div()
+        // Visual Theme Cards Grid
+        let mut theme_grid = div()
             .flex()
             .flex_row()
             .flex_wrap()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Color mode"))
-            .child(pill_button(
-                "Auto (System)".to_string(),
-                118,
-                self.theme_mode == "auto",
-                theme,
-                |view, cx| view.set_theme_mode("auto", cx),
-                cx,
-            ))
-            .child(pill_button(
-                "Dark".to_string(),
-                119,
-                self.theme_mode == "dark",
-                theme,
-                |view, cx| view.set_theme_mode("dark", cx),
-                cx,
-            ))
-            .child(pill_button(
-                "Warm Light".to_string(),
-                120,
-                self.theme_mode == "light",
-                theme,
-                |view, cx| view.set_theme_mode("light", cx),
-                cx,
-            ));
+            .gap(px(10.0))
+            .p(px(14.0));
 
-        let mut theme_row = div()
+        for idx in 0..self.registry.len() {
+            let is_sel = self.theme_id == idx;
+            let preset = self.registry.preset(idx);
+            let p_dark = &preset.dark;
+            let p_light = &preset.light;
+            let preview_theme = if self.theme_mode == "light" { p_light } else { p_dark };
+
+            let card_border = if is_sel {
+                theme.accent
+            } else if is_dark {
+                rgba(0xFFFFFF14)
+            } else {
+                rgba(0x00000010)
+            };
+            let card_bg = if is_sel {
+                Rgba { a: 0.12, ..theme.accent }
+            } else {
+                rgba(0x00000000)
+            };
+
+            let theme_card = div()
+                .id(ElementId::named_usize("theme-card", idx))
+                .w(px(150.0))
+                .flex()
+                .flex_col()
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(card_border)
+                .bg(card_bg)
+                .p(px(6.0))
+                .cursor_pointer()
+                .hover(move |s| s.bg(theme.card_hover))
+                .child(
+                    // Mini Window Mockup
+                    div()
+                        .h(px(52.0))
+                        .w(relative(1.0))
+                        .rounded(px(5.0))
+                        .bg(preview_theme.bg)
+                        .border_1()
+                        .border_color(preview_theme.elevated_border)
+                        .overflow_hidden()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            // Window Header
+                            div()
+                                .h(px(11.0))
+                                .px(px(4.0))
+                                .bg(preview_theme.panel_bg)
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(3.0))
+                                .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgb(0xFF5F56)))
+                                .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgb(0xFFBD2E)))
+                                .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgb(0x27C93F))),
+                        )
+                        .child(
+                            // Terminal Body Preview
+                            div()
+                                .flex_1()
+                                .p(px(4.0))
+                                .flex()
+                                .flex_col()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(2.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(8.0))
+                                                .font_weight(FontWeight::BOLD)
+                                                .text_color(preview_theme.accent)
+                                                .child("~ $"),
+                                        )
+                                        .child(
+                                            div()
+                                                .w(px(2.5))
+                                                .h(px(7.0))
+                                                .bg(preview_theme.cursor),
+                                        ),
+                                )
+                                .child(
+                                    // 4 Swatch Dots
+                                    div()
+                                        .flex()
+                                        .flex_row()
+                                        .justify_end()
+                                        .gap(px(3.0))
+                                        .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(preview_theme.accent))
+                                        .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(preview_theme.fg))
+                                        .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(preview_theme.chrome_fg)),
+                                ),
+                        ),
+                )
+                .child(
+                    // Label & Indicator
+                    div()
+                        .pt(px(6.0))
+                        .px(px(2.0))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                                .text_color(if is_sel { sc_title } else { sc_label })
+                                .child(preset.name),
+                        )
+                        .children(if is_sel {
+                            Some(icons::icon(icons::CHECK).size(px(12.0)).text_color(theme.accent))
+                        } else {
+                            None
+                        }),
+                )
+                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                    view.set_theme(idx, cx);
+                }));
+
+            theme_grid = theme_grid.child(theme_card);
+        }
+
+        // Font Family Pills
+        let fonts = [
+            "Cascadia Code",
+            "JetBrains Mono",
+            "SF Mono",
+            "Fira Code",
+            "Consolas",
+        ];
+        let mut font_pills = div()
             .flex()
             .flex_row()
             .flex_wrap()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Theme preset"));
-        for index in 0..self.registry.len() {
-            let is_sel = self.theme_id == index;
-            theme_row = theme_row.child(pill_button(
-                self.registry.preset(index).name.to_string(),
-                121 + index,
+            .gap(px(5.0));
+
+        for (idx, &fname) in fonts.iter().enumerate() {
+            let is_sel = self.font_family.eq_ignore_ascii_case(fname);
+            let s_str = fname.to_string();
+            font_pills = font_pills.child(pill_button(
+                s_str.clone(),
+                160 + idx,
                 is_sel,
                 theme,
-                move |view, cx| view.set_theme(index, cx),
+                move |view, cx| {
+                    view.font_family = s_str.clone();
+                    view.sync_and_save_settings();
+                    cx.notify();
+                },
                 cx,
             ));
         }
 
-        let theme_desc_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(div().w(px(110.0)).flex_shrink_0())
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(sc_desc)
-                    .child(self.registry.preset(self.theme_id).description),
-            );
+        let font_size_ctrl = stepper(
+            110,
+            format!("{} pt", self.font_size as i32),
+            theme,
+            |view, cx| {
+                view.adjust_font_size(view.font_size - 1.0, cx);
+            },
+            |view, cx| {
+                view.adjust_font_size(view.font_size + 1.0, cx);
+            },
+            cx,
+        );
 
-        let palette_swatch = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Active colors"))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(6.0))
-                    .items_center()
-                    .child(
-                        div()
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .rounded(px(5.0))
-                            .bg(theme.bg)
-                            .border_1()
-                            .border_color(theme.elevated_border),
-                    )
-                    .child(
-                        div()
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .rounded(px(5.0))
-                            .bg(theme.panel_bg)
-                            .border_1()
-                            .border_color(theme.elevated_border),
-                    )
-                    .child(
-                        div()
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .rounded(px(5.0))
-                            .bg(theme.elevated_bg)
-                            .border_1()
-                            .border_color(theme.elevated_border),
-                    )
-                    .child(
-                        div()
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .rounded(px(5.0))
-                            .bg(theme.accent),
-                    )
-                    .child(
-                        div()
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .rounded(px(5.0))
-                            .bg(theme.fg),
-                    )
-                    .child(
-                        div()
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .rounded(px(5.0))
-                            .bg(theme.chrome_fg),
-                    ),
-            );
+        let line_height_ctrl = stepper(
+            111,
+            format!("{:.2}", self.line_height),
+            theme,
+            |view, cx| {
+                view.line_height = ((view.line_height - 0.05) * 100.0).round() / 100.0;
+                view.line_height = view.line_height.max(1.0);
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            |view, cx| {
+                view.line_height = ((view.line_height + 0.05) * 100.0).round() / 100.0;
+                view.line_height = view.line_height.min(1.8);
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
 
-        let cursor_row = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Cursor style"))
-            .child(pill_button(
-                "Auto".to_string(),
-                130,
-                self.cursor_style.is_none(),
-                theme,
-                |view, cx| {
-                    view.cursor_style = None;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ))
-            .child(pill_button(
-                "Block".to_string(),
-                131,
-                self.cursor_style == Some(CursorShape::Block),
-                theme,
-                |view, cx| {
-                    view.cursor_style = Some(CursorShape::Block);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ))
-            .child(pill_button(
-                "Bar".to_string(),
-                132,
-                self.cursor_style == Some(CursorShape::Beam),
-                theme,
-                |view, cx| {
-                    view.cursor_style = Some(CursorShape::Beam);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ))
-            .child(pill_button(
-                "Underline".to_string(),
-                133,
-                self.cursor_style == Some(CursorShape::Underline),
-                theme,
-                |view, cx| {
-                    view.cursor_style = Some(CursorShape::Underline);
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
+        // Interactive Opacity Stepper (5% steps, 15% to 100%)
+        let opacity_ctrl = stepper(
+            113,
+            format!("{}%", (self.opacity * 100.0).round() as i32),
+            theme,
+            |view, cx| {
+                let current = (view.opacity * 20.0).round() / 20.0;
+                view.opacity = (current - 0.05).max(0.15);
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            |view, cx| {
+                let current = (view.opacity * 20.0).round() / 20.0;
+                view.opacity = (current + 0.05).min(1.0);
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
 
-        let cursor_blink_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(sc_label)
-                            .child("Cursor blinking"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(sc_desc)
-                            .child("Animate cursor breathing and blinking when idle"),
-                    ),
-            )
-            .child(toggle_pill(
-                134,
-                self.cursor_blink,
-                theme,
-                |view, cx| {
-                    view.cursor_blink = !view.cursor_blink;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
+        let corner_radius_ctrl = stepper(
+            112,
+            format!("{} px", self.corner_radius as i32),
+            theme,
+            |view, cx| {
+                view.corner_radius = (view.corner_radius - 1.0).max(0.0);
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            |view, cx| {
+                view.corner_radius = (view.corner_radius + 1.0).min(20.0);
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let cursor_options = vec![
+            (None, "Block".to_string()),
+            (Some(CursorShape::Beam), "Bar".to_string()),
+            (Some(CursorShape::Underline), "Underline".to_string()),
+            (Some(CursorShape::HollowBlock), "Hollow".to_string()),
+        ];
+        let cursor_shape_ctrl = segmented_control(
+            130,
+            cursor_options,
+            &self.cursor_style,
+            theme,
+            |shape, view, cx| {
+                view.cursor_style = shape;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let cursor_blink_ctrl = toggle_pill(
+            134,
+            self.cursor_blink,
+            theme,
+            |view, cx| {
+                view.cursor_blink = !view.cursor_blink;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
 
         let appearance_view = div()
             .flex()
             .flex_col()
             .gap(px(16.0))
             .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(sc_desc)
-                    .mb(px(4.0))
-                    .child("Color theme, typography, window geometry, and terminal caret"),
+                card()
+                    .child(section_header("COLOR THEME"))
+                    .child(setting_row("Appearance Mode", Some("System automatic or forced dark/light"), color_mode_ctrl, false))
+                    .child(theme_grid),
             )
             .child(
                 card()
-                    .child(section("THEME & COLOR SCHEME"))
-                    .child(mode_row)
-                    .child(theme_row)
-                    .child(theme_desc_row)
-                    .child(palette_swatch),
+                    .child(section_header("TYPOGRAPHY"))
+                    .child(setting_row("Font Family", Some("Monospace terminal typeface"), font_pills, false))
+                    .child(setting_row("Font Size", Some("Glyph rendering dimension"), font_size_ctrl, false))
+                    .child(setting_row("Line Height", Some("Vertical cell proportion multiplier"), line_height_ctrl, true)),
             )
             .child(
                 card()
-                    .child(section("FONT & TYPOGRAPHY"))
-                    .child(font_size_row)
-                    .child(line_height_row),
+                    .child(section_header("WINDOW & GLASS"))
+                    .child(setting_row("Window Opacity", Some("Glass translucency factor (15% to 100%)"), opacity_ctrl, false))
+                    .child(setting_row("Corner Radius", Some("Curvature of window container corners"), corner_radius_ctrl, true)),
             )
             .child(
                 card()
-                    .child(section("WINDOW & BACKDROP"))
-                    .child(corner_radius_row)
-                    .child(opacity_row),
-            )
-            .child(
-                card()
-                    .child(section("TERMINAL CARET"))
-                    .child(cursor_row)
-                    .child(cursor_blink_row),
+                    .child(section_header("TERMINAL CARET"))
+                    .child(setting_row("Caret Shape", Some("Visual style of input focus cursor"), cursor_shape_ctrl, false))
+                    .child(setting_row("Breathing Animation", Some("Smooth cursor pulse when idle"), cursor_blink_ctrl, true)),
             );
 
-        // --- Shortcuts Tab ---
+        // ==========================================
+        // --- Tab 2: General Tab ---
+        // ==========================================
+
+        // Visual Shell Selector Cards
+        let shell_list = [
+            ("PowerShell", "PowerShell", "Windows PowerShell & Core", icons::POWERSHELL),
+            ("WSL", "WSL (Linux)", "Ubuntu / Default Linux Distro", icons::UBUNTU),
+            ("OpenCode", "OpenCode AI", "Autonomous Agent CLI", icons::OPENCODE_MARK),
+            ("Command Prompt", "CMD", "Classic Windows Command Prompt", icons::CMD),
+            ("Git Bash", "Git Bash", "MinGW Git for Windows", icons::GIT),
+        ];
+
+        let mut shell_cards = div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap(px(8.0))
+            .p(px(14.0));
+
+        for (idx, &(s_id, s_title, s_desc, s_icon)) in shell_list.iter().enumerate() {
+            let is_sel = self.app_settings.default_shell.eq_ignore_ascii_case(s_id);
+            let s_str = s_id.to_string();
+            let card_border = if is_sel {
+                theme.accent
+            } else if is_dark {
+                rgba(0xFFFFFF14)
+            } else {
+                rgba(0x00000010)
+            };
+            let card_bg = if is_sel {
+                Rgba { a: 0.12, ..theme.accent }
+            } else {
+                rgba(0x00000000)
+            };
+
+            let card_el = div()
+                .id(ElementId::named_usize("shell-card", idx))
+                .w(px(145.0))
+                .flex()
+                .flex_col()
+                .gap(px(4.0))
+                .p(px(10.0))
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(card_border)
+                .bg(card_bg)
+                .cursor_pointer()
+                .hover(move |s| s.bg(theme.card_hover))
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .child(icons::icon(s_icon).size(px(16.0)).text_color(if is_sel { theme.accent } else { sc_label }))
+                        .children(if is_sel {
+                            Some(icons::icon(icons::CHECK).size(px(12.0)).text_color(theme.accent))
+                        } else {
+                            None
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
+                        .text_color(if is_sel { sc_title } else { sc_label })
+                        .child(s_title),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(sc_desc)
+                        .child(s_desc),
+                )
+                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                    view.app_settings.default_shell = s_str.clone();
+                    view.sync_and_save_settings();
+                    cx.notify();
+                }));
+
+            shell_cards = shell_cards.child(card_el);
+        }
+
+        let startup_options = vec![
+            ("restore_session".to_string(), "Restore Session".to_string()),
+            ("new_tab".to_string(), "New Tab".to_string()),
+        ];
+        let startup_ctrl = segmented_control(
+            330,
+            startup_options,
+            &self.app_settings.startup_mode,
+            theme,
+            |mode, view, cx| {
+                view.app_settings.startup_mode = mode;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let start_dir_options = vec![
+            ("home".to_string(), "Home (~)".to_string()),
+            ("current".to_string(), "Current Working Dir".to_string()),
+        ];
+        let start_dir_ctrl = segmented_control(
+            310,
+            start_dir_options,
+            &self.app_settings.start_directory,
+            theme,
+            |dir, view, cx| {
+                view.app_settings.start_directory = dir;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let scroll_options = vec![
+            (5000, "5,000".to_string()),
+            (10000, "10,000".to_string()),
+            (20000, "20,000".to_string()),
+            (50000, "50,000".to_string()),
+        ];
+        let scroll_ctrl = segmented_control(
+            320,
+            scroll_options,
+            &self.app_settings.scrollback_lines,
+            theme,
+            |lines, view, cx| {
+                view.app_settings.scrollback_lines = lines;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let copy_on_select_ctrl = toggle_pill(
+            341,
+            self.app_settings.copy_on_select,
+            theme,
+            |view, cx| {
+                view.app_settings.copy_on_select = !view.app_settings.copy_on_select;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let confirm_close_ctrl = toggle_pill(
+            340,
+            self.app_settings.confirm_close_process,
+            theme,
+            |view, cx| {
+                view.app_settings.confirm_close_process = !view.app_settings.confirm_close_process;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let auto_check_ctrl = toggle_pill(
+            350,
+            self.updater_settings.auto_check_updates,
+            theme,
+            |view, cx| {
+                view.updater_settings.auto_check_updates = !view.updater_settings.auto_check_updates;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let interval_options = vec![
+            (15, "15m".to_string()),
+            (60, "1h".to_string()),
+            (240, "4h".to_string()),
+            (720, "12h".to_string()),
+            (1440, "24h".to_string()),
+        ];
+        let interval_ctrl = segmented_control(
+            360,
+            interval_options,
+            &self.updater_settings.update_check_interval_mins,
+            theme,
+            |mins, view, cx| {
+                view.updater_settings.update_check_interval_mins = mins;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let check_updates_btn = pill_button(
+            if self.is_checking_updates { "Checking…".to_string() } else { "Check for Updates".to_string() },
+            370,
+            false,
+            theme,
+            |view, cx| {
+                view.check_updates_manual(cx);
+            },
+            cx,
+        );
+
+        let reset_defaults_btn = pill_button(
+            "Reset All to Defaults".to_string(),
+            380,
+            false,
+            theme,
+            |view, cx| {
+                view.app_settings = crate::config::AppSettingsFile::default();
+                view.theme_mode = view.app_settings.theme_mode.clone();
+                view.font_family = view.app_settings.font_family.clone();
+                view.font_size = view.app_settings.font_size;
+                view.line_height = view.app_settings.line_height;
+                view.corner_radius = view.app_settings.corner_radius;
+                view.opacity = view.app_settings.opacity;
+                view.cursor_style = None;
+                view.cursor_blink = view.app_settings.cursor_blink;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let general_view = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .child(
+                card()
+                    .child(section_header("DEFAULT SHELL"))
+                    .child(shell_cards),
+            )
+            .child(
+                card()
+                    .child(section_header("STARTUP & WORKSPACE"))
+                    .child(setting_row("Startup Mode", Some("Restore previous workspace state or open clean tab"), startup_ctrl, false))
+                    .child(setting_row("Initial Directory", Some("Starting working location for new shells"), start_dir_ctrl, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("TERMINAL BEHAVIOR"))
+                    .child(setting_row("Scrollback History", Some("Maximum stored buffer lines per pane"), scroll_ctrl, false))
+                    .child(setting_row("Copy on Select", Some("Automatically copy selected terminal text to clipboard"), copy_on_select_ctrl, false))
+                    .child(setting_row("Confirm Process Exit", Some("Warn before closing tabs running foreground processes"), confirm_close_ctrl, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("SOFTWARE UPDATES"))
+                    .child(setting_row("Automatic Checks", Some("Background release inspection on focus"), auto_check_ctrl, false))
+                    .child(setting_row("Check Frequency", Some("Interval between update scans"), interval_ctrl, false))
+                    .child(setting_row("Manual Check", Some("Poll GitHub release channels immediately"), check_updates_btn, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("RESET CONFIGURATION"))
+                    .child(setting_row("Factory Settings", Some("Revert all appearance, shortcuts, and behavior options"), reset_defaults_btn, true)),
+            );
+
+        // ==========================================
+        // --- Tab 3: Shortcuts Tab ---
+        // ==========================================
+
         let def_map = default_shortcuts();
 
         let render_shortcut_row = |idx: usize, action: &'static str| -> AnyElement {
@@ -565,15 +825,18 @@ impl AtlasView {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .py(px(4.0));
+                .px(px(14.0))
+                .py(px(9.0))
+                .border_b_1()
+                .border_color(theme.hairline);
 
             let mut left_col = div()
                 .flex()
                 .flex_col()
-                .gap(px(2.0))
+                .gap(px(1.5))
                 .child(
                     div()
-                        .text_size(px(13.0))
+                        .text_size(px(12.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(sc_label)
                         .child(action_display_name(action)),
@@ -582,7 +845,7 @@ impl AtlasView {
             if let Some(other) = conflict {
                 left_col = left_col.child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(px(10.5))
                         .text_color(rgb(0xE6A700))
                         .child(format!("Conflict with {other}")),
                 );
@@ -590,185 +853,118 @@ impl AtlasView {
             row = row.child(left_col);
 
             let keycap_text = if is_recording {
-                "Press key combo…".to_string()
+                "Press keys… (Esc to cancel)".to_string()
             } else {
                 pretty_shortcut(&current_chord)
             };
 
             let keycap_bg = if is_recording {
-                Rgba {
-                    a: 0.22,
-                    ..theme.accent
-                }
+                Rgba { a: 0.22, ..theme.accent }
+            } else if is_custom {
+                Rgba { a: 0.12, ..theme.accent }
             } else if is_dark {
                 rgba(0xFFFFFF12)
             } else {
-                rgba(0x0000000A)
+                rgba(0x0000000C)
             };
+
             let keycap_border = if is_recording {
                 theme.accent
+            } else if is_custom {
+                Rgba { a: 0.35, ..theme.accent }
             } else if is_dark {
-                rgba(0xFFFFFF22)
+                rgba(0xFFFFFF1E)
             } else {
-                rgba(0x00000018)
+                rgba(0x00000014)
             };
+
             let keycap_fg = if is_recording {
                 theme.accent
-            } else if is_dark {
-                rgb(0xF1F5F9)
+            } else if is_custom {
+                theme.accent
             } else {
-                rgb(0x0F172A)
+                sc_label
             };
 
-            let mut right_col = div().flex().flex_row().items_center().gap(px(6.0));
-
             let act_clone = action_str.clone();
-            let keycap_btn = div()
-                .id(ElementId::named_usize("shortcut-keycap", idx))
-                .h(px(26.0))
-                .px(px(10.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(5.0))
-                .bg(keycap_bg)
-                .border_1()
-                .border_color(keycap_border)
-                .text_size(px(12.0))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(keycap_fg)
-                .hover(move |s| s.opacity(0.85))
-                .child(keycap_text)
-                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                    view.recording_shortcut = Some(act_clone.clone());
-                    cx.notify();
-                }));
-            right_col = right_col.child(keycap_btn);
 
-            if is_custom {
-                let reset_btn = div()
-                    .id(ElementId::named_usize("shortcut-reset", idx))
-                    .h(px(26.0))
+            let mut right_col = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0));
+
+            if is_custom && !is_recording {
+                right_col = right_col.child(
+                    div()
+                        .id(ElementId::named_usize("reset-shortcut", idx))
+                        .text_size(px(11.0))
+                        .text_color(sc_desc)
+                        .cursor_pointer()
+                        .hover(move |s| s.text_color(sc_label))
+                        .child("Reset")
+                        .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                            view.app_settings.shortcuts.insert(action_str.clone(), def_str.clone());
+                            view.sync_and_save_settings();
+                            cx.notify();
+                        })),
+                );
+            }
+
+            right_col = right_col.child(
+                div()
+                    .id(ElementId::named_usize("keycap-btn", idx))
+                    .h(px(24.0))
                     .px(px(8.0))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(px(5.0))
-                    .text_size(px(11.0))
-                    .text_color(sc_desc)
-                    .hover(move |s| {
-                        s.bg(theme.card_hover).text_color(sc_label)
-                    })
-                    .child("Reset")
+                    .bg(keycap_bg)
+                    .border_1()
+                    .border_color(keycap_border)
+                    .text_size(px(11.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(keycap_fg)
+                    .cursor_pointer()
+                    .hover(move |s| s.opacity(0.85))
+                    .child(keycap_text)
                     .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                        view.app_settings
-                            .shortcuts
-                            .insert(action_str.clone(), def_str.clone());
-                        view.sync_and_save_settings();
+                        view.recording_shortcut = Some(act_clone.clone());
                         cx.notify();
-                    }));
-                right_col = right_col.child(reset_btn);
-            }
+                    })),
+            );
 
             row.child(right_col).into_any_element()
         };
 
-        let render_builtin_row = |idx: usize, label: &'static str, keycap_text: &'static str| -> AnyElement {
-            let keycap_bg = if is_dark {
-                rgba(0xFFFFFF0F)
-            } else {
-                rgba(0x00000008)
-            };
-            let keycap_border = if is_dark {
-                rgba(0xFFFFFF18)
-            } else {
-                rgba(0x00000012)
-            };
-            let keycap_fg = if is_dark {
-                rgb(0x94A3B8)
-            } else {
-                rgb(0x64748B)
-            };
-
-            div()
-                .id(ElementId::named_usize("shortcut-builtin-row", idx))
-                .flex()
-                .flex_row()
-                .items_center()
-                .justify_between()
-                .py(px(4.0))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(2.0))
-                        .child(
-                            div()
-                                .text_size(px(13.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(sc_label)
-                                .child(label),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.5))
-                                .text_color(sc_desc)
-                                .child("Built-in native shortcut"),
-                        ),
-                )
-                .child(
-                    div()
-                        .h(px(26.0))
-                        .px(px(10.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(5.0))
-                        .bg(keycap_bg)
-                        .border_1()
-                        .border_color(keycap_border)
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(keycap_fg)
-                        .child(keycap_text),
-                )
-                .into_any_element()
-        };
-
-        // 1. Tabs & Navigation
         let tab_window_actions = [
             ACTION_NEW_TAB,
             ACTION_CLOSE_TAB,
             ACTION_NEXT_TAB,
             ACTION_PREV_TAB,
-            ACTION_PALETTE,
             ACTION_OPEN_SETTINGS,
+            ACTION_PALETTE,
             ACTION_FULLSCREEN,
             ACTION_TOGGLE_THEME,
         ];
-        let mut tab_window_card = card().child(section("TABS & NAVIGATION"));
+        let mut tab_window_card = card().child(section_header("TABS & WINDOW"));
         for (i, &act) in tab_window_actions.iter().enumerate() {
-            tab_window_card = tab_window_card.child(render_shortcut_row(i, act));
+            tab_window_card = tab_window_card.child(render_shortcut_row(100 + i, act));
         }
-        tab_window_card = tab_window_card
-            .child(render_builtin_row(10, "Jump to Tab 1 – 8", "Ctrl + 1 … 8"))
-            .child(render_builtin_row(11, "Jump to Last Tab", "Ctrl + 9"))
-            .child(render_builtin_row(12, "Cycle Tabs (Alternative)", "Ctrl + PageUp / PageDn"));
 
-        // 2. Splits & Panes
-        let split_pane_actions = [
+        let split_actions = [
             ACTION_SPLIT_HORIZONTAL,
             ACTION_SPLIT_VERTICAL,
             ACTION_FOCUS_NEXT_PANE,
             ACTION_FOCUS_PREV_PANE,
             ACTION_TOGGLE_MAXIMIZE,
         ];
-        let mut split_pane_card = card().child(section("SPLITS & PANES"));
-        for (i, &act) in split_pane_actions.iter().enumerate() {
-            split_pane_card = split_pane_card.child(render_shortcut_row(100 + i, act));
+        let mut split_pane_card = card().child(section_header("SPLIT PANES"));
+        for (i, &act) in split_actions.iter().enumerate() {
+            split_pane_card = split_pane_card.child(render_shortcut_row(200 + i, act));
         }
 
-        // 3. Scrolling & Buffer
         let scroll_actions = [
             ACTION_SCROLL_PAGE_UP,
             ACTION_SCROLL_PAGE_DOWN,
@@ -776,46 +972,31 @@ impl AtlasView {
             ACTION_SCROLL_TO_BOTTOM,
             ACTION_CLEAR_SCROLLBACK,
         ];
-        let mut scroll_card = card().child(section("SCROLLING & BUFFER"));
+        let mut scroll_card = card().child(section_header("SCROLLING & BUFFER"));
         for (i, &act) in scroll_actions.iter().enumerate() {
-            scroll_card = scroll_card.child(render_shortcut_row(200 + i, act));
+            scroll_card = scroll_card.child(render_shortcut_row(300 + i, act));
         }
-        scroll_card = scroll_card.child(render_builtin_row(210, "Scroll Viewport 1 Line", "Ctrl + Shift + Up / Down"));
 
-        // 4. Text & Clipboard
         let text_actions = [
             ACTION_COPY,
             ACTION_PASTE,
             ACTION_SELECT_ALL,
         ];
-        let mut text_card = card().child(section("TEXT & CLIPBOARD"));
+        let mut text_card = card().child(section_header("TEXT & CLIPBOARD"));
         for (i, &act) in text_actions.iter().enumerate() {
-            text_card = text_card.child(render_shortcut_row(300 + i, act));
+            text_card = text_card.child(render_shortcut_row(400 + i, act));
         }
-        text_card = text_card
-            .child(render_builtin_row(310, "Smart Copy Selection", "Ctrl + C (when selected)"))
-            .child(render_builtin_row(311, "Deselect Text / Dismiss", "Esc"));
 
-        // 5. Font Size & Zoom
         let zoom_actions = [
             ACTION_ZOOM_IN,
             ACTION_ZOOM_OUT,
             ACTION_ZOOM_RESET,
-        ];
-        let mut zoom_card = card().child(section("FONT SIZE & ZOOM"));
-        for (i, &act) in zoom_actions.iter().enumerate() {
-            zoom_card = zoom_card.child(render_shortcut_row(400 + i, act));
-        }
-
-        // 6. Hyperlinks & Browser
-        let link_actions = [
             ACTION_OPEN_URL_PICKER,
         ];
-        let mut link_card = card().child(section("HYPERLINKS & BROWSER"));
-        for (i, &act) in link_actions.iter().enumerate() {
-            link_card = link_card.child(render_shortcut_row(500 + i, act));
+        let mut zoom_card = card().child(section_header("VIEWPORT & ZOOM"));
+        for (i, &act) in zoom_actions.iter().enumerate() {
+            zoom_card = zoom_card.child(render_shortcut_row(500 + i, act));
         }
-        link_card = link_card.child(render_builtin_row(510, "Open Link in Browser", "Ctrl + Click (on link)"));
 
         let shortcuts_view = div()
             .flex()
@@ -830,12 +1011,12 @@ impl AtlasView {
                     .mb(px(4.0))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(px(11.5))
                             .text_color(sc_desc)
-                            .child("Click any key binding to record a new shortcut. Press Esc to cancel."),
+                            .child("Click any key binding to record a new key combination. Press Esc to cancel."),
                     )
                     .child(pill_button(
-                        "Reset All to Defaults".to_string(),
+                        "Reset All Shortcuts".to_string(),
                         299,
                         false,
                         theme,
@@ -851,696 +1032,11 @@ impl AtlasView {
             .child(split_pane_card)
             .child(scroll_card)
             .child(text_card)
-            .child(zoom_card)
-            .child(link_card);
+            .child(zoom_card);
 
-        // --- General Tab ---
-        let shells = ["PowerShell", "WSL", "OpenCode", "Command Prompt", "Git Bash"];
-        let mut default_shell_row = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Default shell"));
-        for (idx, &shell_name) in shells.iter().enumerate() {
-            let is_sel = self.app_settings.default_shell.eq_ignore_ascii_case(shell_name);
-            let s_str = shell_name.to_string();
-            default_shell_row = default_shell_row.child(pill_button(
-                s_str.clone(),
-                300 + idx,
-                is_sel,
-                theme,
-                move |view, cx| {
-                    view.app_settings.default_shell = s_str.clone();
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-        }
-
-        let shell_desc_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(div().w(px(110.0)).flex_shrink_0())
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(sc_desc)
-                    .child(if self.app_settings.default_shell.eq_ignore_ascii_case("opencode") {
-                        "Launches the OpenCode AI agent CLI in the tab workspace"
-                    } else if self.app_settings.default_shell.eq_ignore_ascii_case("wsl") {
-                        "Launches the default Linux distribution via Windows Subsystem for Linux"
-                    } else {
-                        "Default shell profile spawned when opening new tabs and panes"
-                    }),
-            );
-
-        let start_dirs = [("home", "User home (~)"), ("current", "Current directory")];
-        let mut start_dir_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Start directory"));
-        for (idx, &(dir_key, dir_label)) in start_dirs.iter().enumerate() {
-            let is_sel = self.app_settings.start_directory == dir_key;
-            let k_str = dir_key.to_string();
-            start_dir_row = start_dir_row.child(pill_button(
-                dir_label.to_string(),
-                310 + idx,
-                is_sel,
-                theme,
-                move |view, cx| {
-                    view.app_settings.start_directory = k_str.clone();
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-        }
-
-        let scroll_opts = [
-            (5000, "5,000"),
-            (10000, "10,000"),
-            (20000, "20,000"),
-            (50000, "50,000"),
-        ];
-        let mut scroll_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Scrollback"));
-        for (idx, &(lines, lbl)) in scroll_opts.iter().enumerate() {
-            let is_sel = self.app_settings.scrollback_lines == lines;
-            scroll_row = scroll_row.child(pill_button(
-                lbl.to_string(),
-                320 + idx,
-                is_sel,
-                theme,
-                move |view, cx| {
-                    view.app_settings.scrollback_lines = lines;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-        }
-
-        let startup_opts = [
-            ("restore_session", "Restore last session"),
-            ("new_tab", "Open new tab"),
-        ];
-        let mut startup_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Startup mode"));
-        for (idx, &(mode_key, mode_lbl)) in startup_opts.iter().enumerate() {
-            let is_sel = self.app_settings.startup_mode == mode_key;
-            let m_str = mode_key.to_string();
-            startup_row = startup_row.child(pill_button(
-                mode_lbl.to_string(),
-                330 + idx,
-                is_sel,
-                theme,
-                move |view, cx| {
-                    view.app_settings.startup_mode = m_str.clone();
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-        }
-
-        let confirm_close_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(sc_label)
-                            .child("Confirm before closing active process"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(sc_desc)
-                            .child("Ask before closing tabs with running commands"),
-                    ),
-            )
-            .child(toggle_pill(
-                340,
-                self.app_settings.confirm_close_process,
-                theme,
-                |view, cx| {
-                    view.app_settings.confirm_close_process =
-                        !view.app_settings.confirm_close_process;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let copy_on_select_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(sc_label)
-                            .child("Copy on select"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(sc_desc)
-                            .child("Automatically copy selected terminal text to clipboard"),
-                    ),
-            )
-            .child(toggle_pill(
-                341,
-                self.app_settings.copy_on_select,
-                theme,
-                |view, cx| {
-                    view.app_settings.copy_on_select = !view.app_settings.copy_on_select;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let is_auto_check = self.updater_settings.auto_check_updates;
-        let auto_check_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(sc_label)
-                            .child("Check for updates automatically"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(sc_desc)
-                            .child("Background check every interval and on focus; silent when offline"),
-                    ),
-            )
-            .child(toggle_pill(
-                350,
-                is_auto_check,
-                theme,
-                |view, cx| {
-                    view.updater_settings.auto_check_updates =
-                        !view.updater_settings.auto_check_updates;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let mut interval_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .child(row_label("Interval"));
-        for (idx, &(mins, label)) in updater::INTERVAL_OPTIONS.iter().enumerate() {
-            let is_sel = self.updater_settings.update_check_interval_mins == mins;
-            interval_row = interval_row.child(pill_button(
-                label.to_string(),
-                360 + idx,
-                is_sel,
-                theme,
-                move |view, cx| {
-                    view.updater_settings.update_check_interval_mins = mins;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-        }
-
-        let last_checked_text = self
-            .updater_settings
-            .last_check_time
-            .map(updater::format_time_ago)
-            .unwrap_or_else(|| "Never".to_string());
-
-        let is_checking = self.is_checking_updates;
-        let status_line = if is_checking {
-            "Checking for updates…".to_string()
-        } else if let Some(ref msg) = self.manual_status_message {
-            format!("{msg} · Last checked: {last_checked_text}")
-        } else {
-            format!("Last checked: {last_checked_text}")
-        };
-
-        let check_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .pt(px(2.0))
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(sc_label)
-                    .child(status_line),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(6.0))
-                    .children(if let Some(ref update) = self.available_update {
-                        if matches!(self.update_download_state, UpdateDownloadState::Idle) {
-                            let ver = update.version.clone();
-                            Some(pill_button(
-                                format!("Download v{ver}"),
-                                369,
-                                true,
-                                theme,
-                                |view, cx| {
-                                    view.start_download_update(cx);
-                                },
-                                cx,
-                            ))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    })
-                    .child(pill_button(
-                        if is_checking {
-                            "Checking…".to_string()
-                        } else {
-                            "Check now".to_string()
-                        },
-                        370,
-                        false,
-                        theme,
-                        |view, cx| {
-                            view.check_updates_manual(cx);
-                        },
-                        cx,
-                    )),
-            );
-
-        let update_status_card = match &self.update_download_state {
-            UpdateDownloadState::Downloading {
-                version,
-                received_bytes,
-                total_bytes,
-                percent,
-            } => {
-                let pct = percent.clamp(0.0, 1.0);
-                let pct_int = (pct * 100.0) as u32;
-                let detail = if *total_bytes > 0 {
-                    format!(
-                        "{} / {} ({}%)",
-                        format_bytes(*received_bytes),
-                        format_bytes(*total_bytes),
-                        pct_int
-                    )
-                } else {
-                    format!("{} ({}%)", format_bytes(*received_bytes), pct_int)
-                };
-                Some(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(6.0))
-                        .p(px(8.0))
-                        .rounded(px(6.0))
-                        .bg(theme.panel_bg)
-                        .border_1()
-                        .border_color(theme.hairline)
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .justify_between()
-                                .child(
-                                    div()
-                                        .text_size(px(12.0))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(sc_label)
-                                        .child(format!("Downloading v{version}…")),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.0))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(theme.accent)
-                                        .child(detail),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .w_full()
-                                .h(px(5.0))
-                                .rounded(px(2.5))
-                                .bg(theme.elevated_bg)
-                                .overflow_hidden()
-                                .child(
-                                    div()
-                                        .h_full()
-                                        .w(px((200.0 * pct).max(6.0)))
-                                        .rounded(px(2.5))
-                                        .bg(theme.accent),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .justify_end()
-                                .child(pill_button(
-                                    "Cancel".to_string(),
-                                    371,
-                                    false,
-                                    theme,
-                                    |view, cx| {
-                                        view.cancel_download_update(cx);
-                                    },
-                                    cx,
-                                )),
-                        ),
-                )
-            }
-            UpdateDownloadState::ReadyToRestart { version, .. } => {
-                let ver = version.clone();
-                Some(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .p(px(8.0))
-                        .rounded(px(6.0))
-                        .bg(Rgba {
-                            a: 0.12,
-                            ..theme.accent
-                        })
-                        .border_1()
-                        .border_color(Rgba {
-                            a: 0.25,
-                            ..theme.accent
-                        })
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(sc_label)
-                                .child(format!("v{ver} is verified and ready to apply!")),
-                        )
-                        .child(pill_button(
-                            "Restart to Apply".to_string(),
-                            372,
-                            true,
-                            theme,
-                            |view, cx| {
-                                view.apply_update_and_restart(cx);
-                            },
-                            cx,
-                        )),
-                )
-            }
-            UpdateDownloadState::Failed { error, .. } => {
-                let err = error.clone();
-                Some(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .p(px(8.0))
-                        .rounded(px(6.0))
-                        .bg(Rgba {
-                            a: 0.12,
-                            ..rgb(0xE05252)
-                        })
-                        .border_1()
-                        .border_color(Rgba {
-                            a: 0.25,
-                            ..rgb(0xE05252)
-                        })
-                        .child(
-                            div()
-                                .text_size(px(11.5))
-                                .text_color(rgb(0xE05252))
-                                .child(format!("Update error: {err}")),
-                        )
-                        .child(pill_button(
-                            "Retry".to_string(),
-                            373,
-                            false,
-                            theme,
-                            |view, cx| {
-                                if view.available_update.as_ref().and_then(|u| u.installer_url.as_ref()).is_none() {
-                                    view.check_updates_manual(cx);
-                                } else {
-                                    view.start_download_update(cx);
-                                }
-                            },
-                            cx,
-                        )),
-                )
-            }
-            _ => None,
-        };
-
-        let link_hot = theme.chrome_fg_active;
-        let pkg_version = env!("CARGO_PKG_VERSION");
-        let about = card()
-            .child(section("ABOUT"))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(5.0))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(8.0))
-                            .child(
-                                icons::icon(icons::ATLAS_MARK)
-                                    .size(px(18.0))
-                                    .text_color(theme.accent),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(13.0))
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(sc_title)
-                                    .child(format!("Atlas Terminal {pkg_version}")),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.5))
-                            .text_color(sc_desc)
-                            .child("Native GPUI renderer · alacritty_terminal · no webview, no HTML"),
-                    )
-                    .child(
-                        div()
-                            .id(ElementId::named_usize("settings-link", 0))
-                            .text_size(px(11.5))
-                            .text_color(theme.accent)
-                            .hover(move |style| style.text_color(link_hot))
-                            .child("github.com/akrram0/atlas-terminal")
-                            .on_click(cx.listener(|_view, _: &ClickEvent, _window, cx| {
-                                cx.open_url("https://github.com/akrram0/atlas-terminal");
-                            })),
-                    ),
-            );
-
-        let config_file = crate::user_data_dir().join("settings.json");
-        let config_dir = crate::user_data_dir();
-
-        let raw_config_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(sc_label)
-                            .child("settings.json (User Configuration)"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(sc_desc)
-                            .child("Inspect or edit raw JSON settings directly in your preferred editor"),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(px(6.0))
-                    .child(pill_button(
-                        "Open File".to_string(),
-                        380,
-                        false,
-                        theme,
-                        move |_view, _cx| {
-                            let path_str = config_file.to_string_lossy().to_string();
-                            let _ = std::process::Command::new("cmd")
-                                .args(["/c", "start", "", &path_str])
-                                .spawn();
-                        },
-                        cx,
-                    ))
-                    .child(pill_button(
-                        "Open Folder".to_string(),
-                        381,
-                        false,
-                        theme,
-                        move |_view, _cx| {
-                            let _ = std::process::Command::new("explorer")
-                                .arg(&config_dir)
-                                .spawn();
-                        },
-                        cx,
-                    )),
-            );
-
-        let reset_defaults_row = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.0))
-                    .child(
-                        div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(sc_label)
-                            .child("Restore default configuration"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(sc_desc)
-                            .child("Reset theme, shortcuts, fonts, and window styling to defaults"),
-                    ),
-            )
-            .child(pill_button(
-                "Reset All Settings".to_string(),
-                382,
-                false,
-                theme,
-                |view, cx| {
-                    view.app_settings = crate::config::AppSettingsFile::default();
-                    view.theme_mode = view.app_settings.theme_mode.clone();
-                    view.font_family = view.app_settings.font_family.clone();
-                    view.font_size = view.app_settings.font_size;
-                    for tab in &mut view.tabs {
-                        for pane in &mut tab.panes {
-                            pane.cursor_pos = None;
-                        }
-                    }
-                    view.line_height = view.app_settings.line_height;
-                    view.corner_radius = view.app_settings.corner_radius;
-                    view.opacity = view.app_settings.opacity;
-                    view.cursor_style = None;
-                    view.cursor_blink = view.app_settings.cursor_blink;
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-
-        let general_view = div()
-            .flex()
-            .flex_col()
-            .gap(px(16.0))
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .text_color(sc_desc)
-                    .mb(px(4.0))
-                    .child("Shell profiles, session startup, and application updates"),
-            )
-            .child(
-                card()
-                    .child(section("SHELL & ENVIRONMENT"))
-                    .child(default_shell_row)
-                    .child(shell_desc_row)
-                    .child(start_dir_row)
-                    .child(scroll_row),
-            )
-            .child(
-                card()
-                    .child(section("USER FREEDOM & CONFIG"))
-                    .child(raw_config_row)
-                    .child(reset_defaults_row),
-            )
-            .child(
-                card()
-                    .child(section("SESSION & BEHAVIOR"))
-                    .child(startup_row)
-                    .child(confirm_close_row)
-                    .child(copy_on_select_row),
-            )
-            .child(
-                card()
-                    .child(section("UPDATES"))
-                    .child(auto_check_row)
-                    .child(interval_row)
-                    .children(update_status_card)
-                    .child(check_row),
-            )
-            .child(about);
+        // ==========================================
+        // --- Body / Content Framing ---
+        // ==========================================
 
         let content_body = div()
             .flex()
@@ -1562,15 +1058,15 @@ impl AtlasView {
             .flex_row()
             .items_center()
             .justify_between()
-            .mb(px(18.0))
+            .mb(px(16.0))
             .child(
                 div()
                     .text_size(px(18.0))
                     .font_weight(FontWeight::BOLD)
                     .text_color(sc_title)
                     .child(match self.settings_tab {
-                        SettingsTab::General => "General",
-                        SettingsTab::Appearance => "Appearance",
+                        SettingsTab::General => "General Preferences",
+                        SettingsTab::Appearance => "Appearance & Themes",
                         SettingsTab::Shortcuts => "Keyboard Shortcuts",
                     }),
             )
@@ -1617,7 +1113,7 @@ impl AtlasView {
             .child(
                 div()
                     .w(relative(1.0))
-                    .max_w(px(680.0))
+                    .max_w(px(700.0))
                     .min_w(px(0.0))
                     .child(content_header)
                     .child(content_body),

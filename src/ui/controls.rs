@@ -248,3 +248,78 @@ pub fn pill_button(
 
     button.into_any_element()
 }
+
+/// Modern Apple/macOS-style segmented control.
+pub fn segmented_control<T: Clone + PartialEq + 'static>(
+    id_base: usize,
+    options: Vec<(T, String)>,
+    selected: &T,
+    theme: &Theme,
+    on_change: impl Fn(T, &mut AtlasView, &mut Context<AtlasView>) + 'static + Copy,
+    cx: &mut Context<AtlasView>,
+) -> AnyElement {
+    let dark = is_dark(theme);
+    let container_bg = if dark { rgba(0xFFFFFF0F) } else { rgba(0x0000000A) };
+    let container_border = if dark { rgba(0xFFFFFF14) } else { rgba(0x00000012) };
+
+    let mut container = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .p(px(2.5))
+        .gap(px(2.0))
+        .rounded(px(7.0))
+        .bg(container_bg)
+        .border_1()
+        .border_color(container_border);
+
+    for (idx, (val, label)) in options.into_iter().enumerate() {
+        let is_sel = selected == &val;
+        let item_val = val.clone();
+        let sel_bg = if is_sel {
+            if dark { rgba(0xFFFFFF26) } else { rgb(0xFFFFFF) }
+        } else {
+            rgba(0x00000000)
+        };
+        let sel_border = if is_sel {
+            if dark { rgba(0xFFFFFF20) } else { rgba(0x00000014) }
+        } else {
+            rgba(0x00000000)
+        };
+        let sel_fg = if is_sel {
+            if dark { rgb(0xFFFFFF) } else { rgb(0x0F172A) }
+        } else {
+            if dark { rgb(0x94A3B8) } else { rgb(0x64748B) }
+        };
+        let hover_bg = if !is_sel {
+            if dark { rgba(0xFFFFFF10) } else { rgba(0x00000008) }
+        } else {
+            sel_bg
+        };
+
+        let item = div()
+            .id(ElementId::named_usize("segmented-item", id_base + idx))
+            .h(px(24.0))
+            .px(px(10.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(5.0))
+            .bg(sel_bg)
+            .border_1()
+            .border_color(sel_border)
+            .text_size(px(12.0))
+            .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+            .text_color(sel_fg)
+            .cursor_pointer()
+            .hover(move |s| s.bg(hover_bg))
+            .child(label)
+            .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                on_change(item_val.clone(), view, cx);
+            }));
+
+        container = container.child(item);
+    }
+
+    container.into_any_element()
+}

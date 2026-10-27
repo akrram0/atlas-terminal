@@ -1118,6 +1118,8 @@ impl Render for AtlasView {
             );
         }
 
+        bar = bar.child(div().w(px(3.0)));
+
         bar = bar.child(
             div()
                 .id(ElementId::named_usize("topbar-settings-btn", 0))
@@ -1146,7 +1148,7 @@ impl Render for AtlasView {
                 })),
         );
 
-        bar = bar.child(div().w(px(4.0)));
+        bar = bar.child(div().w(px(6.0)));
 
         // Window controls: clean 44px wide native vector controls filling top bar height
         let controls = [
