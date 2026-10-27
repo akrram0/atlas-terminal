@@ -191,9 +191,21 @@ impl Session {
         if matches!(profile, Profile::OpenCode) {
             let probes = [
                 std::env::var_os("LOCALAPPDATA")
+                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.cmd")),
+                std::env::var_os("LOCALAPPDATA")
+                    .map(|l| PathBuf::from(l).join("pnpm").join("opencode.cmd")),
+                std::env::var_os("APPDATA")
+                    .map(|a| PathBuf::from(a).join("npm").join("opencode.cmd")),
+                std::env::var_os("LOCALAPPDATA")
                     .map(|l| PathBuf::from(l).join("Programs").join("OpenCode").join("opencode.exe")),
                 std::env::var_os("USERPROFILE")
                     .map(|u| PathBuf::from(u).join(".cargo").join("bin").join("opencode.exe")),
+                std::env::var_os("USERPROFILE")
+                    .map(|u| PathBuf::from(u).join(".bun").join("bin").join("opencode.exe")),
+                std::env::var_os("LOCALAPPDATA")
+                    .map(|l| PathBuf::from(l).join("Microsoft").join("WinGet").join("Links").join("opencode.exe")),
+                std::env::var_os("USERPROFILE")
+                    .map(|u| PathBuf::from(u).join("scoop").join("shims").join("opencode.exe")),
             ];
             for cand in probes.into_iter().flatten() {
                 if cand.is_file() {
@@ -215,7 +227,11 @@ impl Session {
             Profile::OpenCode => {
                 let mut v = Vec::new();
                 if let Some(ref path) = opencode_path {
-                    v.push(path.clone());
+                    if path.ends_with(".cmd") || path.ends_with(".bat") {
+                        v.push("cmd.exe".into());
+                    } else {
+                        v.push(path.clone());
+                    }
                 }
                 v.push("opencode.exe".into());
                 v.push("cmd.exe".into());
@@ -242,10 +258,25 @@ impl Session {
                          }; \
                          $opencode_cmd = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd'; \
                          $npm_cmd = Join-Path $env:APPDATA 'npm\\opencode.cmd'; \
-                         if (Test-Path $opencode_cmd) { \
-                             function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd') @args } \
-                         } elseif (Test-Path $npm_cmd) { \
-                             function global:opencode { & (Join-Path $env:APPDATA 'npm\\opencode.cmd') @args } \
+                         function global:opencode { \
+                             [Console]::Write(\"`e]0;OpenCode`a\"); \
+                             try { \
+                                 if (Test-Path `$opencode_cmd) { & `$opencode_cmd @args } \
+                                 elseif (Test-Path `$npm_cmd) { & `$npm_cmd @args } \
+                                 else { & (Get-Command opencode.cmd, opencode.ps1, opencode.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1) @args } \
+                             } finally { \
+                                 [Console]::Write(\"`e]0;PowerShell`a\"); \
+                             } \
+                         }; \
+                         function global:update-opencode { \
+                             Write-Host 'Checking for OpenCode updates...' -ForegroundColor Cyan; \
+                             if (Get-Command pnpm -ErrorAction SilentlyContinue) { \
+                                 pnpm update -g @opencode/cli \
+                             } elseif (Get-Command npm -ErrorAction SilentlyContinue) { \
+                                 npm update -g @opencode/cli \
+                             } else { \
+                                 opencode upgrade \
+                             } \
                          };"
                     );
                 }
@@ -258,7 +289,11 @@ impl Session {
                 Profile::OpenCode => {
                     if shell == "cmd.exe" {
                         cmd.arg("/k");
-                        cmd.arg("opencode");
+                        if let Some(ref path) = opencode_path {
+                            cmd.arg(path);
+                        } else {
+                            cmd.arg("opencode");
+                        }
                     }
                 }
             }

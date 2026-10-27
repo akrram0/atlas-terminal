@@ -672,10 +672,7 @@ impl Render for AtlasView {
 
         let is_tui_active = if let Some(tab) = self.tabs.get(self.active) {
             if let Some(pane) = tab.panes.get(tab.active_pane) {
-                pane.session.borrow().term.mode().contains(TermMode::ALT_SCREEN)
-                    || pane.profile == Profile::OpenCode
-                    || pane.title.starts_with("OC")
-                    || pane.title.to_lowercase().contains("opencode")
+                Self::is_pane_tui(pane, &theme)
             } else {
                 false
             }
@@ -1298,10 +1295,7 @@ impl Render for AtlasView {
                 let pane_up = pane_ix;
                 let pane_rc = pane_ix;
 
-                let pane_is_tui = pane.session.borrow().term.mode().contains(TermMode::ALT_SCREEN)
-                    || pane.profile == Profile::OpenCode
-                    || pane.title.starts_with("OC")
-                    || pane.title.to_lowercase().contains("opencode");
+                let pane_is_tui = Self::is_pane_tui(pane, &theme);
                 let pane_bg = if pane_is_tui {
                     Self::detect_pane_bg(pane, &theme)
                 } else if is_translucent {

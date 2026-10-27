@@ -282,6 +282,23 @@ impl AtlasView {
         default_bg
     }
 
+    pub(crate) fn is_pane_tui(pane: &Pane, theme: &Theme) -> bool {
+        if pane.session.borrow().term.mode().contains(TermMode::ALT_SCREEN)
+            || pane.profile == Profile::OpenCode
+            || pane.title.starts_with("OC")
+            || pane.title.to_lowercase().contains("opencode")
+        {
+            return true;
+        }
+        // Content heuristic: if the pane displays content with an explicitly detected non-default background color
+        let (default_bg, _, _) = theme.defaults(pane.session.borrow().term.colors());
+        let detected_bg = Self::detect_pane_bg(pane, theme);
+        if detected_bg != default_bg && detected_bg.a > 0.95 {
+            return true;
+        }
+        false
+    }
+
     pub(crate) fn handle_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) {
         let modifiers = &ks.modifiers;
         let key = ks.key.as_str();
