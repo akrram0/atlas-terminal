@@ -208,7 +208,11 @@ impl AtlasView {
         let font_size = app_settings.font_size.clamp(10.0, 24.0);
         let line_height = app_settings.line_height.clamp(1.0, 1.8);
         let corner_radius = app_settings.corner_radius.clamp(0.0, 20.0);
-        let opacity = normalize_opacity(app_settings.opacity);
+        let opacity = if app_settings.blur_enabled || app_settings.opacity < 0.999 {
+            normalize_opacity(app_settings.opacity)
+        } else {
+            1.0
+        };
         let cursor_blink = app_settings.cursor_blink;
         crate::log_line(&format!(
             "settings loaded: theme={} mode={} font={} size={:.1} line={:.2} opacity={:.2}",

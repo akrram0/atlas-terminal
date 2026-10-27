@@ -44,6 +44,7 @@ impl AtlasView {
         self.app_settings.line_height = self.line_height;
         self.app_settings.corner_radius = self.corner_radius;
         self.app_settings.opacity = self.opacity;
+        self.app_settings.blur_enabled = self.opacity < 0.999;
         self.app_settings.cursor_shape = cursor_shape;
         self.app_settings.cursor_blink = self.cursor_blink;
         self.app_settings.auto_check_updates = self.updater_settings.auto_check_updates;
@@ -57,6 +58,38 @@ impl AtlasView {
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(self.opacity);
         save_app_settings(&self.app_settings);
+    }
+
+    pub fn reload_settings_from_disk(&mut self, cx: &mut Context<Self>) {
+        let loaded = crate::config::load_app_settings();
+        self.theme_mode = loaded.theme_mode.clone();
+        self.font_family = loaded.font_family.clone();
+        self.font_size = loaded.font_size;
+        self.line_height = loaded.line_height;
+        self.opacity = if loaded.blur_enabled || loaded.opacity < 0.999 {
+            crate::view::normalize_opacity(loaded.opacity)
+        } else {
+            1.0
+        };
+        self.cursor_blink = loaded.cursor_blink;
+        self.cursor_style = match loaded.cursor_shape.to_lowercase().as_str() {
+            "block" => Some(CursorShape::Block),
+            "beam" | "bar" => Some(CursorShape::Beam),
+            "underline" => Some(CursorShape::Underline),
+            "hollow" => Some(CursorShape::HollowBlock),
+            _ => None,
+        };
+        if let Some(idx) = self.registry.find_by_name_or_id(&loaded.theme) {
+            self.set_theme(idx, cx);
+        }
+        for tab in &mut self.tabs {
+            for pane in &mut tab.panes {
+                pane.cursor_pos = None;
+            }
+        }
+        crate::rounded_corners::set_opacity(self.opacity);
+        self.app_settings = loaded;
+        cx.notify();
     }
 
     pub fn settings_page(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
@@ -373,36 +406,19 @@ impl AtlasView {
             theme_grid = theme_grid.child(theme_card);
         }
 
-        // Font Family Pills
-        let fonts = [
-            "Cascadia Code",
-            "JetBrains Mono",
-            "SF Mono",
-            "Fira Code",
-            "Consolas",
-        ];
-        let mut font_pills = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap(px(5.0));
-
-        for (idx, &fname) in fonts.iter().enumerate() {
-            let is_sel = self.font_family.eq_ignore_ascii_case(fname);
-            let s_str = fname.to_string();
-            font_pills = font_pills.child(pill_button(
-                s_str.clone(),
-                160 + idx,
-                is_sel,
-                theme,
-                move |view, cx| {
-                    view.font_family = s_str.clone();
-                    view.sync_and_save_settings();
-                    cx.notify();
-                },
-                cx,
-            ));
-        }
+        // Active font display badge (user customizes font in settings.json)
+        let font_badge = div()
+            .px(px(10.0))
+            .py(px(4.0))
+            .rounded(px(5.0))
+            .bg(if is_dark { rgba(0xFFFFFF12) } else { rgba(0x0000000A) })
+            .border_1()
+            .border_color(if is_dark { rgba(0xFFFFFF20) } else { rgba(0x00000015) })
+            .text_size(px(12.0))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(sc_title)
+            .child(self.font_family.clone())
+            .into_any_element();
 
         let font_size_ctrl = stepper(
             110,
@@ -436,37 +452,25 @@ impl AtlasView {
             cx,
         );
 
-        // Interactive Opacity Stepper (5% steps, 15% to 100%)
-        let opacity_ctrl = stepper(
+        // Blur Background Switch
+        let is_blur = self.opacity < 0.999;
+        let blur_switch = toggle_pill(
             113,
-            format!("{}%", (self.opacity * 100.0).round() as i32),
+            is_blur,
             theme,
             |view, cx| {
-                let current = (view.opacity * 20.0).round() / 20.0;
-                view.opacity = (current - 0.05).max(0.15);
-                view.sync_and_save_settings();
-                cx.notify();
-            },
-            |view, cx| {
-                let current = (view.opacity * 20.0).round() / 20.0;
-                view.opacity = (current + 0.05).min(1.0);
-                view.sync_and_save_settings();
-                cx.notify();
-            },
-            cx,
-        );
-
-        let corner_radius_ctrl = stepper(
-            112,
-            format!("{} px", self.corner_radius as i32),
-            theme,
-            |view, cx| {
-                view.corner_radius = (view.corner_radius - 1.0).max(0.0);
-                view.sync_and_save_settings();
-                cx.notify();
-            },
-            |view, cx| {
-                view.corner_radius = (view.corner_radius + 1.0).min(20.0);
+                if view.opacity < 0.999 {
+                    view.opacity = 1.0;
+                    view.app_settings.blur_enabled = false;
+                } else {
+                    let target = if view.app_settings.opacity < 0.999 && view.app_settings.opacity >= 0.15 {
+                        view.app_settings.opacity
+                    } else {
+                        0.85
+                    };
+                    view.opacity = target;
+                    view.app_settings.blur_enabled = true;
+                }
                 view.sync_and_save_settings();
                 cx.notify();
             },
@@ -517,15 +521,14 @@ impl AtlasView {
             .child(
                 card()
                     .child(section_header("TYPOGRAPHY"))
-                    .child(setting_row("Font Family", Some("Monospace terminal typeface"), font_pills.into_any_element(), false))
+                    .child(setting_row("Active Typeface", Some("Typeface loaded from settings.json"), font_badge, false))
                     .child(setting_row("Font Size", Some("Glyph rendering dimension"), font_size_ctrl, false))
                     .child(setting_row("Line Height", Some("Vertical cell proportion multiplier"), line_height_ctrl, true)),
             )
             .child(
                 card()
-                    .child(section_header("WINDOW & GLASS"))
-                    .child(setting_row("Window Opacity", Some("Glass translucency factor (15% to 100%)"), opacity_ctrl, false))
-                    .child(setting_row("Corner Radius", Some("Curvature of window container corners"), corner_radius_ctrl, true)),
+                    .child(section_header("BACKGROUND & BLUR"))
+                    .child(setting_row("Blur Background", Some("Fluent acrylic translucency (adjust % in settings.json)"), blur_switch, true)),
             )
             .child(
                 card()
@@ -539,12 +542,27 @@ impl AtlasView {
         // ==========================================
 
         // Visual Shell Selector Cards
-        let shell_list = [
-            ("PowerShell", "PowerShell", "Windows PowerShell & Core", icons::POWERSHELL),
-            ("WSL", "WSL (Linux)", "Ubuntu / Default Linux Distro", icons::UBUNTU),
-            ("OpenCode", "OpenCode AI", "Autonomous Agent CLI", icons::OPENCODE_MARK),
-            ("Command Prompt", "CMD", "Classic Windows Command Prompt", icons::CMD),
-            ("Git Bash", "Git Bash", "MinGW Git for Windows", icons::GIT),
+        let (wsl_title, wsl_desc, wsl_icon, has_wsl) = match crate::wsl::default_distro() {
+            Some(distro) => (
+                format!("{} (WSL)", distro.title),
+                format!("WSL 2 • {}", distro.name),
+                distro.icon,
+                true,
+            ),
+            None => (
+                "WSL (Linux)".to_string(),
+                "You don't have WSL".to_string(),
+                icons::LINUX,
+                false,
+            ),
+        };
+
+        let shell_list = vec![
+            ("PowerShell", "PowerShell".to_string(), "Windows PowerShell & Core".to_string(), icons::POWERSHELL, true),
+            ("WSL", wsl_title, wsl_desc, wsl_icon, has_wsl),
+            ("OpenCode", "OpenCode AI".to_string(), "Autonomous Agent CLI".to_string(), icons::OPENCODE_MARK, true),
+            ("Command Prompt", "CMD".to_string(), "Classic Windows Command Prompt".to_string(), icons::CMD, true),
+            ("Git Bash", "Git Bash".to_string(), "MinGW Git for Windows".to_string(), icons::GIT, true),
         ];
 
         let mut shell_cards = div()
@@ -554,8 +572,8 @@ impl AtlasView {
             .gap(px(8.0))
             .p(px(14.0));
 
-        for (idx, &(s_id, s_title, s_desc, s_icon)) in shell_list.iter().enumerate() {
-            let is_sel = self.app_settings.default_shell.eq_ignore_ascii_case(s_id);
+        for (idx, (s_id, s_title, s_desc, s_icon, is_available)) in shell_list.into_iter().enumerate() {
+            let is_sel = self.app_settings.default_shell.eq_ignore_ascii_case(s_id) && is_available;
             let s_str = s_id.to_string();
             let card_border = if is_sel {
                 theme.accent
@@ -582,7 +600,8 @@ impl AtlasView {
                 .border_color(card_border)
                 .bg(card_bg)
                 .cursor_pointer()
-                .hover(move |s| s.bg(theme.card_hover))
+                .hover(move |s| if is_available { s.bg(theme.card_hover) } else { s })
+                .opacity(if is_available { 1.0 } else { 0.60 })
                 .child(
                     div()
                         .flex()
@@ -610,9 +629,11 @@ impl AtlasView {
                         .child(s_desc),
                 )
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                    view.app_settings.default_shell = s_str.clone();
-                    view.sync_and_save_settings();
-                    cx.notify();
+                    if is_available {
+                        view.app_settings.default_shell = s_str.clone();
+                        view.sync_and_save_settings();
+                        cx.notify();
+                    }
                 }));
 
             shell_cards = shell_cards.child(card_el);
@@ -759,6 +780,50 @@ impl AtlasView {
             cx,
         );
 
+        let edit_settings_btn = pill_button(
+            "Edit settings.json".to_string(),
+            381,
+            false,
+            theme,
+            |_view, _cx| {
+                open_file(&crate::user_data_dir().join("settings.json"));
+            },
+            cx,
+        );
+
+        let edit_profile_btn = pill_button(
+            "Edit $PROFILE".to_string(),
+            382,
+            false,
+            theme,
+            |_view, _cx| {
+                open_file(&powershell_profile_path());
+            },
+            cx,
+        );
+
+        let reveal_dir_btn = pill_button(
+            "Reveal in Explorer".to_string(),
+            383,
+            false,
+            theme,
+            |_view, _cx| {
+                open_folder(&crate::user_data_dir());
+            },
+            cx,
+        );
+
+        let reload_settings_btn = pill_button(
+            "Reload from Disk".to_string(),
+            384,
+            false,
+            theme,
+            |view, cx| {
+                view.reload_settings_from_disk(cx);
+            },
+            cx,
+        );
+
         let general_view = div()
             .flex()
             .flex_col()
@@ -767,6 +832,14 @@ impl AtlasView {
                 card()
                     .child(section_header("DEFAULT SHELL"))
                     .child(shell_cards),
+            )
+            .child(
+                card()
+                    .child(section_header("CONFIGURATION & PROMPT FILES"))
+                    .child(setting_row("Atlas Config (settings.json)", Some("Font family, opacity %, custom themes, and keybindings"), edit_settings_btn, false))
+                    .child(setting_row("PowerShell Profile ($PROFILE)", Some("Custom prompt name, Oh-My-Posh / Starship prompt, startup script"), edit_profile_btn, false))
+                    .child(setting_row("Atlas Data Folder", Some("Session histories, logs, and portable overrides (~/.config/atlas)"), reveal_dir_btn, false))
+                    .child(setting_row("Reload Settings", Some("Apply manual edits from settings.json immediately"), reload_settings_btn, true)),
             )
             .child(
                 card()
@@ -1162,5 +1235,59 @@ impl AtlasView {
             .child(sidebar)
             .child(right_pane)
             .into_any_element()
+    }
+}
+
+pub fn open_file(path: &std::path::Path) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if !path.exists() {
+        let _ = std::fs::write(path, "");
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", "", &path.to_string_lossy()])
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn();
+    }
+}
+
+pub fn open_folder(path: &std::path::Path) {
+    let _ = std::fs::create_dir_all(path);
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("explorer.exe")
+            .arg(path)
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn();
+    }
+}
+
+pub fn powershell_profile_path() -> std::path::PathBuf {
+    if let Some(home) = std::env::var_os("USERPROFILE") {
+        let p = std::path::PathBuf::from(home);
+        let win_ps = p.join("Documents").join("WindowsPowerShell").join("Microsoft.PowerShell_profile.ps1");
+        if win_ps.exists() {
+            return win_ps;
+        }
+        let core_ps = p.join("Documents").join("PowerShell").join("Microsoft.PowerShell_profile.ps1");
+        if core_ps.exists() {
+            return core_ps;
+        }
+        win_ps
+    } else {
+        std::path::PathBuf::from("Microsoft.PowerShell_profile.ps1")
     }
 }
