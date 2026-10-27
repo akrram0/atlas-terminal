@@ -1225,8 +1225,50 @@ pre code {
 }
 
 /* ==========================================================================
-   Refined Micro-Interactions & Terminal Caret (Apple Design Language)
+   Ambient Spotlight Torch & Micro-Interactions (Apple / Linear Aesthetic)
    ========================================================================== */
+
+/* Ambient Spotlight Torch following the cursor on dark surfaces */
+.ambient-spotlight {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 650px;
+  height: 650px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  background: radial-gradient(
+    circle 325px at center,
+    rgba(192, 90, 40, 0.07) 0%,
+    rgba(192, 90, 40, 0.02) 45%,
+    transparent 70%
+  );
+  transform: translate3d(-1000px, -1000px, 0);
+  transition: opacity 0.4s ease, transform 0.05s linear;
+  will-change: transform, opacity;
+}
+
+:root[data-theme="dark"] .ambient-spotlight {
+  background: radial-gradient(
+    circle 325px at center,
+    rgba(224, 138, 98, 0.09) 0%,
+    rgba(224, 138, 98, 0.025) 45%,
+    transparent 70%
+  );
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ambient-spotlight {
+    background: radial-gradient(
+      circle 325px at center,
+      rgba(224, 138, 98, 0.09) 0%,
+      rgba(224, 138, 98, 0.025) 45%,
+      transparent 70%
+    );
+  }
+}
 
 /* Card Subtle Interactive Spotlight (Tracks Cursor Position) */
 .feature-card,
@@ -1322,6 +1364,7 @@ pre code {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ambient-spotlight,
   .feature-card::before,
   .asset-card::before,
   .quick-install-box::before,
@@ -1331,5 +1374,11 @@ pre code {
   .term-cursor {
     animation: none !important;
     opacity: 1 !important;
+  }
+}
+
+@media (pointer: coarse) {
+  .ambient-spotlight {
+    display: none !important;
   }
 }

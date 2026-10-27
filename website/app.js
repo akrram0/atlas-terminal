@@ -77,13 +77,41 @@
   // Apply initial theme
   applyTheme(getActiveTheme());
 
-  // 2. Subtle Micro-Interactions (Spotlight & Tilt)
+  // 2. Ambient Cursor Spotlight Torch (Apple / Linear Aesthetic)
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
-  // Dynamic Cursor Spotlight on Cards
   if (!isTouchDevice && !prefersReducedMotion) {
-    const spotlightCards = document.querySelectorAll('.feature-card, .asset-card, .terminal-window');
+    let spotlight = document.getElementById('ambient-spotlight');
+    if (!spotlight) {
+      spotlight = document.createElement('div');
+      spotlight.id = 'ambient-spotlight';
+      spotlight.className = 'ambient-spotlight';
+      spotlight.setAttribute('aria-hidden', 'true');
+      document.body.prepend(spotlight);
+    }
+
+    let isVisible = false;
+    window.addEventListener('mousemove', (e) => {
+      if (!isVisible) {
+        isVisible = true;
+        spotlight.style.opacity = '1';
+      }
+      spotlight.style.transform = `translate3d(${e.clientX - 325}px, ${e.clientY - 325}px, 0)`;
+    }, { passive: true });
+
+    window.addEventListener('mouseleave', () => {
+      isVisible = false;
+      spotlight.style.opacity = '0';
+    });
+
+    window.addEventListener('mouseenter', () => {
+      isVisible = true;
+      spotlight.style.opacity = '1';
+    });
+
+    // Dynamic Spotlight on Cards
+    const spotlightCards = document.querySelectorAll('.feature-card, .asset-card, .terminal-window, .release-card');
     spotlightCards.forEach((card) => {
       card.addEventListener('mousemove', (e) => {
         const rect = card.getBoundingClientRect();
