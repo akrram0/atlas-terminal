@@ -77,89 +77,11 @@
   // Apply initial theme
   applyTheme(getActiveTheme());
 
-  // 2. Magnetic Fluid Cursor & Micro-Interactions
+  // 2. Subtle Micro-Interactions (Spotlight & Tilt)
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
 
-  let cursorDot = document.getElementById('cursor-dot');
-  let cursorRing = document.getElementById('cursor-ring');
-
-  // Fallback: create cursor elements dynamically if not in DOM
-  if (!cursorDot && !isTouchDevice && !prefersReducedMotion) {
-    cursorDot = document.createElement('div');
-    cursorDot.id = 'cursor-dot';
-    cursorDot.className = 'custom-cursor-dot';
-    cursorDot.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(cursorDot);
-  }
-
-  if (!cursorRing && !isTouchDevice && !prefersReducedMotion) {
-    cursorRing = document.createElement('div');
-    cursorRing.id = 'cursor-ring';
-    cursorRing.className = 'custom-cursor-ring';
-    cursorRing.setAttribute('aria-hidden', 'true');
-    document.body.appendChild(cursorRing);
-  }
-
-  if (cursorDot && cursorRing && !isTouchDevice && !prefersReducedMotion) {
-    let mouseX = window.innerWidth / 2;
-    let mouseY = window.innerHeight / 2;
-    let ringX = mouseX;
-    let ringY = mouseY;
-    let isVisible = false;
-
-    // Direct mouse coordinate tracking
-    window.addEventListener('mousemove', (e) => {
-      mouseX = e.clientX;
-      mouseY = e.clientY;
-
-      if (!isVisible) {
-        isVisible = true;
-        cursorDot.style.opacity = '1';
-        cursorRing.style.opacity = '1';
-      }
-
-      // Fast sync for the center precision dot
-      cursorDot.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0) translate(-50%, -50%)`;
-    }, { passive: true });
-
-    window.addEventListener('mouseleave', () => {
-      isVisible = false;
-      cursorDot.style.opacity = '0';
-      cursorRing.style.opacity = '0';
-    });
-
-    window.addEventListener('mouseenter', () => {
-      isVisible = true;
-      cursorDot.style.opacity = '1';
-      cursorRing.style.opacity = '1';
-    });
-
-    // RAF smooth spring easing for outer ring (0.18 factor)
-    function renderCursor() {
-      ringX += (mouseX - ringX) * 0.18;
-      ringY += (mouseY - ringY) * 0.18;
-      cursorRing.style.transform = `translate3d(${ringX}px, ${ringY}px, 0) translate(-50%, -50%)`;
-      requestAnimationFrame(renderCursor);
-    }
-    requestAnimationFrame(renderCursor);
-
-    // Interactive element hovers
-    const interactiveSelector = 'a, button, .term-tab, .term-pill, .feature-card, .asset-card, kbd, input';
-    document.querySelectorAll(interactiveSelector).forEach((el) => {
-      el.addEventListener('mouseenter', () => cursorRing.classList.add('hover-active'));
-      el.addEventListener('mouseleave', () => cursorRing.classList.remove('hover-active'));
-    });
-
-    // Special terminal focus hover
-    const termArea = document.querySelector('.terminal-window');
-    if (termArea) {
-      termArea.addEventListener('mouseenter', () => cursorRing.classList.add('terminal-hover'));
-      termArea.addEventListener('mouseleave', () => cursorRing.classList.remove('terminal-hover'));
-    }
-  }
-
-  // 3. Dynamic Cursor Spotlight on Cards
+  // Dynamic Cursor Spotlight on Cards
   if (!isTouchDevice && !prefersReducedMotion) {
     const spotlightCards = document.querySelectorAll('.feature-card, .asset-card, .terminal-window');
     spotlightCards.forEach((card) => {
@@ -172,16 +94,16 @@
       }, { passive: true });
     });
 
-    // 4. Subtle 3D Perspective Tilt on Hero App Icon
+    // Subtle 3D Perspective Tilt on Hero App Icon
     const appIcon = document.querySelector('.app-icon-container');
     if (appIcon) {
       appIcon.addEventListener('mousemove', (e) => {
         const rect = appIcon.getBoundingClientRect();
         const x = (e.clientX - rect.left) / rect.width - 0.5;
         const y = (e.clientY - rect.top) / rect.height - 0.5;
-        const tiltX = -y * 14;
-        const tiltY = x * 14;
-        appIcon.style.transform = `perspective(600px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale3d(1.05, 1.05, 1.05)`;
+        const tiltX = -y * 10;
+        const tiltY = x * 10;
+        appIcon.style.transform = `perspective(600px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale3d(1.03, 1.03, 1.03)`;
       }, { passive: true });
 
       appIcon.addEventListener('mouseleave', () => {

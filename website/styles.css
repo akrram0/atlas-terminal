@@ -168,13 +168,23 @@ button {
   max-width: 1040px;
 }
 
-/* Minimal Header & Nav */
+/* Stable Header & Nav across all pages */
 .site-header {
   position: sticky;
   top: 16px;
   z-index: 100;
   margin-bottom: 48px;
   padding-top: 8px;
+}
+
+.site-header .container,
+.site-header .container-wide,
+.nav-container {
+  max-width: 860px !important;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
 }
 
 .nav-bar {
@@ -1215,92 +1225,10 @@ pre code {
 }
 
 /* ==========================================================================
-   Fluid Magnetic Cursor & Micro-Interactions (Apple Design Language)
+   Refined Micro-Interactions & Terminal Caret (Apple Design Language)
    ========================================================================== */
 
-@media (pointer: fine) {
-  body.has-custom-cursor {
-    cursor: default;
-  }
-  body.has-custom-cursor a,
-  body.has-custom-cursor button,
-  body.has-custom-cursor [role="button"],
-  body.has-custom-cursor .term-tab,
-  body.has-custom-cursor .term-pill {
-    cursor: pointer;
-  }
-}
-
-.custom-cursor-dot {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 6px;
-  height: 6px;
-  background-color: var(--accent);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 99999;
-  transform: translate(-50%, -50%);
-  transition: opacity 0.2s ease, transform 0.08s ease-out;
-  opacity: 0;
-}
-
-.custom-cursor-ring {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 32px;
-  height: 32px;
-  border: 1.5px solid var(--accent);
-  background: var(--accent-subtle);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 99998;
-  transform: translate(-50%, -50%);
-  transition: width 0.28s var(--spring-ease),
-              height 0.28s var(--spring-ease),
-              border-color 0.2s ease,
-              background-color 0.2s ease,
-              opacity 0.25s ease,
-              border-radius 0.25s ease,
-              box-shadow 0.25s ease;
-  opacity: 0;
-}
-
-.custom-cursor-ring.active {
-  opacity: 0.85;
-}
-
-.custom-cursor-dot.active {
-  opacity: 1;
-}
-
-/* Hover state on interactive elements (links, buttons, tabs, pills) */
-.custom-cursor-ring.hover-active {
-  width: 48px;
-  height: 48px;
-  background: var(--accent-subtle);
-  border-color: var(--accent-hover);
-  box-shadow: 0 0 20px var(--accent-glow);
-}
-
-.custom-cursor-dot.hover-active {
-  transform: translate(-50%, -50%) scale(0.6);
-}
-
-/* Text input / Terminal hover state */
-.custom-cursor-ring.terminal-hover {
-  width: 20px;
-  height: 30px;
-  border-radius: 4px;
-  border-color: var(--accent);
-  background: transparent;
-}
-
-/* Card Interactive Spotlight (Tracks Cursor Position) */
+/* Card Subtle Interactive Spotlight (Tracks Cursor Position) */
 .feature-card,
 .asset-card,
 .quick-install-box,
@@ -1321,7 +1249,7 @@ pre code {
   inset: -1px;
   border-radius: inherit;
   background: radial-gradient(
-    450px circle at var(--mouse-x, -1000px) var(--mouse-y, -1000px),
+    400px circle at var(--mouse-x, -1000px) var(--mouse-y, -1000px),
     var(--border-spotlight),
     transparent 65%
   );
@@ -1394,10 +1322,6 @@ pre code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .custom-cursor-dot,
-  .custom-cursor-ring {
-    display: none !important;
-  }
   .feature-card::before,
   .asset-card::before,
   .quick-install-box::before,
@@ -1407,12 +1331,5 @@ pre code {
   .term-cursor {
     animation: none !important;
     opacity: 1 !important;
-  }
-}
-
-@media (hover: none) or (pointer: coarse) {
-  .custom-cursor-dot,
-  .custom-cursor-ring {
-    display: none !important;
   }
 }
