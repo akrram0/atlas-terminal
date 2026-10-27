@@ -388,6 +388,32 @@
     });
   }
 
+  // 10. Docs ScrollSpy (Sync active sidebar link with visible article)
+  const docsArticles = document.querySelectorAll('.docs-article');
+  const docsNavLinks = document.querySelectorAll('.docs-nav-link');
+  if (docsArticles.length > 0 && docsNavLinks.length > 0) {
+    const docsObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const id = entry.target.getAttribute('id');
+            if (id) {
+              docsNavLinks.forEach((link) => {
+                if (link.getAttribute('href') === `#${id}`) {
+                  link.classList.add('active');
+                } else {
+                  link.classList.remove('active');
+                }
+              });
+            }
+          }
+        });
+      },
+      { rootMargin: '-10% 0px -70% 0px' }
+    );
+    docsArticles.forEach((article) => docsObserver.observe(article));
+  }
+
   function escapeHTML(str) {
     return str
       .replace(/&/g, '&amp;')

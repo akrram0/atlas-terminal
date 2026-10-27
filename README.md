@@ -73,6 +73,13 @@ Comprehensive guides and architecture specifications are available in the [`docs
 - Fully compatible with `fastfetch`, CLI tools, and shell scripts.
 - Text reflow and scrollback keep graphics 1:1 anchored to their output lines.
 
+### 📐 Seam-Free Vector Box Drawing & Prompt Geometry
+- **Windows Terminal AtlasEngine-Inspired Procedural Architecture**: Renders all box-drawing and corner characters (`U+2500..=U+257F`, including `╭`, `╰`, `─`, `│`) procedurally via hardware-accelerated DirectX vector paths rather than delegating them to monospace fonts.
+- **Dynamic Zoom-Aware Stroke Scaling**: Automatically calculates line weights using cell dimensions:
+  $$\text{light} = \max\left(1.0, \text{round}\left(\frac{\text{cell\_width}}{6.0}\right)\right), \quad \text{heavy} = \max\left(\text{light} + 1.0, \text{light} \times 2.0\right)$$
+- **Hardware MSAA Vector Bézier Arcs**: Eliminates the jagged "painted/stair-stepped" look of naive quad-stamping by building cubic Bézier paths ($\kappa \approx 0.55228475$) with exact $C^1$ and $G^1$ tangent continuity.
+- **Zero Zoom Disconnection**: Prompts (Starship, Oh-My-Posh, Powerlevel10k, WSL Arch/Ubuntu) stay seamlessly connected at any zoom level (50% to 500%), resolving the classic baseline drift and 1px gap bug.
+
 ### 🖱️ Modern TUI & Mouse Reporting
 - Complete SGR mouse tracking (`?1000h` / `?1006h`): click buttons, select lists, and scroll diffs inside interactive terminal applications.
 - Hold `Shift` while dragging to bypass application mouse capture for standard text selection.
@@ -140,6 +147,7 @@ Comprehensive guides and architecture specifications are available in the [`docs
 | **Terminal Core** | `alacritty_terminal 0.26` | High-speed VTE parser, cell grid, and scrollback history |
 | **PTY Layer** | `portable-pty 0.8` | Windows ConPTY integration with UTF-8 byte stream processing |
 | **Inline Graphics** | `image_osc` | Stateful OSC 1337 scanner + GPU-ready BGRA `gpui::RenderImage` textures |
+| **Vector Box Engine** | `src/terminal/procedural.rs` | Windows Terminal AtlasEngine-inspired procedural cubic Bézier vector engine with dynamic stroke scaling |
 | **Async Engine** | `smol 2` | Channel synchronization between ConPTY reader thread & UI thread |
 | **Iconography** | Vector SVGs (`crate::icons`) | 100% native Solar Linear stroked vector SVGs |
 | **Typography** | Embedded Nerd Font | Bundled `SymbolsNerdFontMono-Regular.ttf` for icons, fastfetch & starship |

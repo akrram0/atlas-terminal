@@ -271,6 +271,36 @@
               Exponential decay kinematics with momentum carryover and subpixel row interpolation. Glides through massive compiler logs without jank or scroll jumps.
             </p>
           </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/split-columns.svg" alt="Vectors" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Procedural Vector Box & Prompt Precision</h3>
+            <p class="feature-body">
+              Inspired by Windows Terminal's AtlasEngine. Eliminates jagged pixel stair-stepping and baseline drift on zoom-out. Starship, Oh-My-Posh, and WSL prompts render with hardware MSAA cubic Béziers.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/cursor-mark.svg" alt="Cursor" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Floating Damped Spring Cursor</h3>
+            <p class="feature-body">
+              Mathematical exponential glide physics with organic breathing alpha and proximity snap thresholds. Smooth character navigation without visual lag.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/git.svg" alt="Updates" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Cryptographic Delta Auto-Updater</h3>
+            <p class="feature-body">
+              Silent background checks against GitHub Releases with conditional ETag validation and SHA-256 binary verification. Updates staged in-place in under a second.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -330,6 +360,13 @@
                 <td><span class="cross-icon">✗</span> Sixel preview only</td>
                 <td><span class="check-icon">✓</span> Supported</td>
                 <td><span class="cross-icon">✗</span> None</td>
+              </tr>
+              <tr>
+                <td><strong>Prompt & Box Geometry</strong></td>
+                <td class="highlight-col"><span class="check-icon">✓</span> Builtin Vector Arcs (MSAA & Dynamic Scale)</td>
+                <td><span class="check-icon">✓</span> AtlasEngine BuiltinGlyphs</td>
+                <td><span class="cross-icon">✗</span> Font baseline dependent</td>
+                <td><span class="cross-icon">✗</span> Font baseline dependent</td>
               </tr>
               <tr>
                 <td><strong>Design Language</strong></td>
@@ -428,6 +465,16 @@
             </button>
             <div class="faq-answer">
               Atlas implements the iTerm2 OSC 1337 image protocol. Tools like Fastfetch, Neofetch, and custom shell scripts send base64-encoded image payloads directly via escape sequences. Atlas rasterizes the graphic into a GPUI texture and anchors it to the scrollback buffer so it stays positioned with your history.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question">
+              <span>Why do prompt arrows and box lines (╭─, ╰─>) stay seamless when zooming out?</span>
+              <span class="faq-arrow">↓</span>
+            </button>
+            <div class="faq-answer">
+              Most terminals delegate rounded corners to font glyphs, which drift from geometric line centers during zoom-out, creating disconnected gaps. Other approaches stamp square quads that produce jagged, &ldquo;painted&rdquo; steps. Atlas Terminal implements Windows Terminal AtlasEngine-inspired procedural vector geometry in Rust: stroke widths scale dynamically with cell size (cw / 6.0), and corners are rendered as cubic B&eacute;zier curves with hardware MSAA. Prompts stay razor-sharp and gap-free at any zoom level.
             </div>
           </div>
 

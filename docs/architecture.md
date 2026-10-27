@@ -92,3 +92,69 @@ $$\Delta x = (x_{\text{target}} - x_{\text{current}}) \times (1 - e^{-28 \Delta 
 - Glides smoothly when typing or moving across lines within a 15-column / 10-row proximity window.
 - Snaps instantly across large jumps (e.g., screen clears or page jumps) to eliminate visual disorientation.
 - Features continuous organic breathing alpha when idle (`0.25 + 0.75 * (sin(phase) * 0.5 + 0.5)`), locking to 100% solid opacity during active typing.
+
+---
+
+## 6. Procedural Vector Box-Drawing & Prompt Precision Engine
+
+Modern developer shell prompts (e.g., Starship, Oh-My-Posh, Powerlevel10k, and WSL Arch/Ubuntu default configurations) construct multi-line prompt frames and arrows using Unicode box-drawing characters:
+
+```text
+╭─ user@archlinux ─ [~/workspace]
+╰─> cargo run
+```
+
+### The Root Cause: Why Prompts Look "Painted" or Break on Zoom Out
+
+In traditional or naive terminal implementations, rendering these characters suffers from three fundamental architectural flaws:
+
+1. **Font Baseline Drift vs. Cell Geometric Center**:
+   - Monospace font engines (DirectWrite, FreeType) position rounded corners (`╭`, `╰` / `U+256D..=U+2570`) according to font baseline metrics and hinting grids.
+   - Straight horizontal lines (`─` / `U+2500`), however, are often drawn procedurally or centered at the cell geometric midpoint (`cy = cell_height / 2.0`).
+   - When the user zooms out (e.g., 80%, 75%) or resizes fonts, fractional rounding causes the font baseline to drift away from the geometric center of the cell. The corner glyph peaks 1 to 2 pixels above the line or sags below it, creating an ugly detached "bent hook" or gap.
+
+2. **The "Painted / Stair-Stepped" Quad Artifact**:
+   - Some terminals attempt custom arcs by stamping a series of discrete, axis-aligned square quads along a curve.
+   - Because axis-aligned quads cannot rotate with the circle's tangent vector, at 45-degree angles their corners produce sharp saw-tooth pixel steps. This makes the curve appear as if it was drawn with a low-resolution pixel paintbrush.
+
+3. **Rigid Pixel Stroke Weights**:
+   - Hardcoding stroke widths (e.g., fixed 2px or 3px) breaks at non-standard DPI scales or zoom levels. When zoomed out, lines appear disproportionately thick and crowd cell contents; when zoomed in, they appear hairline thin.
+
+### The Atlas Solution: Inspired by Windows Terminal's AtlasEngine
+
+To permanently eliminate gaps, baseline drift, and pixel stair-stepping, Atlas Terminal implements a dedicated procedural vector engine in [`src/terminal/procedural.rs`](file:///c:/Users/Neweye/Desktop/Workspace/atlas-terminal/src/terminal/procedural.rs) that bypasses font rasterization entirely for all box-drawing and corner characters (`U+2500..=U+257F`):
+
+#### 1. Dynamic Stroke Scaling
+Adapting the proven formula from Windows Terminal's `BuiltinGlyphs.cpp`:
+
+$$\text{light} = \max\left(1.0, \text{round}\left(\frac{\text{cell\_width}}{6.0}\right)\right)$$
+$$\text{heavy} = \max\left(\text{light} + 1.0, \text{light} \times 2.0\right)$$
+
+This guarantees that stroke thickness remains optically proportional to font size and zoom factor across all displays and DPI settings.
+
+#### 2. Exact $C^1$ and $G^1$ Tangent Alignment
+Straight box lines and rounded corners meet at exact cell midpoints:
+- `sy = (cell_origin.y + cell_height / 2.0).floor() + 0.5`
+- `sx = (cell_origin.x + cell_width / 2.0).floor() + 0.5`
+
+Because straight lines and corner curves share these exact coordinate anchors, there is zero gap or overlap across cell boundaries.
+
+#### 3. Hardware MSAA Cubic Bézier Vector Paths
+Rather than stamping discrete quads, rounded corners (`╭`, `╮`, `╯`, `╰`) are constructed as cubic Bézier curves using the optimal circle constant $\kappa = \frac{4(\sqrt{2}-1)}{3} \approx 0.55228475$:
+
+```rust
+let k = 0.55228475;
+let rx = sx - left;
+let ry = bottom - sy;
+
+builder.begin(point(sx, bottom));
+builder.line_to(point(sx, sy + ry));
+builder.cubic_bezier_to(
+    point(sx, sy + ry * (1.0 - k)),
+    point(sx - rx * (1.0 - k), sy),
+    point(left, sy),
+);
+```
+
+The resulting vector path is tessellated with Lyon and rasterized directly on the DirectX GPU via `window.paint_path()`. Multi-sample anti-aliasing (MSAA) ensures silky-smooth, perfectly curved contours that never look pixelated or stair-stepped.
+

@@ -261,6 +261,7 @@ Atlas Terminal automatically detects installed Windows Subsystem for Linux (WSL)
 - **Workspace Profile Menu**: Click the workspace pill on the left of the top bar to open the shell profile menu.
 - **Fast Profile Launching**: Spawn dedicated tabs directly into PowerShell, Command Prompt, or any detected WSL Linux distribution.
 - **Terminal Identity Forwarding**: Atlas forwards terminal identity into WSL environments so tools like `fastfetch` automatically detect and display the Atlas Terminal logo.
+- **Procedural Prompt Vector Precision**: Native box-drawing and corner characters (`╭`, `╰`, `─`, `│`) render via DirectX GPU vector curves with dynamic stroke scaling. Starship, Oh-My-Posh, and WSL Arch/Ubuntu multi-line prompt arrows join seamlessly without gaps or jagged pixel steps, even when zoomed out.
 
 ---
 
