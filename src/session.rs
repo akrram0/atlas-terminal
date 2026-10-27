@@ -191,11 +191,7 @@ impl Session {
         if matches!(profile, Profile::OpenCode) {
             let probes = [
                 std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.exe")),
-                std::env::var_os("USERPROFILE")
-                    .map(|u| PathBuf::from(u).join("AppData").join("Local").join("pnpm").join("bin").join("opencode.exe")),
-                std::env::var_os("APPDATA")
-                    .map(|a| PathBuf::from(a).join("npm").join("opencode.cmd")),
+                    .map(|l| PathBuf::from(l).join("Programs").join("OpenCode").join("opencode.exe")),
                 std::env::var_os("USERPROFILE")
                     .map(|u| PathBuf::from(u).join(".cargo").join("bin").join("opencode.exe")),
             ];
@@ -244,11 +240,17 @@ impl Session {
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
                              if ($atlas_old) { & $atlas_old } else { 'PS ' + (Get-Location) + '> ' } \
                          }; \
-                         $opencode_bin = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.exe'; \
-                         if (Test-Path $opencode_bin) { \
-                             function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.exe') @args } \
-                         } elseif (Get-Command opencode.cmd -ErrorAction SilentlyContinue) { \
-                             function global:opencode { & (Get-Command opencode.cmd).Source @args } \
+                         if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) { \
+                             $pnpm_ps1 = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.ps1'; \
+                             $pnpm_cmd = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd'; \
+                             $npm_cmd = Join-Path $env:APPDATA 'npm\\opencode.cmd'; \
+                             if (Test-Path $pnpm_ps1) { \
+                                 function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.ps1') @args } \
+                             } elseif (Test-Path $pnpm_cmd) { \
+                                 function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd') @args } \
+                             } elseif (Test-Path $npm_cmd) { \
+                                 function global:opencode { & (Join-Path $env:APPDATA 'npm\\opencode.cmd') @args } \
+                             } \
                          };"
                     );
                 }
@@ -262,6 +264,31 @@ impl Session {
                     if shell == "cmd.exe" {
                         cmd.arg("/k");
                         cmd.arg("opencode");
+                    }
+                }
+            }
+            // Ensure package manager bins (pnpm, npm) are included in PATH so
+            // devtools like OpenCode are always discoverable by child shells.
+            if let Some(path) = std::env::var_os("PATH") {
+                let mut paths = std::env::split_paths(&path).collect::<Vec<_>>();
+                let mut added = false;
+                if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+                    let pnpm_bin = PathBuf::from(local_app_data).join("pnpm").join("bin");
+                    if pnpm_bin.is_dir() && !paths.contains(&pnpm_bin) {
+                        paths.insert(0, pnpm_bin);
+                        added = true;
+                    }
+                }
+                if let Some(app_data) = std::env::var_os("APPDATA") {
+                    let npm_bin = PathBuf::from(app_data).join("npm");
+                    if npm_bin.is_dir() && !paths.contains(&npm_bin) {
+                        paths.insert(0, npm_bin);
+                        added = true;
+                    }
+                }
+                if added {
+                    if let Ok(new_path) = std::env::join_paths(paths) {
+                        cmd.env("PATH", new_path);
                     }
                 }
             }
