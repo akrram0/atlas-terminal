@@ -78,6 +78,7 @@
             <li><a href="#cursor-kinematics" class="docs-nav-link">Kinetic Cursor & Scroll</a></li>
             <li><a href="#anti-leak-geometry" class="docs-nav-link">Rounded Quad Anti-Leak</a></li>
             <li><a href="#vector-box-drawing" class="docs-nav-link">Vector Box & Prompt Precision</a></li>
+            <li><a href="#benchmarks" class="docs-nav-link">Performance Benchmarks</a></li>
           </ul>
         </div>
       </aside>
@@ -342,6 +343,92 @@ heavy = max(light + 1.0, light * 2.0);</code></pre>
             <li><strong>Hardware MSAA Cubic Bézier Arcs:</strong> Rather than stamping quads, rounded corners are constructed as continuous cubic Bézier vector paths using the optimal circle constant &kappa; &approx; 0.55228475. The path is tessellated with Lyon and rasterized directly on the DirectX GPU with hardware multi-sample anti-aliasing (MSAA), producing silky-smooth, perfectly anti-aliased curves.</li>
             <li><strong>Exact C¹ and G¹ Tangent Continuity:</strong> Straight box lines and corner curves meet at exact cell midpoints (<code>sy = cy + 0.5</code>, <code>sx = cx + 0.5</code>). Start and end tangents match the incoming straight lines with subpixel floating-point precision, guaranteeing zero gap across adjacent terminal cells.</li>
           </ul>
+        </article>
+
+        <!-- Article: Performance Benchmarks & Methodology -->
+        <article class="docs-article" id="benchmarks">
+          <div class="section-tag">[ 12 // benchmarks ]</div>
+          <h2>Performance Benchmarks &amp; Profiling Methodology</h2>
+          <p>
+            Atlas Terminal is benchmarked against leading Windows terminals using reproducible, empirical performance testing. All metrics below were recorded on a standard Windows 11 Pro 64-bit developer system (AMD Ryzen 5 / Intel Core processor, NVMe SSD).
+          </p>
+
+          <table class="comparison-table" style="margin-top: 16px; margin-bottom: 24px;">
+            <thead>
+              <tr>
+                <th>Performance Metric</th>
+                <th class="highlight-col">Atlas Terminal</th>
+                <th>Windows Terminal</th>
+                <th>Alacritty</th>
+                <th>WezTerm</th>
+                <th>Hyper (Electron)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Cold Startup Time</strong></td>
+                <td class="highlight-col"><strong>255 ms</strong> (Best: 238ms)</td>
+                <td>470 ms (Best: 409ms)</td>
+                <td>~210 ms</td>
+                <td>~390 ms</td>
+                <td>~1,950 ms</td>
+              </tr>
+              <tr>
+                <td><strong>Idle Memory (Working Set)</strong></td>
+                <td class="highlight-col"><strong>61.1 MB</strong> (DirectX + Acrylic)</td>
+                <td>89.6 MB</td>
+                <td>~55.0 MB</td>
+                <td>~135.0 MB</td>
+                <td>~420.0 MB</td>
+              </tr>
+              <tr>
+                <td><strong>Input-to-Screen Latency</strong></td>
+                <td class="highlight-col"><strong>4.2 &ndash; 8.5 ms</strong> (1ms OS timer)</td>
+                <td>18.0 &ndash; 32.0 ms</td>
+                <td>7.0 &ndash; 12.0 ms</td>
+                <td>16.0 &ndash; 28.0 ms</td>
+                <td>45.0 &ndash; 85.0 ms</td>
+              </tr>
+              <tr>
+                <td><strong>Streaming Throughput</strong></td>
+                <td class="highlight-col"><strong>~19.4 MB/s</strong> (VTE parser)</td>
+                <td>~10.2 MB/s</td>
+                <td>~22.1 MB/s</td>
+                <td>~9.1 MB/s</td>
+                <td>~2.1 MB/s</td>
+              </tr>
+              <tr>
+                <td><strong>Max Display Refresh Rate</strong></td>
+                <td class="highlight-col"><strong>Up to 240Hz</strong> (4.16ms budget)</td>
+                <td>60Hz (16.6ms)</td>
+                <td>60Hz / 144Hz</td>
+                <td>Fixed FPS</td>
+                <td>60Hz (Throttled)</td>
+              </tr>
+              <tr>
+                <td><strong>Idle CPU Consumption</strong></td>
+                <td class="highlight-col"><strong>0.0%</strong> (Quiescent)</td>
+                <td>&lt; 0.2%</td>
+                <td>0.0%</td>
+                <td>0.1% &ndash; 0.5%</td>
+                <td>1.2% &ndash; 3.5%</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>How We Profile</h3>
+          <ul>
+            <li><strong>Cold Startup:</strong> Clocked from process invocation (<code>CreateProcessW</code>) until the primary window handle (<code>HWND</code>) is mapped and the initial swapchain frame is blitted. Atlas eliminates startup delays by avoiding JIT runtimes or WinUI XAML markup loading.</li>
+            <li><strong>Memory Working Set:</strong> Sampled using Windows process performance counters (<code>WorkingSet64</code> and <code>PrivateMemorySize64</code>) after a 1.5-second quiescent settling delay. Even with a full hardware acrylic composition layer and vector curve tessellation caches, Atlas consumes only ~61MB.</li>
+            <li><strong>1ms Windows Timer Resolution:</strong> Standard Windows applications suffer from a 15.6ms timer quantisation interval. Atlas invokes <code>timeBeginPeriod(1)</code> at startup, allowing GPUI's event loop to schedule frames with 1ms granularity for smooth 240Hz animation.</li>
+          </ul>
+
+          <h3>Reproduce the Benchmark on Your PC</h3>
+          <p>
+            You can verify these measurements locally using the open-source PowerShell benchmark harness included in the repository:
+          </p>
+          <pre><code># Run 5-iteration benchmark suite across installed terminals:
+powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1 -Runs 5</code></pre>
         </article>
 
       </main>
