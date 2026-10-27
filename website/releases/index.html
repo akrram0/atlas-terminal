@@ -59,11 +59,11 @@
       <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
     </div>
 
-    <!-- Latest Release: v0.1.73 -->
+    <!-- Latest Release: v0.1.74 -->
     <div class="release-card">
       <div class="release-header">
         <div class="release-title">
-          <span>v0.1.73</span>
+          <span>v0.1.74</span>
           <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
             <span class="status-dot"></span> Latest Stable
           </span>
@@ -72,25 +72,24 @@
       </div>
 
       <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
-        Focused rendering precision release eliminating stair-stepped prompt arrows and rounded box corners across WSL Arch and PowerShell, paired with full OpenCode acrylic cohesion and package manager discovery.
+        Architectural rewrite of box-drawing rendering matching Windows Terminal's AtlasEngine: dynamic zoom-aware stroke scaling, GPU anti-aliased vector paths for rounded corners, and seamless tangent continuity at any zoom level.
       </p>
 
       <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
-        <li><strong>Vector Prompt Arrows &amp; Box Curves</strong>: Delegated rounded box corner characters (<code>╭</code>, <code>╮</code>, <code>╯</code>, <code>╰</code> / <code>U+256D..=U+2570</code>) to DirectWrite native font rasterization, matching Windows Terminal crisp vector curves and eliminating chunky square-quad stair-stepping in Starship, Oh-My-Posh, and Arch prompt lines.</li>
-        <li><strong>OpenCode &amp; TUI Zero-Halo Rendering</strong>: Content-aware background sampling switches from transparent acrylic glass to a cohesive solid backing sheet whenever OpenCode or interactive TUIs render custom themes.</li>
-        <li><strong>Automatic Package Manager Discovery</strong>: Direct probing hierarchy for pnpm (<code>%LOCALAPPDATA%\pnpm\bin</code>), npm, WinGet, and Scoop.</li>
-        <li><strong>In-Terminal OpenCode Upgrades</strong>: Bundled <code>update-opencode</code> helper function in PowerShell sessions.</li>
-        <li><strong>Dynamic Session Title Tracking</strong>: Automatically tracks active foreground applications via OSC 0/2 window titles.</li>
+        <li><strong>Windows Terminal AtlasEngine Builtin Architecture</strong>: Re-unified all box-drawing and rounded corners into a single procedural pipeline. Eliminates font baseline mismatch, sagging corners, and broken tangents when zooming out.</li>
+        <li><strong>Dynamic Zoom-Aware Stroke Weight</strong>: Stroke widths dynamically scale with cell width (<code>std::max(1.0f, roundf(cw / 6.0f))</code>). When zoomed out, lines and corners scale down to crisp 1px strokes; when zoomed in, they scale up proportionally without blocky stair-stepping.</li>
+        <li><strong>GPU Anti-Aliased Vector Arcs</strong>: Rounded corners (<code>╭</code>, <code>╮</code>, <code>╯</code>, <code>╰</code> / <code>U+256D..=U+2570</code>) are rendered via cubic Bezier vector paths with hardware MSAA on DirectX 12. Stems align precisely to the cell centerline tangents (<code>sy = cy + 0.5</code>, <code>sx = cx + 0.5</code>) and end flush at the cell boundary with zero gaps.</li>
+        <li><strong>Rock-Solid Prompt Continuity</strong>: Starship, Oh-My-Posh, and Arch prompt lines (<code>╭─ archlinux ~</code> and <code>╰─></code>) remain perfectly tangent and connected at every zoom level from 8pt to 36pt.</li>
       </ul>
 
       <!-- Asset Downloads Grid -->
       <div class="asset-download-grid">
         <!-- Windows Setup Installer -->
         <div class="asset-card">
-          <div class="asset-name">AtlasTerminal-Setup-0.1.73.exe</div>
+          <div class="asset-name">AtlasTerminal-Setup-0.1.74.exe</div>
           <div class="asset-meta">Standard Windows Installer • x64</div>
           <div style="margin-bottom:12px;">
-            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.73/AtlasTerminal-Setup-0.1.73.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.74/AtlasTerminal-Setup-0.1.74.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
@@ -110,7 +109,7 @@
           <div class="asset-name">atlas-terminal-windows-x64.zip</div>
           <div class="asset-meta">Standalone Portable Archive • Extract & Run</div>
           <div style="margin-bottom:12px;">
-            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.73/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.74/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
@@ -129,6 +128,18 @@
 
     <!-- Previous Releases Timeline -->
     <div class="section-tag" style="margin-top:32px;">[ 02 // archive ]</div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.73</span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Rendering precision and packaging release for OpenCode acrylic cohesion and package manager discovery.
+      </p>
+    </div>
 
     <div class="release-card">
       <div class="release-header">

@@ -19,7 +19,7 @@ use gpui::{
 use crate::session::Session;
 use crate::theme::Theme;
 use crate::ui::fonts::icon_font;
-use super::procedural::{CharClass, char_class, procedural_cell};
+use super::procedural::{CharClass, char_class, ProceduralDraw, render_procedural};
 
 pub struct TerminalElement {
     pub session: Rc<RefCell<Session>>,
@@ -655,18 +655,29 @@ impl Element for TerminalElement {
                 // logos and separator runs are 100% solid.
                 if segment.style.class == CharClass::Block {
                     if let Some(ch) = segment.text.chars().next() {
-                        if let Some((rects, color)) =
-                            procedural_cell(ch, cell_width, cell_height, segment.style.fg)
-                        {
-                            for (rx0, ry0, rx1, ry1) in rects {
-                                window.paint_quad(fill(
-                                    Bounds::from_corners(
-                                        point(px(segment.x0 + rx0), px(y0 + ry0)),
-                                        point(px(segment.x0 + rx1), px(y0 + ry1)),
-                                    ),
-                                    color,
-                                ));
+                        match render_procedural(
+                            ch,
+                            segment.x0,
+                            y0,
+                            cell_width,
+                            cell_height,
+                            segment.style.fg,
+                        ) {
+                            Some(ProceduralDraw::Rects(rects, color)) => {
+                                for (rx0, ry0, rx1, ry1) in rects {
+                                    window.paint_quad(fill(
+                                        Bounds::from_corners(
+                                            point(px(segment.x0 + rx0), px(y0 + ry0)),
+                                            point(px(segment.x0 + rx1), px(y0 + ry1)),
+                                        ),
+                                        color,
+                                    ));
+                                }
                             }
+                            Some(ProceduralDraw::Path(path, color)) => {
+                                window.paint_path(path, color);
+                            }
+                            None => {}
                         }
                     }
                     continue;

@@ -1,6 +1,6 @@
 //! Procedural box drawing, block elements, and glyph categorization.
 
-use gpui::Rgba;
+use gpui::{Path, PathBuilder, Pixels, Rgba, point, px};
 
 /// How a cell's glyph is drawn: shaped with the terminal font, isolated from
 /// its neighbours (emoji, CJK…), with the bundled Nerd symbols font, or
@@ -58,7 +58,111 @@ pub fn is_procedural(c: char) -> bool {
             | 0x253B
             | 0x253C
             | 0x254B
+            | 0x256D..=0x2570
     )
+}
+
+/// Output of procedural drawing for a character cell: either GPU analytical quads
+/// or a tessellated anti-aliased vector path.
+pub enum ProceduralDraw {
+    Rects(Vec<(f32, f32, f32, f32)>, Rgba),
+    Path(Path<Pixels>, Rgba),
+}
+
+/// High-level procedural cell painter.
+/// Rounded box-drawing corners (╭, ╮, ╯, ╰) are rendered as smooth, anti-aliased
+/// vector curves with hardware MSAA centered on exact cell stroke lines, seamlessly
+/// meeting adjacent horizontal and vertical box-drawing lines at any zoom level.
+pub fn render_procedural(
+    ch: char,
+    origin_x: f32,
+    origin_y: f32,
+    cw: f32,
+    lh: f32,
+    fg: Rgba,
+) -> Option<ProceduralDraw> {
+    let u = ch as u32;
+    if !is_procedural(ch) {
+        return None;
+    }
+
+    let cx = (cw / 2.0).floor();
+    let cy = (lh / 2.0).floor();
+    // Stroke weight dynamically scales with cell width matching Windows Terminal AtlasEngine
+    // (std::max(1.0f, roundf(cellWidth / 6.0f))), so strokes stay crisp 1px lines when
+    // zoomed out and scale up proportionally without jagged stair-steps or giant chunky bars.
+    let light = (cw / 6.0).round().max(1.0);
+
+    // Rounded box-drawing corners (╭, ╮, ╯, ╰):
+    // Rendered as smooth, anti-aliased vector paths with hardware MSAA.
+    // The horizontal and vertical arms align with the exact centerlines
+    // (sy = cy + 0.5, sx = cx + 0.5) and end flush at the cell boundary,
+    // guaranteeing seamless connection with adjacent lines at any zoom level.
+    if (0x256D..=0x2570).contains(&u) {
+        let sx = origin_x + cx + 0.5;
+        let sy = origin_y + cy + 0.5;
+        let right_x = origin_x + cw;
+        let left_x = origin_x;
+        let bottom_y = origin_y + lh;
+        let top_y = origin_y;
+        let r = (light * 3.5).min((cw * 0.45).min(lh * 0.45)).max(1.5);
+        const K: f32 = 0.55228475;
+
+        let mut b = PathBuilder::stroke(px(light));
+        match u {
+            0x256D => {
+                // ╭ top-left: bar right to right_x, curve down to sx, stem down to bottom_y
+                b.move_to(point(px(right_x), px(sy)));
+                b.line_to(point(px(sx + r), px(sy)));
+                b.cubic_bezier_to(
+                    point(px(sx), px(sy + r)),
+                    point(px(sx + r * (1.0 - K)), px(sy)),
+                    point(px(sx), px(sy + r * (1.0 - K))),
+                );
+                b.line_to(point(px(sx), px(bottom_y)));
+            }
+            0x256E => {
+                // ╮ top-right: bar left to left_x, curve down to sx, stem down to bottom_y
+                b.move_to(point(px(left_x), px(sy)));
+                b.line_to(point(px(sx - r), px(sy)));
+                b.cubic_bezier_to(
+                    point(px(sx), px(sy + r)),
+                    point(px(sx - r * (1.0 - K)), px(sy)),
+                    point(px(sx), px(sy + r * (1.0 - K))),
+                );
+                b.line_to(point(px(sx), px(bottom_y)));
+            }
+            0x256F => {
+                // ╯ bottom-right: bar left to left_x, curve up to sx, stem up to top_y
+                b.move_to(point(px(left_x), px(sy)));
+                b.line_to(point(px(sx - r), px(sy)));
+                b.cubic_bezier_to(
+                    point(px(sx), px(sy - r)),
+                    point(px(sx - r * (1.0 - K)), px(sy)),
+                    point(px(sx), px(sy - r * (1.0 - K))),
+                );
+                b.line_to(point(px(sx), px(top_y)));
+            }
+            _ => {
+                // ╰ bottom-left: stem down from top_y to sy - r, curve right to sy, bar right to right_x
+                b.move_to(point(px(sx), px(top_y)));
+                b.line_to(point(px(sx), px(sy - r)));
+                b.cubic_bezier_to(
+                    point(px(sx + r), px(sy)),
+                    point(px(sx), px(sy - r * (1.0 - K))),
+                    point(px(sx + r * (1.0 - K)), px(sy)),
+                );
+                b.line_to(point(px(right_x), px(sy)));
+            }
+        }
+
+        if let Ok(path) = b.build() {
+            return Some(ProceduralDraw::Path(path, fg));
+        }
+    }
+
+    // Straight lines, block elements, quadrants, and fallbacks:
+    procedural_cell(ch, cw, lh, fg).map(|(rects, color)| ProceduralDraw::Rects(rects, color))
 }
 
 /// Cell-local rects `(x0, y0, x1, y1)` + paint colour for a procedurally
@@ -78,12 +182,11 @@ pub fn procedural_cell(
     let cy = (lh / 2.0).floor();
     let half_w = (cw / 2.0).floor();
     let half_h = (lh / 2.0).floor();
-    // Stroke weight is fixed rather than derived from the cell height: light
-    // strokes render at a normal 2px and heavy strokes at 3px, so box drawing
-    // keeps its weight (and its light/heavy contrast) at every font size
-    // instead of collapsing to a hairline.
-    let light = 2.0;
-    let heavy = 3.0;
+    // Stroke weight dynamically scales with cell width matching Windows Terminal AtlasEngine
+    // (std::max(1.0f, roundf(cellWidth / 6.0f))), so strokes stay crisp 1px lines when
+    // zoomed out and scale up proportionally without jagged stair-steps or giant chunky bars.
+    let light = (cw / 6.0).round().max(1.0);
+    let heavy = (light * 2.0).max(light + 1.0);
     // Every stroke is centred on the same lines the arcs use (`cy + 0.5` /
     // `cx + 0.5`), so straight and rounded pieces join without a jog at any
     // thickness (identical to the old geometry when th == 1.0).
@@ -205,6 +308,26 @@ pub fn procedural_cell(
             vline(&mut rects, 0.0, cy + 1.0, light);
             1.0
         }
+        0x256D => {
+            hline(&mut rects, cx, cw, light);
+            vline(&mut rects, cy, lh, light);
+            1.0
+        }
+        0x256E => {
+            hline(&mut rects, 0.0, cx + 1.0, light);
+            vline(&mut rects, cy, lh, light);
+            1.0
+        }
+        0x256F => {
+            hline(&mut rects, 0.0, cx + 1.0, light);
+            vline(&mut rects, 0.0, cy + 1.0, light);
+            1.0
+        }
+        0x2570 => {
+            hline(&mut rects, cx, cw, light);
+            vline(&mut rects, 0.0, cy + 1.0, light);
+            1.0
+        }
         0x250F => {
             hline(&mut rects, cx - 1.0, cw, heavy);
             vline(&mut rects, cy - 1.0, lh, heavy);
@@ -298,13 +421,17 @@ mod tests {
     }
 
     #[test]
-    fn rounded_corners_are_delegated_to_font() {
+    fn rounded_corners_are_procedural_vector_paths() {
         for ch in ['\u{256d}', '\u{256e}', '\u{256f}', '\u{2570}'] {
             assert!(
-                !is_procedural(ch),
-                "{ch} should not be procedural; font vector rasterization provides smooth curves"
+                is_procedural(ch),
+                "{ch} should be procedural for gapless grid alignment"
             );
-            assert!(procedural_cell(ch, 9.0, 18.0, white()).is_none());
+            let draw = render_procedural(ch, 0.0, 0.0, 10.0, 20.0, white());
+            assert!(
+                matches!(draw, Some(ProceduralDraw::Path(_, _))),
+                "{ch} should render as an anti-aliased vector path"
+            );
         }
     }
 
@@ -316,7 +443,7 @@ mod tests {
 
     #[test]
     fn light_strokes_use_a_normal_weight_at_large_fonts() {
-        // 29px cell: light strokes are 2px, heavy 3px.
+        // 29px cell: cw = 14.4 -> light stroke = round(14.4 / 6.0) = 2.0, heavy = 4.0
         let (light, _) =
             procedural_cell('\u{2500}', 14.4, 29.0, white()).expect("light horizontal");
         assert_eq!(light.len(), 1);
@@ -325,18 +452,18 @@ mod tests {
         let (heavy, _) =
             procedural_cell('\u{2501}', 14.4, 29.0, white()).expect("heavy horizontal");
         assert_eq!(heavy.len(), 1);
-        assert_eq!(heavy[0].3 - heavy[0].1, 3.0);
+        assert_eq!(heavy[0].3 - heavy[0].1, 4.0);
     }
 
     #[test]
     fn normal_weight_at_default_font() {
-        // 14px font / ~17px cell: still a normal-weight 2px stroke.
+        // cw = 8.0 -> light stroke = round(8.0 / 6.0) = 1.0 (zoom out stays crisp 1px)
         let (rects, _) = procedural_cell('\u{2500}', 8.0, 17.0, white()).expect("light horizontal");
         assert_eq!(rects.len(), 1);
-        assert_eq!(rects[0].3 - rects[0].1, 2.0);
+        assert_eq!(rects[0].3 - rects[0].1, 1.0);
 
         let (heavy, _) = procedural_cell('\u{2501}', 8.0, 17.0, white()).expect("heavy horizontal");
         assert_eq!(heavy.len(), 1);
-        assert_eq!(heavy[0].3 - heavy[0].1, 3.0);
+        assert_eq!(heavy[0].3 - heavy[0].1, 2.0);
     }
 }
