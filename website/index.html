@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Terminal — The Fastest, Most Aesthetic GPU Terminal for Windows</title>
+  <meta name="description" content="DirectX-accelerated via GPUI · 240Hz Adaptive Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic · iTerm2 Inline Graphics." />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="icon" type="image/x-icon" href="assets/atlas.ico" />
+  <link rel="apple-touch-icon" href="assets/app-icon.png" />
+  
+  <!-- Prevent FOUC: Apply user theme before paint -->
+  <script>
+    (function() {
+      const stored = localStorage.getItem("color-scheme");
+      if (stored === "dark" || stored === "light") {
+        document.documentElement.setAttribute("data-theme", stored);
+        document.querySelector('meta[name="color-scheme"]').content = stored;
+      }
+    })();
+  </script>
+  
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Floating Navigation Bar -->
+  <header class="site-header">
+    <div class="container">
+      <nav class="nav-bar" aria-label="Main Navigation">
+        <a href="index.html" class="nav-brand">
+          <img src="assets/app-icon.png" alt="Atlas Logo" class="nav-brand-icon" />
+          <span>Atlas Terminal</span>
+        </a>
+        <div class="nav-links">
+          <a href="#features" class="nav-link">features</a>
+          <a href="#benchmark" class="nav-link">benchmark</a>
+          <a href="docs/index.html" class="nav-link">docs</a>
+          <a href="releases/index.html" class="nav-link">releases</a>
+        </div>
+        <div class="nav-actions">
+          <button class="theme-toggle-btn" aria-label="Toggle color theme"></button>
+          <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer" class="github-pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="container">
+        <!-- Prominent Tactile App Icon -->
+        <div class="app-icon-container">
+          <div class="app-icon-aura"></div>
+          <img src="assets/app-icon.png" alt="Atlas Terminal Application Icon" class="app-icon-img" />
+        </div>
+
+        <div class="release-pill">
+          <span class="status-dot"></span>
+          <span>v0.1.71 • Native GPU Release</span>
+        </div>
+
+        <h1 class="hero-headline">The fastest, most aesthetic GPU terminal for Windows</h1>
+        <p class="hero-subheadline">
+          Built from scratch in Rust on Zed's GPUI framework. Combines raw DirectX hardware acceleration with a restrained, dark-first Apple design language and native inline graphics.
+        </p>
+
+        <!-- CTAs -->
+        <div class="hero-ctas">
+          <a href="https://github.com/akrram0/atlas-terminal/releases/latest" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>Download for Windows (x64)</span>
+          </a>
+          <a href="docs/index.html" class="btn-secondary">
+            <span>Explore Documentation</span>
+            <span class="elastic-arrow">→</span>
+          </a>
+        </div>
+
+        <!-- Copyable Winget Quick Install Box -->
+        <div class="quick-install-box" data-copy="winget install akrram0.atlas-terminal" title="Click to copy command">
+          <span>Install via winget:</span>
+          <code>winget install akrram0.atlas-terminal</code>
+          <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+        </div>
+
+        <!-- Proof Signals -->
+        <div class="proof-strip">
+          <div class="proof-item">
+            <strong>240Hz</strong>
+            <span>Adaptive Refresh</span>
+          </div>
+          <div class="proof-item">
+            <strong>1ms</strong>
+            <span>OS Timer Precision</span>
+          </div>
+          <div class="proof-item">
+            <strong>0%</strong>
+            <span>Idle CPU Usage</span>
+          </div>
+          <div class="proof-item">
+            <strong>100% Rust</strong>
+            <span>Zero Electron / Webviews</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Terminal Showcase (Live Browser Mockup) -->
+    <section class="container">
+      <div class="terminal-showcase">
+        <div class="terminal-window">
+          <!-- Window Header (14px outer / 13px inner radius design) -->
+          <div class="terminal-titlebar">
+            <div class="terminal-tabs">
+              <div class="terminal-tab active" data-tab="PowerShell">
+                <img src="assets/icons/powershell.svg" alt="PowerShell" class="tab-icon" />
+                <span>PowerShell 7.5</span>
+              </div>
+              <div class="terminal-tab" data-tab="Ubuntu">
+                <img src="assets/icons/ubuntu.svg" alt="Ubuntu" class="tab-icon" />
+                <span>Ubuntu 24.04 (WSL)</span>
+              </div>
+              <div class="terminal-tab" data-tab="OpenCode AI">
+                <img src="assets/icons/opencode-mark.svg" alt="OpenCode AI" class="tab-icon" />
+                <span>OpenCode AI</span>
+              </div>
+            </div>
+            <div class="terminal-controls">
+              <span class="term-btn term-btn-min"></span>
+              <span class="term-btn term-btn-max"></span>
+              <span class="term-btn term-btn-close"></span>
+            </div>
+          </div>
+
+          <!-- Terminal Body & Interactive Shell Output -->
+          <div class="terminal-body" id="terminal-body">
+            <div class="terminal-output" id="terminal-history">
+              <div class="term-cmd-row">
+                <span class="term-prompt">❯</span>
+                <span class="term-cmd">fastfetch</span>
+              </div>
+              <div class="term-out-row">
+                <div class="fastfetch-block">
+                  <img src="assets/app-icon.png" alt="Atlas Terminal Logo" class="fastfetch-logo" />
+                  <div class="fastfetch-specs">
+                    <div class="spec-line"><span class="spec-key">User</span><span class="spec-val">developer@atlas</span></div>
+                    <div class="spec-line"><span class="spec-key">OS</span><span class="spec-val">Windows 11 Pro 64-bit</span></div>
+                    <div class="spec-line"><span class="spec-key">Engine</span><span class="spec-val">DirectX 12 (GPUI Framework)</span></div>
+                    <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.71</span></div>
+                    <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
+                    <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Up to 240Hz Adaptive</span></div>
+                    <div class="spec-line"><span class="spec-key">Memory</span><span class="spec-val">~28 MB (Zero Webview)</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Input Line -->
+            <div style="display:flex;align-items:center;margin-top:12px;">
+              <span class="term-prompt" style="margin-right:8px;">❯</span>
+              <input type="text" id="term-input" placeholder="Type 'help', 'theme', or 'fastfetch'..." style="background:none;border:none;outline:none;color:#ffffff;font-family:var(--font-mono);font-size:13px;width:100%;" />
+              <span class="term-cursor"></span>
+            </div>
+
+            <div class="term-interactive-hint">
+              <span>Interactive sandbox: type in the terminal or test these quick commands:</span>
+              <div class="term-quick-cmds">
+                <span class="term-pill" data-cmd="fastfetch">fastfetch</span>
+                <span class="term-pill" data-cmd="theme">theme</span>
+                <span class="term-pill" data-cmd="version">version</span>
+                <span class="term-pill" data-cmd="clear">clear</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Part B11: Mandatory Tagline Reveal Section -->
+    <section class="tagline-reveal-section">
+      <div class="container">
+        <div class="section-tag">[ 01 // ethos ]</div>
+        <p class="reveal-text">
+          Built from scratch in Rust on Zed's GPUI framework. No Electron bloat. No sluggish wrappers. Every glyph and quad calculated directly on your GPU at 240Hz.
+        </p>
+      </div>
+    </section>
+
+    <!-- Features Grid -->
+    <section class="features-section" id="features">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">[ 02 // capabilities ]</div>
+          <h2 class="section-title">Engineered for extreme performance and aesthetic rigor</h2>
+          <p class="section-desc">Zero compromises between raw hardware responsiveness and meticulous typography.</p>
+        </div>
+
+        <div class="grid-3">
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/refresh.svg" alt="Refresh" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">240Hz Adaptive Frame Scheduling</h3>
+            <p class="feature-body">
+              Invokes <code>timeBeginPeriod(1)</code> at startup, bypassing the default 15.6ms OS timer. Renders at 4ms during active kinetic motion and steps down to quiescent 0% CPU idle intervals.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/atlas-mark.svg" alt="Design" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">macOS Aesthetic on Windows</h3>
+            <p class="feature-body">
+              Restrained Apple/macOS design language. Frameless client area with native Windows 11 DWM Acrylic blur, strict 8pt spatial grid, and pixel-balanced window rounding.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/terminal.svg" alt="Terminal" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Native Inline Graphics (OSC 1337)</h3>
+            <p class="feature-body">
+              Direct iTerm2 image protocol integration inside the GPUI renderer. Fastfetch logos, CLI charts, and diagrams remain 1:1 anchored to their lines during scrollback and reflow.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/magnifer.svg" alt="Search" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Raycast-Style Command Palette</h3>
+            <p class="feature-body">
+              Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd> to launch shell profiles, split panes, and filter on-screen hyperlinks with multi-word fuzzy search.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/ubuntu.svg" alt="WSL" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Auto-Detected WSL Linux Profiles</h3>
+            <p class="feature-body">
+              Instant detection and native vector brand icons for Ubuntu, Debian, Arch, Fedora, NixOS, and Alpine. Forwards terminal identity into WSL so Fastfetch recognizes Atlas.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/sliders.svg" alt="Spring" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Critically Damped Kinetic Scroll</h3>
+            <p class="feature-body">
+              Exponential decay kinematics with momentum carryover and subpixel row interpolation. Glides through massive compiler logs without jank or scroll jumps.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Benchmark & Comparison Section -->
+    <section class="benchmark-section" id="benchmark">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">[ 03 // benchmark ]</div>
+          <h2 class="section-title">Direct comparison with other Windows terminals</h2>
+          <p class="section-desc">Why Atlas Terminal is in a category of its own on Windows.</p>
+        </div>
+
+        <div class="comparison-table-wrapper">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th class="highlight-col">Atlas Terminal</th>
+                <th>Windows Terminal</th>
+                <th>WezTerm</th>
+                <th>Alacritty</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Rendering Engine</strong></td>
+                <td class="highlight-col">GPUI DirectX 12</td>
+                <td>DirectWrite / DirectX</td>
+                <td>OpenGL / WebGPU</td>
+                <td>OpenGL</td>
+              </tr>
+              <tr>
+                <td><strong>Frame Scheduling</strong></td>
+                <td class="highlight-col">Adaptive 240Hz (4ms)</td>
+                <td>60Hz / VSync</td>
+                <td>Fixed FPS</td>
+                <td>Uncapped / VSync</td>
+              </tr>
+              <tr>
+                <td><strong>Idle CPU Consumption</strong></td>
+                <td class="highlight-col">0.0% (Quiescent)</td>
+                <td>&lt; 0.2%</td>
+                <td>0.1% - 0.5%</td>
+                <td>0.0%</td>
+              </tr>
+              <tr>
+                <td><strong>Native DWM Acrylic</strong></td>
+                <td class="highlight-col"><span class="check-icon">✓</span> Full Bleed Client</td>
+                <td><span class="check-icon">✓</span> Supported</td>
+                <td><span class="cross-icon">✗</span> Custom blur</td>
+                <td><span class="cross-icon">✗</span> None</td>
+              </tr>
+              <tr>
+                <td><strong>Inline Image Graphics</strong></td>
+                <td class="highlight-col"><span class="check-icon">✓</span> iTerm2 OSC 1337</td>
+                <td><span class="cross-icon">✗</span> Sixel preview only</td>
+                <td><span class="check-icon">✓</span> Supported</td>
+                <td><span class="cross-icon">✗</span> None</td>
+              </tr>
+              <tr>
+                <td><strong>Design Language</strong></td>
+                <td class="highlight-col">Apple / macOS (Zeron)</td>
+                <td>Fluent UI</td>
+                <td>Custom GUI</td>
+                <td>Minimalist</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Essential Shortcuts -->
+    <section class="container" style="padding: 48px 0;">
+      <div class="section-header">
+        <div class="section-tag">[ 04 // shortcuts ]</div>
+        <h2 class="section-title">High-velocity keyboard ergonomics</h2>
+        <p class="section-desc">Manage tabs, panes, and actions without taking your fingers off home row.</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+        <div class="feature-card" style="padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">Command Palette</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd></span>
+          </div>
+        </div>
+        <div class="feature-card" style="padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">Split Pane Vertical</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></span>
+          </div>
+        </div>
+        <div class="feature-card" style="padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">Split Pane Horizontal</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></span>
+          </div>
+        </div>
+        <div class="feature-card" style="padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">Maximize Active Pane</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd></span>
+          </div>
+        </div>
+        <div class="feature-card" style="padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">Open Hyperlink</span>
+            <span><kbd>Ctrl</kbd>+<kbd>Click</kbd></span>
+          </div>
+        </div>
+        <div class="feature-card" style="padding:14px 18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">Quick Settings</span>
+            <span><kbd>Ctrl</kbd>+<kbd>,</kbd></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq-section" id="faq">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">[ 05 // faq ]</div>
+          <h2 class="section-title">Frequently asked questions</h2>
+        </div>
+
+        <div class="faq-list">
+          <div class="faq-item">
+            <button class="faq-question">
+              <span>Is Atlas Terminal compatible with Windows 10 as well as Windows 11?</span>
+              <span class="faq-arrow">↓</span>
+            </button>
+            <div class="faq-answer">
+              Yes. Atlas Terminal natively runs on both 64-bit Windows 11 and Windows 10. Hardware DirectX acceleration works across modern Intel, AMD, and NVIDIA graphics. On Windows 11, it seamlessly unlocks native DWM acrylic materials.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question">
+              <span>Why build on Zed's GPUI instead of Electron or WebView2?</span>
+              <span class="faq-arrow">↓</span>
+            </button>
+            <div class="faq-answer">
+              Electron and WebView wrappers incur massive memory overhead (often 300MB+) and jittery DOM-based layout reflows. GPUI compiles directly to native machine code in Rust, uploading vertices and quads directly to DirectX shaders for instant 240Hz frame rates and ~28MB base RAM usage.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question">
+              <span>How do inline image graphics work with Fastfetch?</span>
+              <span class="faq-arrow">↓</span>
+            </button>
+            <div class="faq-answer">
+              Atlas implements the iTerm2 OSC 1337 image protocol. Tools like Fastfetch, Neofetch, and custom shell scripts send base64-encoded image payloads directly via escape sequences. Atlas rasterizes the graphic into a GPUI texture and anchors it to the scrollback buffer so it stays positioned with your history.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question">
+              <span>How does the auto-updater work?</span>
+              <span class="faq-arrow">↓</span>
+            </button>
+            <div class="faq-answer">
+              Atlas features a silent background delta updater that polls official GitHub Releases using conditional HTTP ETags. New versions are verified with SHA-256 cryptographic signatures before prompting you to restart.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Risk Reversal & Final CTA -->
+    <section class="container" style="padding: 60px 0 20px;">
+      <div style="background:var(--panel-bg);border:1px solid var(--border);border-radius:16px;padding:36px;text-align:center;">
+        <h2 style="font-size:1.6rem;letter-spacing:-0.02em;margin-bottom:8px;">Experience 240Hz native terminal performance</h2>
+        <p style="color:var(--muted);font-size:14px;max-width:520px;margin:0 auto 20px;">
+          Free, open-source under the MIT License, and built with obsessive care for Windows developers.
+        </p>
+        <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;">
+          <a href="https://github.com/akrram0/atlas-terminal/releases/latest" class="btn-primary">
+            <span>Download Installer (.exe)</span>
+          </a>
+          <a href="releases/index.html" class="btn-secondary">
+            <span>View Release Manifest & SHA-256</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="container">
+    <div class="site-footer">
+      <div class="footer-left">
+        <img src="assets/app-icon.png" alt="Atlas" style="width:16px;height:16px;border-radius:4px;" />
+        <span>Atlas Terminal · MIT Licensed</span>
+      </div>
+      <div class="footer-links">
+        <a href="docs/index.html">docs</a>
+        <a href="releases/index.html">releases</a>
+        <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer">source code</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

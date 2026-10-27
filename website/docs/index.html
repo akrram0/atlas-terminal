@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Documentation — Atlas Terminal</title>
+  <meta name="description" content="Comprehensive User Manual and Architecture Guide for Atlas Terminal." />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="icon" type="image/x-icon" href="../assets/atlas.ico" />
+  <link rel="apple-touch-icon" href="../assets/app-icon.png" />
+  
+  <script>
+    (function() {
+      const stored = localStorage.getItem("color-scheme");
+      if (stored === "dark" || stored === "light") {
+        document.documentElement.setAttribute("data-theme", stored);
+        document.querySelector('meta[name="color-scheme"]').content = stored;
+      }
+    })();
+  </script>
+  
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+
+  <!-- Floating Navigation Bar -->
+  <header class="site-header">
+    <div class="container container-wide">
+      <nav class="nav-bar" aria-label="Main Navigation">
+        <a href="../index.html" class="nav-brand">
+          <img src="../assets/app-icon.png" alt="Atlas Logo" class="nav-brand-icon" />
+          <span>Atlas Terminal</span>
+        </a>
+        <div class="nav-links">
+          <a href="../index.html#features" class="nav-link">features</a>
+          <a href="../index.html#benchmark" class="nav-link">benchmark</a>
+          <a href="index.html" class="nav-link active">docs</a>
+          <a href="../releases/index.html" class="nav-link">releases</a>
+        </div>
+        <div class="nav-actions">
+          <button class="theme-toggle-btn" aria-label="Toggle color theme"></button>
+          <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer" class="github-pill">
+            <span>GitHub</span>
+          </a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container container-wide">
+    <div class="docs-layout">
+      <!-- Sticky Sidebar Navigation -->
+      <aside class="docs-sidebar">
+        <input type="text" id="docs-search-input" class="docs-search" placeholder="Filter documentation (Ctrl+/)..." />
+        
+        <div class="docs-nav-group">
+          <div class="docs-nav-title">User Guide</div>
+          <ul class="docs-nav-items">
+            <li><a href="#installation" class="docs-nav-link active">Installation</a></li>
+            <li><a href="#shortcuts" class="docs-nav-link">Keyboard Shortcuts</a></li>
+            <li><a href="#split-panes" class="docs-nav-link">Tabs & Split Panes</a></li>
+            <li><a href="#fastfetch-setup" class="docs-nav-link">Fastfetch Inline Images</a></li>
+            <li><a href="#mouse-reporting" class="docs-nav-link">Mouse & Hyperlinks</a></li>
+            <li><a href="#wsl-profiles" class="docs-nav-link">WSL Linux Profiles</a></li>
+            <li><a href="#themes-config" class="docs-nav-link">Themes & Configuration</a></li>
+          </ul>
+        </div>
+
+        <div class="docs-nav-group">
+          <div class="docs-nav-title">Architecture</div>
+          <ul class="docs-nav-items">
+            <li><a href="#engine-design" class="docs-nav-link">DirectX GPUI Engine</a></li>
+            <li><a href="#timer-precision" class="docs-nav-link">1ms Windows OS Timer</a></li>
+            <li><a href="#frame-scheduling" class="docs-nav-link">Adaptive Frame Scheduling</a></li>
+            <li><a href="#cursor-kinematics" class="docs-nav-link">Kinetic Cursor & Scroll</a></li>
+            <li><a href="#anti-leak-geometry" class="docs-nav-link">Rounded Quad Anti-Leak</a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <!-- Main Docs Content Column -->
+      <main class="docs-content">
+
+        <!-- Article: Installation -->
+        <article class="docs-article" id="installation">
+          <div class="section-tag">[ 01 // getting started ]</div>
+          <h1>Installation & Setup</h1>
+          <p>Atlas Terminal is distributed as both an automated Windows installer and a standalone portable archive.</p>
+
+          <h3>Method 1: Windows Installer (.exe)</h3>
+          <p>The standard installer integrates Atlas into your Windows Start Menu, configures desktop shortcuts, and registers background delta auto-updates.</p>
+          <pre><code># Download the latest installer from GitHub Releases:
+https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
+
+          <h3>Method 2: Windows Package Manager (winget)</h3>
+          <p>You can install and update Atlas Terminal via the official winget manifest:</p>
+          <pre><code>winget install akrram0.atlas-terminal</code></pre>
+
+          <h3>Method 3: Portable Zero-Install Archive</h3>
+          <p>Extract <code>atlas-terminal-windows-x64.zip</code> into any folder (e.g. <code>C:\Tools\Atlas</code>) and run <code>atlas-terminal.exe</code> directly. Your configuration is stored in <code>~/.config/atlas/settings.json</code> (or right next to the executable if <code>portable.txt</code> is present).</p>
+        </article>
+
+        <!-- Article: Keyboard Shortcuts -->
+        <article class="docs-article" id="shortcuts">
+          <div class="section-tag">[ 02 // shortcuts ]</div>
+          <h2>Keyboard Shortcuts Reference</h2>
+          <p>Every pane, tab, search action, and setting is reachable via home-row hotkeys:</p>
+
+          <table class="comparison-table" style="margin-top: 12px; margin-bottom: 24px;">
+            <thead>
+              <tr>
+                <th>Shortcut</th>
+                <th>Action</th>
+                <th>Context</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></td>
+                <td>Open floating Command Palette</td>
+                <td>Global</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>K</kbd></td>
+                <td>Alternate Command Palette trigger</td>
+                <td>Global</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd></td>
+                <td>Split active pane vertically (side-by-side)</td>
+                <td>Terminal Pane</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>E</kbd></td>
+                <td>Split active pane horizontally (stacked)</td>
+                <td>Terminal Pane</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd></td>
+                <td>Toggle pane maximization</td>
+                <td>Split View</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>W</kbd></td>
+                <td>Close active pane or tab</td>
+                <td>Global</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd></td>
+                <td>Open new default shell tab</td>
+                <td>Global</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>O</kbd></td>
+                <td>Extract on-screen URLs into Command Palette</td>
+                <td>Global</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>,</kbd></td>
+                <td>Open Settings drawer</td>
+                <td>Global</td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
+
+        <!-- Article: Split Panes & Tabs -->
+        <article class="docs-article" id="split-panes">
+          <div class="section-tag">[ 03 // workflows ]</div>
+          <h2>Tabs & Split Panes</h2>
+          <p>
+            Atlas supports nested horizontal and vertical split layouts. Each pane maintains its own independent PTY process, working directory, and mouse capture state.
+          </p>
+          <p>
+            When working in a split layout, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> to temporarily maximize your active pane to fill the entire window without losing your multi-pane layout. Pressing it again restores your split geometry.
+          </p>
+        </article>
+
+        <!-- Article: Fastfetch Setup -->
+        <article class="docs-article" id="fastfetch-setup">
+          <div class="section-tag">[ 04 // graphics ]</div>
+          <h2>Fastfetch Inline Images Setup</h2>
+          <p>
+            Atlas Terminal features native support for the <strong>iTerm2 OSC 1337 image protocol</strong> without requiring Sixel or WebViews. Fastfetch can render your high-resolution distro or custom avatar graphic directly beside system specs.
+          </p>
+          <p>Add this to your <code>~/.config/fastfetch/config.jsonc</code>:</p>
+          <pre><code>{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
+  "logo": {
+    "type": "iterm",
+    "source": "/path/to/your/avatar.png",
+    "width": 18,
+    "height": 9,
+    "padding": {
+      "top": 1,
+      "left": 2,
+      "right": 3
+    }
+  },
+  "modules": [
+    "title",
+    "separator",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    "terminal",
+    "display",
+    "cpu",
+    "gpu",
+    "memory"
+  ]
+}</code></pre>
+        </article>
+
+        <!-- Article: WSL Profiles -->
+        <article class="docs-article" id="wsl-profiles">
+          <div class="section-tag">[ 05 // linux ]</div>
+          <h2>WSL Linux Profiles & Terminal Forwarding</h2>
+          <p>
+            Atlas Terminal automatically inspects your Windows Subsystem for Linux installation and creates shell profiles for every registered distribution (Ubuntu, Debian, Arch, Fedora, openSUSE, Alpine).
+          </p>
+          <p>
+            Atlas automatically forwards <code>TERM_PROGRAM=Atlas</code> and <code>TERM_PROGRAM_VERSION</code> into WSL through <code>WSLENV</code> with <code>/u</code> flags, ensuring that Fastfetch and Linux shell prompts correctly recognize Atlas Terminal.
+          </p>
+        </article>
+
+        <!-- Article: Themes & Configuration -->
+        <article class="docs-article" id="themes-config">
+          <div class="section-tag">[ 06 // configuration ]</div>
+          <h2>Themes, Settings & Configuration</h2>
+          <p>
+            Atlas Terminal features a native macOS Inset Grouped Settings window (<kbd>Ctrl</kbd> + <kbd>,</kbd>) with visual theme cards, segmented controls, and direct links to configuration files.
+          </p>
+          <h3>Configuration Files Hub</h3>
+          <p>All terminal preferences are stored in clean JSON format at <code>~/.config/atlas/settings.json</code>:</p>
+          <ul>
+            <li><strong>Typefaces</strong>: Any monospace font installed on your system can be configured via <code>"font_family": "JetBrains Mono"</code>.</li>
+            <li><strong>Background Blur</strong>: Toggle translucent acrylic glass on/off in Settings. Set custom glass opacity percentage via <code>"opacity": 0.85</code>.</li>
+            <li><strong>Custom Prompt & Shell Profiles</strong>: In Settings, click <strong>Edit $PROFILE</strong> to customize your PowerShell prompt function, Oh-My-Posh, or Starship theme.</li>
+            <li><strong>Live Reload</strong>: Click <strong>Reload from Disk</strong> in Settings to apply manual edits from <code>settings.json</code> instantly without restarting.</li>
+          </ul>
+        </article>
+
+        <!-- Article: Architecture -->
+        <article class="docs-article" id="engine-design">
+          <div class="section-tag">[ 07 // architecture ]</div>
+          <h2>DirectX GPUI Rendering Engine</h2>
+          <p>
+            Atlas Terminal is built in Rust using Zed's GPUI framework. Unlike legacy Win32 consoles or Electron wrappers, Atlas treats the terminal screen as a hardware-rendered DirectX scene:
+          </p>
+          <ul>
+            <li><strong>Quad Batching</strong>: Character cells, cursor blocks, and background colors are translated into GPU instanced quads.</li>
+            <li><strong>DirectX 12 Shaders</strong>: Release builds compile DirectX shaders using Microsoft's FXC shader compiler, eliminating runtime shader overhead.</li>
+            <li><strong>1ms Windows Timer Precision</strong>: Calls <code>timeBeginPeriod(1)</code> at startup to eliminate Windows 15.6ms timer quantisation, delivering true 240Hz frame scheduling.</li>
+          </ul>
+        </article>
+
+        <!-- Article: Rounded Quad Geometry -->
+        <article class="docs-article" id="anti-leak-geometry">
+          <div class="section-tag">[ 08 // rendering ]</div>
+          <h2>Rounded Quad Geometry & Anti-Leak Rules</h2>
+          <p>
+            Windows DWM Acrylic windows have rounded borders (14px outer radius / 13px inner radius). To prevent solid background cells from clipping or poking through the rounded corners, Atlas Terminal enforces strict geometry math in its Rust paint pipeline:
+          </p>
+          <pre><code>// Cell safe padding prevents text from touching window borders:
+.px(px(10.0)).py(px(10.0))
+
+// Non-default background spans touching the window perimeter receive corner radii:
+corner_radii: Corners {
+    bottom_left: px(13.0),
+    bottom_right: px(13.0),
+}</code></pre>
+        </article>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Site Footer -->
+  <footer class="container container-wide">
+    <div class="site-footer">
+      <div class="footer-left">
+        <img src="../assets/app-icon.png" alt="Atlas" style="width:16px;height:16px;border-radius:4px;" />
+        <span>Atlas Terminal Documentation</span>
+      </div>
+      <div class="footer-links">
+        <a href="../index.html">home</a>
+        <a href="../releases/index.html">releases</a>
+        <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer">source</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../app.js"></script>
+</body>
+</html>

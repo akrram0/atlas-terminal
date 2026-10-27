@@ -12,6 +12,9 @@ on:
     branches:
       - main
       - feat/smart-updater
+    paths-ignore:
+      - 'website/**'
+      - '.github/workflows/deploy-pages.yml'
   pull_request:
   workflow_dispatch:
 

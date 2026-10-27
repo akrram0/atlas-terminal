@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Releases & Downloads — Atlas Terminal</title>
+  <meta name="description" content="Download official binary releases and view changelogs for Atlas Terminal." />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="icon" type="image/x-icon" href="../assets/atlas.ico" />
+  <link rel="apple-touch-icon" href="../assets/app-icon.png" />
+  
+  <script>
+    (function() {
+      const stored = localStorage.getItem("color-scheme");
+      if (stored === "dark" || stored === "light") {
+        document.documentElement.setAttribute("data-theme", stored);
+        document.querySelector('meta[name="color-scheme"]').content = stored;
+      }
+    })();
+  </script>
+  
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+
+  <!-- Floating Navigation Bar -->
+  <header class="site-header">
+    <div class="container">
+      <nav class="nav-bar" aria-label="Main Navigation">
+        <a href="../index.html" class="nav-brand">
+          <img src="../assets/app-icon.png" alt="Atlas Logo" class="nav-brand-icon" />
+          <span>Atlas Terminal</span>
+        </a>
+        <div class="nav-links">
+          <a href="../index.html#features" class="nav-link">features</a>
+          <a href="../index.html#benchmark" class="nav-link">benchmark</a>
+          <a href="../docs/index.html" class="nav-link">docs</a>
+          <a href="index.html" class="nav-link active">releases</a>
+        </div>
+        <div class="nav-actions">
+          <button class="theme-toggle-btn" aria-label="Toggle color theme"></button>
+          <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer" class="github-pill">
+            <span>GitHub</span>
+          </a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="section-header" style="margin-top: 16px;">
+      <div class="section-tag">[ 01 // downloads ]</div>
+      <h1 class="section-title">Official Releases & Checksums</h1>
+      <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
+    </div>
+
+    <!-- Latest Release: v0.1.71 -->
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.71</span>
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
+            <span class="status-dot"></span> Latest Stable
+          </span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+
+      <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
+        Major release featuring complete Settings overhaul, dynamic WSL distribution auto-detection, Apple SF vector action icons, Background Blur acrylic toggle, and direct configuration file integration.
+      </p>
+
+      <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
+        <li><strong>Redesigned Action Icons</strong>: Crisp circular refresh arrow and precision 6-tooth gear with optical center balance and anti-collision hover clearance.</li>
+        <li><strong>Dynamic WSL Distribution Detection</strong>: Automatically inspects the Windows registry on launch to render your exact distro's logo (Arch Linux, Ubuntu, Debian, Fedora, openSUSE, Alpine, etc.) or fallback Tux penguin.</li>
+        <li><strong>Background Blur Acrylic Switch</strong>: Clean Apple-style toggle switch for Fluent glass translucency, with custom opacity percentage defined directly in <code>settings.json</code>.</li>
+        <li><strong>Configuration & Prompt Files Hub</strong>: Instant one-click access in Settings to edit <code>settings.json</code> and customize your PowerShell <code>$PROFILE</code> (custom prompt name, Starship, and fastfetch).</li>
+        <li><strong>OpenCode AI Terminal</strong>: Full compatibility and reliable execution for autonomous agent workflows.</li>
+      </ul>
+
+      <!-- Asset Downloads Grid -->
+      <div class="asset-download-grid">
+        <!-- Windows Setup Installer -->
+        <div class="asset-card">
+          <div class="asset-name">AtlasTerminal-Setup-0.1.71.exe</div>
+          <div class="asset-meta">Standard Windows Installer • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.71/AtlasTerminal-Setup-0.1.71.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Installer</span>
+            </a>
+          </div>
+          <div class="hash-row" data-copy="verified" title="Click to copy SHA-256">
+            <span>SHA-256</span>
+            <code>Available on GitHub</code>
+          </div>
+        </div>
+
+        <!-- Standalone Portable ZIP -->
+        <div class="asset-card">
+          <div class="asset-name">atlas-terminal-windows-x64.zip</div>
+          <div class="asset-meta">Standalone Portable Archive • Extract & Run</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.71/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Portable ZIP</span>
+            </a>
+          </div>
+          <div class="hash-row" data-copy="verified" title="Click to copy SHA-256">
+            <span>SHA-256</span>
+            <code>Available on GitHub</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Previous Releases Timeline -->
+    <div class="section-tag" style="margin-top:32px;">[ 02 // archive ]</div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.70</span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Top-bar vector icon redesign and initial macOS Inset Grouped Settings window rebuild with visual theme gallery cards.
+      </p>
+    </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.67</span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        OpenCode package manager path detection precedence and alternate screen solid theme background fixes.
+      </p>
+    </div>
+        </div>
+        <div class="release-date">Published 2026-10-23</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Full-bleed maximized window acrylic blur to screen edges, improved translucent tab name readability, and enhanced color contrast.
+      </p>
+    </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.49</span>
+        </div>
+        <div class="release-date">Published 2026-10-23</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Git Bash path resolution fixes, enhanced window frost kinematics, and OpenCode prompt corner alignment.
+      </p>
+    </div>
+
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="container">
+    <div class="site-footer">
+      <div class="footer-left">
+        <img src="../assets/app-icon.png" alt="Atlas" style="width:16px;height:16px;border-radius:4px;" />
+        <span>Atlas Terminal Releases</span>
+      </div>
+      <div class="footer-links">
+        <a href="../index.html">home</a>
+        <a href="../docs/index.html">docs</a>
+        <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer">source</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../app.js"></script>
+</body>
+</html>
