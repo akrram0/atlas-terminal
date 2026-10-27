@@ -240,17 +240,12 @@ impl Session {
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
                              if ($atlas_old) { & $atlas_old } else { 'PS ' + (Get-Location) + '> ' } \
                          }; \
-                         if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) { \
-                             $pnpm_ps1 = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.ps1'; \
-                             $pnpm_cmd = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd'; \
-                             $npm_cmd = Join-Path $env:APPDATA 'npm\\opencode.cmd'; \
-                             if (Test-Path $pnpm_ps1) { \
-                                 function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.ps1') @args } \
-                             } elseif (Test-Path $pnpm_cmd) { \
-                                 function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd') @args } \
-                             } elseif (Test-Path $npm_cmd) { \
-                                 function global:opencode { & (Join-Path $env:APPDATA 'npm\\opencode.cmd') @args } \
-                             } \
+                         $opencode_cmd = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd'; \
+                         $npm_cmd = Join-Path $env:APPDATA 'npm\\opencode.cmd'; \
+                         if (Test-Path $opencode_cmd) { \
+                             function global:opencode { & (Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd') @args } \
+                         } elseif (Test-Path $npm_cmd) { \
+                             function global:opencode { & (Join-Path $env:APPDATA 'npm\\opencode.cmd') @args } \
                          };"
                     );
                 }
