@@ -2,33 +2,6 @@
 
 use gpui::Rgba;
 
-/// Rasterise a quarter-circle stroke as overlapping quads of `thickness`
-/// (normal-weight light strokes, matching the straight lines they join).
-///
-/// Box-drawing corners are painted geometrically (never as font glyphs) so
-/// runs of `─` stay seam-free. The rounded corner pieces still have to *look*
-/// rounded, so this walks the arc between `start` and `end` radians and lays a
-/// quad on each step. Callers pass the arc centre on the cell's stroke centre
-/// line.
-fn arc_stroke(
-    rects: &mut Vec<(f32, f32, f32, f32)>,
-    center_x: f32,
-    center_y: f32,
-    radius: f32,
-    start: f32,
-    end: f32,
-    thickness: f32,
-) {
-    let steps = (radius * 4.0).ceil().max(6.0) as usize;
-    let half = thickness / 2.0;
-    for step in 0..=steps {
-        let t = start + (end - start) * (step as f32 / steps as f32);
-        let x = center_x + radius * t.cos();
-        let y = center_y + radius * t.sin();
-        rects.push((x - half, y - half, x + half, y + half));
-    }
-}
-
 /// How a cell's glyph is drawn: shaped with the terminal font, isolated from
 /// its neighbours (emoji, CJK…), with the bundled Nerd symbols font, or
 /// painted procedurally as pixel-exact quads (block elements, box drawing).
@@ -85,7 +58,6 @@ pub fn is_procedural(c: char) -> bool {
             | 0x253B
             | 0x253C
             | 0x254B
-            | 0x256D..=0x2570
     )
 }
 
@@ -233,49 +205,6 @@ pub fn procedural_cell(
             vline(&mut rects, 0.0, cy + 1.0, light);
             1.0
         }
-        // Rounded corners ╭ ╮ ╯ ╰: same strokes as the square corners, but the
-        // junction is a quarter arc instead of a right angle.
-        0x256D..=0x2570 => {
-            use std::f32::consts::{FRAC_PI_2, PI};
-            let r = (cx - 0.5).min(cy - 0.5).max(1.5);
-            let sx = cx + 0.5;
-            let sy = cy + 0.5;
-            match u {
-                0x256D => {
-                    // ╭ top-left: stem down, bar right, arc left→top.
-                    hline(&mut rects, cx + r, cw, light);
-                    vline(&mut rects, cy + r, lh, light);
-                    arc_stroke(&mut rects, sx + r, sy + r, r, PI, PI + FRAC_PI_2, light);
-                }
-                0x256E => {
-                    // ╮ top-right: bar left, stem down, arc top→right.
-                    hline(&mut rects, 0.0, cx - r, light);
-                    vline(&mut rects, cy + r, lh, light);
-                    arc_stroke(
-                        &mut rects,
-                        sx - r,
-                        sy + r,
-                        r,
-                        PI + FRAC_PI_2,
-                        2.0 * PI,
-                        light,
-                    );
-                }
-                0x256F => {
-                    // ╯ bottom-right: bar left, stem up, arc right→bottom.
-                    hline(&mut rects, 0.0, cx - r, light);
-                    vline(&mut rects, 0.0, cy - r, light);
-                    arc_stroke(&mut rects, sx - r, sy - r, r, 0.0, FRAC_PI_2, light);
-                }
-                _ => {
-                    // ╰ bottom-left: stem up, bar right, arc bottom→left.
-                    hline(&mut rects, cx + r, cw, light);
-                    vline(&mut rects, 0.0, cy - r, light);
-                    arc_stroke(&mut rects, sx + r, sy - r, r, FRAC_PI_2, PI, light);
-                }
-            }
-            1.0
-        }
         0x250F => {
             hline(&mut rects, cx - 1.0, cw, heavy);
             vline(&mut rects, cy - 1.0, lh, heavy);
@@ -369,20 +298,13 @@ mod tests {
     }
 
     #[test]
-    fn rounded_corners_are_drawn_as_arcs() {
+    fn rounded_corners_are_delegated_to_font() {
         for ch in ['\u{256d}', '\u{256e}', '\u{256f}', '\u{2570}'] {
-            let (rects, _) = procedural_cell(ch, 9.0, 18.0, white()).expect("rounded corner");
             assert!(
-                rects.len() > 10,
-                "{ch} should be an arc, got {} rects",
-                rects.len()
+                !is_procedural(ch),
+                "{ch} should not be procedural; font vector rasterization provides smooth curves"
             );
-            for (x0, y0, x1, y1) in &rects {
-                assert!(*x0 >= -0.6, "{ch}: x0 {x0} out of cell");
-                assert!(*x1 <= 9.6, "{ch}: x1 {x1} out of cell");
-                assert!(*y0 >= -0.6, "{ch}: y0 {y0} out of cell");
-                assert!(*y1 <= 18.6, "{ch}: y1 {y1} out of cell");
-            }
+            assert!(procedural_cell(ch, 9.0, 18.0, white()).is_none());
         }
     }
 
@@ -404,19 +326,6 @@ mod tests {
             procedural_cell('\u{2501}', 14.4, 29.0, white()).expect("heavy horizontal");
         assert_eq!(heavy.len(), 1);
         assert_eq!(heavy[0].3 - heavy[0].1, 3.0);
-    }
-
-    #[test]
-    fn rounded_corner_arcs_match_the_stroke_weight() {
-        // Even at the 9x18 fixture the arc must be a normal-weight 2px stroke.
-        let (rects, _) = procedural_cell('\u{256d}', 9.0, 18.0, white()).expect("rounded corner");
-        // The two straight strokes come first; the arc quads follow.
-        assert!(
-            rects[2..]
-                .iter()
-                .any(|(x0, y0, x1, y1)| x1 - x0 >= 2.0 && y1 - y0 >= 2.0),
-            "arc quads should be at least 2px wide and tall: {rects:?}"
-        );
     }
 
     #[test]
