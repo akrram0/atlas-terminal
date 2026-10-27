@@ -23,8 +23,7 @@ use crate::config::{
 };
 use crate::icons;
 use crate::theme::Theme;
-use crate::updater::{self, format_bytes};
-use crate::view::{AtlasView, UpdateDownloadState};
+use crate::view::AtlasView;
 use super::animation::{ease_apple_snappy, BODY_IN_MS};
 use super::controls::{pill_button, segmented_control, stepper, toggle_pill};
 
@@ -518,7 +517,7 @@ impl AtlasView {
             .child(
                 card()
                     .child(section_header("TYPOGRAPHY"))
-                    .child(setting_row("Font Family", Some("Monospace terminal typeface"), font_pills, false))
+                    .child(setting_row("Font Family", Some("Monospace terminal typeface"), font_pills.into_any_element(), false))
                     .child(setting_row("Font Size", Some("Glyph rendering dimension"), font_size_ctrl, false))
                     .child(setting_row("Line Height", Some("Vertical cell proportion multiplier"), line_height_ctrl, true)),
             )

@@ -612,7 +612,7 @@ impl AtlasView {
 }
 
 impl Render for AtlasView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_active = crate::rounded_corners::is_active();
         if is_active && !self.window_was_active {
             self.maybe_auto_check(true, cx);
