@@ -1,6 +1,6 @@
 /**
  * Atlas Terminal Website Interactive Core
- * Modern Theme Switcher, Terminal Simulator, and Scroll Reveals
+ * Modern Theme Switcher, Terminal Simulator, Magnetic Cursor, and Micro-Interactions
  */
 
 (function () {
@@ -77,7 +77,120 @@
   // Apply initial theme
   applyTheme(getActiveTheme());
 
-  // 2. Interactive Terminal Simulator
+  // 2. Magnetic Fluid Cursor & Micro-Interactions
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isTouchDevice = window.matchMedia('(pointer: coarse)').matches;
+
+  let cursorDot = document.getElementById('cursor-dot');
+  let cursorRing = document.getElementById('cursor-ring');
+
+  // Fallback: create cursor elements dynamically if not in DOM
+  if (!cursorDot && !isTouchDevice && !prefersReducedMotion) {
+    cursorDot = document.createElement('div');
+    cursorDot.id = 'cursor-dot';
+    cursorDot.className = 'custom-cursor-dot';
+    cursorDot.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(cursorDot);
+  }
+
+  if (!cursorRing && !isTouchDevice && !prefersReducedMotion) {
+    cursorRing = document.createElement('div');
+    cursorRing.id = 'cursor-ring';
+    cursorRing.className = 'custom-cursor-ring';
+    cursorRing.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(cursorRing);
+  }
+
+  if (cursorDot && cursorRing && !isTouchDevice && !prefersReducedMotion) {
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    let ringX = mouseX;
+    let ringY = mouseY;
+    let isVisible = false;
+
+    // Direct mouse coordinate tracking
+    window.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+
+      if (!isVisible) {
+        isVisible = true;
+        cursorDot.style.opacity = '1';
+        cursorRing.style.opacity = '1';
+      }
+
+      // Fast sync for the center precision dot
+      cursorDot.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0) translate(-50%, -50%)`;
+    }, { passive: true });
+
+    window.addEventListener('mouseleave', () => {
+      isVisible = false;
+      cursorDot.style.opacity = '0';
+      cursorRing.style.opacity = '0';
+    });
+
+    window.addEventListener('mouseenter', () => {
+      isVisible = true;
+      cursorDot.style.opacity = '1';
+      cursorRing.style.opacity = '1';
+    });
+
+    // RAF smooth spring easing for outer ring (0.18 factor)
+    function renderCursor() {
+      ringX += (mouseX - ringX) * 0.18;
+      ringY += (mouseY - ringY) * 0.18;
+      cursorRing.style.transform = `translate3d(${ringX}px, ${ringY}px, 0) translate(-50%, -50%)`;
+      requestAnimationFrame(renderCursor);
+    }
+    requestAnimationFrame(renderCursor);
+
+    // Interactive element hovers
+    const interactiveSelector = 'a, button, .term-tab, .term-pill, .feature-card, .asset-card, kbd, input';
+    document.querySelectorAll(interactiveSelector).forEach((el) => {
+      el.addEventListener('mouseenter', () => cursorRing.classList.add('hover-active'));
+      el.addEventListener('mouseleave', () => cursorRing.classList.remove('hover-active'));
+    });
+
+    // Special terminal focus hover
+    const termArea = document.querySelector('.terminal-window');
+    if (termArea) {
+      termArea.addEventListener('mouseenter', () => cursorRing.classList.add('terminal-hover'));
+      termArea.addEventListener('mouseleave', () => cursorRing.classList.remove('terminal-hover'));
+    }
+  }
+
+  // 3. Dynamic Cursor Spotlight on Cards
+  if (!isTouchDevice && !prefersReducedMotion) {
+    const spotlightCards = document.querySelectorAll('.feature-card, .asset-card, .terminal-window');
+    spotlightCards.forEach((card) => {
+      card.addEventListener('mousemove', (e) => {
+        const rect = card.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        card.style.setProperty('--mouse-x', `${x}px`);
+        card.style.setProperty('--mouse-y', `${y}px`);
+      }, { passive: true });
+    });
+
+    // 4. Subtle 3D Perspective Tilt on Hero App Icon
+    const appIcon = document.querySelector('.app-icon-container');
+    if (appIcon) {
+      appIcon.addEventListener('mousemove', (e) => {
+        const rect = appIcon.getBoundingClientRect();
+        const x = (e.clientX - rect.left) / rect.width - 0.5;
+        const y = (e.clientY - rect.top) / rect.height - 0.5;
+        const tiltX = -y * 14;
+        const tiltY = x * 14;
+        appIcon.style.transform = `perspective(600px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale3d(1.05, 1.05, 1.05)`;
+      }, { passive: true });
+
+      appIcon.addEventListener('mouseleave', () => {
+        appIcon.style.transform = 'perspective(600px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+      });
+    }
+  }
+
+  // 5. Interactive Terminal Sandbox Simulator
   const termBody = document.getElementById('terminal-body');
   const termInput = document.getElementById('term-input');
   const termTabs = document.querySelectorAll('.terminal-tab');
@@ -88,7 +201,7 @@
       <div class="fastfetch-specs">
         <div class="spec-line"><span class="spec-key">User</span><span class="spec-val">developer@atlas</span></div>
         <div class="spec-line"><span class="spec-key">OS</span><span class="spec-val">Windows 11 Pro 64-bit</span></div>
-        <div class="spec-line"><span class="spec-key">Host</span><span class="spec-val">DirectX 12 (DWM Acrylic)</span></div>
+        <div class="spec-line"><span class="spec-key">Host</span><span class="spec-val">DirectX 12 (DWM Acrylic Blur)</span></div>
         <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.71 (GPUI Engine)</span></div>
         <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
         <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">240Hz Adaptive Frame Scheduler</span></div>
@@ -96,6 +209,58 @@
       </div>
     </div>
   `;
+
+  // Realistic Shell Environments for Tabs
+  const shellEnvironments = {
+    powershell: `
+      <div class="fastfetch-block">
+        <img src="assets/app-icon.png" alt="Atlas Fastfetch Graphic" class="fastfetch-logo" />
+        <div class="fastfetch-specs">
+          <div class="spec-line"><span class="spec-key">User</span><span class="spec-val">developer@atlas</span></div>
+          <div class="spec-line"><span class="spec-key">OS</span><span class="spec-val">Windows 11 Pro 64-bit</span></div>
+          <div class="spec-line"><span class="spec-key">Host</span><span class="spec-val">DirectX 12 (DWM Acrylic Blur)</span></div>
+          <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.71 (GPUI Engine)</span></div>
+          <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
+          <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">240Hz Adaptive Frame Scheduler</span></div>
+          <div class="spec-line"><span class="spec-key">CPU Usage</span><span class="spec-val">0.0% (Quiescent Idle)</span></div>
+        </div>
+      </div>
+    `,
+    wsl: `
+      <div style="color:var(--terminal-dim);font-size:12px;margin-bottom:8px;">[wsl2: Arch Linux 6.6.137-microsoft-standard-WSL2 · Native Vector Arch Logo]</div>
+      <div class="term-cmd-row">
+        <span style="color:#00e5ff;font-weight:600;">archlinux</span><span style="color:rgba(255,255,255,0.4);">:</span><span style="color:#10b981;font-weight:600;">~</span> <span style="color:#ffffff;">❯ uname -r -m</span>
+      </div>
+      <div class="term-out-row" style="color:var(--terminal-dim);">
+        6.6.137-microsoft-standard-WSL2 x86_64
+      </div>
+      <div class="term-cmd-row" style="margin-top:8px;">
+        <span style="color:#00e5ff;font-weight:600;">archlinux</span><span style="color:rgba(255,255,255,0.4);">:</span><span style="color:#10b981;font-weight:600;">~</span> <span style="color:#ffffff;">❯ atlas --version</span>
+      </div>
+      <div class="term-out-row">
+        <div>atlas-terminal <span style="color:var(--accent);">v0.1.71</span> (Windows Subsystem for Linux bridged socket)</div>
+        <div style="color:var(--terminal-dim);font-size:11px;margin-top:2px;">TrueColor 24-bit + OSC 1337 terminal graphics verified.</div>
+      </div>
+    `,
+    opencode: `
+      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981;"></span>
+          <span style="font-weight:700;color:#ffffff;font-size:12px;letter-spacing:0.04em;">OPENCODE AI AGENT · CLAUDE 3.7 SONNET</span>
+        </div>
+        <div style="color:var(--terminal-dim);font-size:12px;line-height:1.5;">
+          Direct acrylic buffer active · No background halo on custom theme switch · Full anti-leak geometry verified.
+        </div>
+      </div>
+      <div class="term-cmd-row">
+        <span style="color:#f59e0b;font-weight:600;">opencode</span> ❯ <span style="color:#ffffff;">opencode run build --release</span>
+      </div>
+      <div class="term-out-row">
+        <div style="color:#10b981;">✓ Finished release [optimized] target(s) in 0.84s</div>
+        <div style="color:var(--terminal-dim);font-size:11px;margin-top:2px;">Ready for interactive developer commands. Type 'fastfetch' or 'theme' below.</div>
+      </div>
+    `
+  };
 
   const commandResponses = {
     help: `
@@ -153,28 +318,44 @@
     if (termInput) termInput.value = '';
   }
 
-  // Handle Tab Switch in Mockup
+  // Handle Tab Switch in Mockup with Authentic Shell Views
   termTabs.forEach((tab) => {
     tab.addEventListener('click', function () {
       termTabs.forEach((t) => t.classList.remove('active'));
       this.classList.add('active');
       const tabName = this.dataset.tab;
       const history = document.getElementById('terminal-history');
-      if (history) {
-        history.innerHTML = `
-          <div class="term-out-row" style="color:rgba(255,255,255,0.6);font-size:12px;margin-bottom:8px;">
-            Switched session to [${tabName}]. Type <strong style="color:var(--accent);">fastfetch</strong> to inspect.
-          </div>
-        `;
+      if (history && shellEnvironments[tabName]) {
+        history.innerHTML = shellEnvironments[tabName];
       }
     });
   });
 
-  // Handle Quick Command Pills
+  // Handle Quick Command Pills with Tactile Typing Simulation
+  let isTyping = false;
   document.querySelectorAll('.term-pill').forEach((pill) => {
     pill.addEventListener('click', function () {
+      if (isTyping || !termInput) return;
       const cmd = this.dataset.cmd;
-      if (cmd) executeTermCommand(cmd);
+      if (!cmd) return;
+
+      termInput.focus();
+      termInput.value = '';
+      isTyping = true;
+      let charIdx = 0;
+
+      const typeInterval = setInterval(() => {
+        if (charIdx < cmd.length) {
+          termInput.value += cmd[charIdx];
+          charIdx++;
+        } else {
+          clearInterval(typeInterval);
+          setTimeout(() => {
+            executeTermCommand(cmd);
+            isTyping = false;
+          }, 120);
+        }
+      }, 35);
     });
   });
 
@@ -186,7 +367,7 @@
     });
   }
 
-  // 3. Tagline Word-by-Word Scroll Reveal (Part B11)
+  // 6. Tagline Word-by-Word Scroll Reveal (Part B11)
   const taglineEl = document.querySelector('.reveal-text');
   if (taglineEl) {
     const rawText = taglineEl.textContent.trim();
@@ -216,7 +397,7 @@
     observer.observe(taglineEl);
   }
 
-  // 4. FAQ Accordion
+  // 7. FAQ Accordion
   document.querySelectorAll('.faq-question').forEach((btn) => {
     btn.addEventListener('click', function () {
       const item = this.closest('.faq-item');
@@ -226,7 +407,7 @@
     });
   });
 
-  // 5. One-click Copy Feedback
+  // 8. One-click Copy Feedback
   document.querySelectorAll('[data-copy]').forEach((el) => {
     el.addEventListener('click', function () {
       const textToCopy = this.getAttribute('data-copy');
@@ -244,7 +425,7 @@
     });
   });
 
-  // 6. Docs Search Filter
+  // 9. Docs Search Filter
   const docsSearchInput = document.getElementById('docs-search-input');
   if (docsSearchInput) {
     docsSearchInput.addEventListener('input', function () {

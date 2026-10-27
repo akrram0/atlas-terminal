@@ -170,9 +170,9 @@
             </div>
 
             <!-- Active Input Line -->
-            <div style="display:flex;align-items:center;margin-top:12px;">
+            <div class="terminal-interactive-line">
               <span class="term-prompt" style="margin-right:8px;">❯</span>
-              <input type="text" id="term-input" placeholder="Type 'help', 'theme', or 'fastfetch'..." style="background:none;border:none;outline:none;color:#ffffff;font-family:var(--font-mono);font-size:13px;width:100%;" />
+              <input type="text" id="term-input" placeholder="Type 'help', 'theme', or 'fastfetch'..." autocomplete="off" spellcheck="false" />
               <span class="term-cursor"></span>
             </div>
 
@@ -224,9 +224,9 @@
             <div class="feature-icon-box">
               <img src="assets/icons/atlas-mark.svg" alt="Design" class="feature-icon" />
             </div>
-            <h3 class="feature-title">macOS Aesthetic on Windows</h3>
+            <h3 class="feature-title">Fluent Acrylic Blur & Glass Translucency</h3>
             <p class="feature-body">
-              Restrained Apple/macOS design language. Frameless client area with native Windows 11 DWM Acrylic blur, strict 8pt spatial grid, and pixel-balanced window rounding.
+              Restrained Apple/macOS design language. Frameless client area with native Windows 11 DWM Acrylic glass blur, customizable opacity via <code>settings.json</code>, and instant GPU swapchains.
             </p>
           </div>
 
@@ -252,11 +252,11 @@
 
           <div class="feature-card">
             <div class="feature-icon-box">
-              <img src="assets/icons/ubuntu.svg" alt="WSL" class="feature-icon" />
+              <img src="assets/icons/arch.svg" alt="WSL" class="feature-icon" />
             </div>
-            <h3 class="feature-title">Auto-Detected WSL Linux Profiles</h3>
+            <h3 class="feature-title">Dynamic WSL Distro & Brand Detection</h3>
             <p class="feature-body">
-              Instant detection and native vector brand icons for Ubuntu, Debian, Arch, Fedora, NixOS, and Alpine. Forwards terminal identity into WSL so Fastfetch recognizes Atlas.
+              Automatic registry detection for Arch Linux, Debian, Ubuntu, Fedora, openSUSE, and Alpine with authentic vector logos, plus standard Tux penguin fallback when WSL is absent.
             </p>
           </div>
 
@@ -331,7 +331,7 @@
               </tr>
               <tr>
                 <td><strong>Design Language</strong></td>
-                <td class="highlight-col">Apple / macOS (Zeron)</td>
+                <td class="highlight-col">Restrained Apple / macOS Native Dark</td>
                 <td>Fluent UI</td>
                 <td>Custom GUI</td>
                 <td>Minimalist</td>
@@ -475,6 +475,10 @@
       </div>
     </div>
   </footer>
+
+  <!-- Ambient Magnetic Cursor Elements -->
+  <div class="custom-cursor-dot" id="cursor-dot" aria-hidden="true"></div>
+  <div class="custom-cursor-ring" id="cursor-ring" aria-hidden="true"></div>
 
   <script src="app.js"></script>
 </body>

@@ -29,6 +29,8 @@
   --kbd-border: rgba(0, 0, 0, 0.12);
   --code-bg: #f0ece1;
   --hero-gradient: linear-gradient(135deg, #1c1a16 0%, #6b6860 100%);
+  --card-spotlight: rgba(192, 90, 40, 0.06);
+  --border-spotlight: rgba(192, 90, 40, 0.28);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.08);
@@ -65,6 +67,8 @@
   --kbd-border: rgba(255, 255, 255, 0.12);
   --code-bg: #141412;
   --hero-gradient: linear-gradient(135deg, #ffffff 0%, #9b9b9b 100%);
+  --card-spotlight: rgba(224, 138, 98, 0.08);
+  --border-spotlight: rgba(224, 138, 98, 0.35);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
@@ -97,6 +101,8 @@
     --kbd-border: rgba(255, 255, 255, 0.12);
     --code-bg: #141412;
     --hero-gradient: linear-gradient(135deg, #ffffff 0%, #9b9b9b 100%);
+    --card-spotlight: rgba(224, 138, 98, 0.08);
+    --border-spotlight: rgba(224, 138, 98, 0.35);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
     --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
@@ -1206,4 +1212,207 @@ pre code {
 
 .footer-links a:hover {
   color: var(--fg);
+}
+
+/* ==========================================================================
+   Fluid Magnetic Cursor & Micro-Interactions (Apple Design Language)
+   ========================================================================== */
+
+@media (pointer: fine) {
+  body.has-custom-cursor {
+    cursor: default;
+  }
+  body.has-custom-cursor a,
+  body.has-custom-cursor button,
+  body.has-custom-cursor [role="button"],
+  body.has-custom-cursor .term-tab,
+  body.has-custom-cursor .term-pill {
+    cursor: pointer;
+  }
+}
+
+.custom-cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background-color: var(--accent);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99999;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.2s ease, transform 0.08s ease-out;
+  opacity: 0;
+}
+
+.custom-cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent-subtle);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 99998;
+  transform: translate(-50%, -50%);
+  transition: width 0.28s var(--spring-ease),
+              height 0.28s var(--spring-ease),
+              border-color 0.2s ease,
+              background-color 0.2s ease,
+              opacity 0.25s ease,
+              border-radius 0.25s ease,
+              box-shadow 0.25s ease;
+  opacity: 0;
+}
+
+.custom-cursor-ring.active {
+  opacity: 0.85;
+}
+
+.custom-cursor-dot.active {
+  opacity: 1;
+}
+
+/* Hover state on interactive elements (links, buttons, tabs, pills) */
+.custom-cursor-ring.hover-active {
+  width: 48px;
+  height: 48px;
+  background: var(--accent-subtle);
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.custom-cursor-dot.hover-active {
+  transform: translate(-50%, -50%) scale(0.6);
+}
+
+/* Text input / Terminal hover state */
+.custom-cursor-ring.terminal-hover {
+  width: 20px;
+  height: 30px;
+  border-radius: 4px;
+  border-color: var(--accent);
+  background: transparent;
+}
+
+/* Card Interactive Spotlight (Tracks Cursor Position) */
+.feature-card,
+.asset-card,
+.quick-install-box,
+.terminal-window,
+.release-card {
+  position: relative;
+  transition: transform 0.24s var(--spring-ease),
+              box-shadow 0.24s var(--spring-ease),
+              border-color 0.24s ease;
+}
+
+.feature-card::before,
+.asset-card::before,
+.quick-install-box::before,
+.terminal-window::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: radial-gradient(
+    450px circle at var(--mouse-x, -1000px) var(--mouse-y, -1000px),
+    var(--border-spotlight),
+    transparent 65%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.feature-card:hover::before,
+.asset-card:hover::before,
+.quick-install-box:hover::before,
+.terminal-window:hover::before {
+  opacity: 1;
+}
+
+/* Subtle 3D Tilt perspective */
+.app-icon-container {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.app-icon-img {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1), box-shadow 0.2s ease;
+}
+
+/* Terminal Caret Animations */
+.term-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 15px;
+  background-color: var(--accent);
+  margin-left: 3px;
+  vertical-align: middle;
+  border-radius: 1px;
+  animation: term-caret-blink 1.06s steps(1) infinite;
+}
+
+@keyframes term-caret-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Simulated terminal prompt line styling */
+.terminal-interactive-line {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.terminal-interactive-line:focus-within {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+#term-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--terminal-fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .custom-cursor-dot,
+  .custom-cursor-ring {
+    display: none !important;
+  }
+  .feature-card::before,
+  .asset-card::before,
+  .quick-install-box::before,
+  .terminal-window::before {
+    display: none !important;
+  }
+  .term-cursor {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}
+
+@media (hover: none) or (pointer: coarse) {
+  .custom-cursor-dot,
+  .custom-cursor-ring {
+    display: none !important;
+  }
 }
