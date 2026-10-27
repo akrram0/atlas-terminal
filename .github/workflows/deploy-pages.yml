@@ -41,9 +41,11 @@ jobs:
       - name: Deploy to GitHub Pages
         if: steps.pages.outcome == 'success'
         id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@v4
 
       - name: Deploy to gh-pages branch (universal fallback)
+        if: always()
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
