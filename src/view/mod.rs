@@ -764,28 +764,28 @@ impl Render for AtlasView {
 
         // Left Anchor: Unified Split Capsule ( + │ ▾ )
         let default_prof = self.get_default_profile();
-        let capsule_bg = tb.soft_bg;
-        let capsule_border = tb.hairline;
         let is_menu_open = self.profile_menu;
+        let capsule_bg = tb.elevated_bg;
+        let capsule_border = if is_menu_open { tb.accent } else { tb.elevated_border };
 
         let plus_hovered = self.hover_mark == Some(HOVER_MARK_CAPSULE_PLUS);
         let chevron_hovered = self.hover_mark == Some(HOVER_MARK_CAPSULE_CHEVRON);
 
         let plus_ink = if plus_hovered {
-            tb.chrome_fg_active
+            tb.fg
         } else {
-            tb.chrome_fg
+            tb.chrome_fg_active
         };
 
         let chevron_ink = if is_menu_open || chevron_hovered {
-            tb.chrome_fg_active
+            tb.fg
         } else {
-            tb.chrome_fg
+            tb.chrome_fg_active
         };
 
         let plus_btn = div()
             .id(ElementId::named_usize("capsule-plus", 0))
-            .w(px(24.0))
+            .w(px(26.0))
             .h(px(26.0))
             .flex()
             .items_center()
@@ -799,7 +799,7 @@ impl Render for AtlasView {
             }))
             .child(
                 icons::icon(icons::PLUS)
-                    .size(px(11.0))
+                    .size(px(13.5))
                     .text_color(plus_ink),
             )
             .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
@@ -829,7 +829,7 @@ impl Render for AtlasView {
             }))
             .child(
                 icons::icon(icons::DROPDOWN_ARROW)
-                    .size(px(11.0))
+                    .size(px(12.0))
                     .text_color(chevron_ink),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -846,7 +846,7 @@ impl Render for AtlasView {
             .rounded_full()
             .bg(capsule_bg)
             .border_1()
-            .border_color(if is_menu_open { tb.accent } else { capsule_border })
+            .border_color(capsule_border)
             .shadow_sm()
             .child(plus_btn)
             .child(divider)
