@@ -785,7 +785,7 @@ impl Render for AtlasView {
 
         let plus_btn = div()
             .id(ElementId::named_usize("capsule-plus", 0))
-            .w(px(26.0))
+            .w(px(24.0))
             .h(px(26.0))
             .flex()
             .items_center()
@@ -799,7 +799,7 @@ impl Render for AtlasView {
             }))
             .child(
                 icons::icon(icons::PLUS)
-                    .size(px(13.0))
+                    .size(px(11.0))
                     .text_color(plus_ink),
             )
             .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
@@ -829,7 +829,7 @@ impl Render for AtlasView {
             }))
             .child(
                 icons::icon(icons::DROPDOWN_ARROW)
-                    .size(px(9.0))
+                    .size(px(11.0))
                     .text_color(chevron_ink),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
