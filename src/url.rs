@@ -5,7 +5,9 @@
 //! to exact grid `Point` coordinates, and dispatches clicks to the OS.
 
 use alacritty_terminal::event::EventListener;
-use alacritty_terminal::index::{Column, Line, Point};
+use alacritty_terminal::index::{Line, Point};
+#[cfg(test)]
+use alacritty_terminal::index::Column;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::Term;
 
@@ -284,6 +286,10 @@ pub fn open_url(url: &str) {
                 1,
             );
         }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = url;
     }
 }
 

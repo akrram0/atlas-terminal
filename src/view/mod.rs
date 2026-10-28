@@ -1363,7 +1363,8 @@ impl Render for AtlasView {
                 let pane_drop = pane_ix;
                 cell = cell
                     .on_drop::<gpui::ExternalPaths>(cx.listener(
-                        move |view, paths: &gpui::ExternalPaths, _window, cx| {
+                        move |view, paths: &gpui::ExternalPaths, window, cx| {
+                            window.focus(&view.focus);
                             if let Some(tab) = view.tabs.get_mut(view.active) {
                                 tab.active_pane = pane_drop;
                             }
@@ -1781,7 +1782,8 @@ impl Render for AtlasView {
             .rounded_b(px(if zoomed { 0.0 } else { 13.0 }))
             .bg(sheet_bg)
             .on_drop::<gpui::ExternalPaths>(cx.listener(
-                |view, paths: &gpui::ExternalPaths, _window, cx| {
+                |view, paths: &gpui::ExternalPaths, window, cx| {
+                    window.focus(&view.focus);
                     view.handle_file_drop(paths.paths(), cx);
                 },
             ))
