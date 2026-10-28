@@ -25,12 +25,12 @@ use gpui::{
 
 use crate::config::{load_app_settings, AppSettingsFile, SettingsTab};
 use crate::icons;
-use crate::session::{Profile, Session};
+use crate::session::Session;
 use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};
 use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, EASE_OUT};
 use crate::ui::overlay::{
-    caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_NEW_TAB,
+    caption_spacer, overlay_backdrop, profile_menu, set_hover_mark,
     HOVER_MARK_WINDOW,
 };
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
@@ -758,30 +758,69 @@ impl Render for AtlasView {
             .border_b_1()
             .border_color(tb.hairline);
 
-        // Workspace pill (26Ã—20): a 6%-ink translucent fill with the quiet
-        // sidebar mark from the reference chrome. Opens the new-tab profile
-        // menu (this shell has no sidebar).
-        let ws_bg = tb.soft_bg;
-        let ws_idle = chrome_ink;
-        let ws_hot = tb.chrome_fg_active;
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("workspace-pill", 0))
-                .w(px(26.0))
-                .h(px(26.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .bg(ws_bg)
-                .text_color(ws_idle)
-                .hover(move |style| style.text_color(ws_hot))
-                .child(icons::icon(icons::ATLAS_MARK).size(px(14.0)).text_color(ws_idle))
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.toggle_profile_menu(cx);
-                    window.focus(&view.focus);
-                })),
-        );
+        // Left Anchor: Unified Split Capsule ( + │ ▾ )
+        let default_prof = self.get_default_profile();
+        let capsule_bg = tb.soft_bg;
+        let capsule_border = tb.hairline;
+        let is_menu_open = self.profile_menu;
+
+        let plus_btn = div()
+            .id(ElementId::named_usize("capsule-plus", 0))
+            .w(px(26.0))
+            .h(px(26.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_l_full()
+            .text_color(chrome_ink)
+            .hover(move |s| s.bg(tb.card_hover).text_color(tb.chrome_fg_active))
+            .active(move |s| s.opacity(0.75))
+            .child(icons::icon(icons::PLUS).size(px(12.0)))
+            .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                view.new_tab(default_prof, cx);
+                window.focus(&view.focus);
+            }));
+
+        let divider = div()
+            .w(px(1.0))
+            .h(px(12.0))
+            .bg(tb.elevated_border);
+
+        let chevron_btn = div()
+            .id(ElementId::named_usize("capsule-chevron", 0))
+            .w(px(22.0))
+            .h(px(26.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_r_full()
+            .text_color(if is_menu_open { tb.accent } else { chrome_ink })
+            .bg(if is_menu_open { tb.card_hover } else { rgba(0x00000000) })
+            .hover(move |s| s.bg(tb.card_hover).text_color(tb.chrome_fg_active))
+            .active(move |s| s.opacity(0.75))
+            .child(icons::icon(icons::CHEVRON_DOWN).size(px(10.0)))
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.toggle_profile_menu(cx);
+                window.focus(&view.focus);
+            }));
+
+        let capsule = div()
+            .id(ElementId::named_usize("topbar-launch-capsule", 0))
+            .h(px(26.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .rounded_full()
+            .bg(capsule_bg)
+            .border_1()
+            .border_color(if is_menu_open { tb.accent } else { capsule_border })
+            .shadow_sm()
+            .child(plus_btn)
+            .child(divider)
+            .child(chevron_btn);
+
+        bar = bar.child(capsule);
+        bar = bar.child(div().w(px(6.0)));
 
         // Horizontal tabs: active tab is a clean rounded rect (elevated bg + subtle border)
         // carrying the running process's own mark; inactive tabs are quiet with folder icon.
@@ -1033,37 +1072,7 @@ impl Render for AtlasView {
             bar = bar.child(settings_pill);
         }
 
-        // New tab: clean vector plus button
-        let plus_hover = tb.card_hover;
-        let plus_ink = if self.hover_mark == Some(HOVER_MARK_NEW_TAB) {
-            tb.chrome_fg_active
-        } else {
-            chrome_ink
-        };
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("topbar-new", 0))
-                .w(px(26.0))
-                .h(px(26.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .hover(move |style| style.bg(plus_hover))
-                .active(move |style| style.opacity(0.78))
-                .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                    set_hover_mark(view, HOVER_MARK_NEW_TAB, *hovered, cx);
-                }))
-                .child(icons::icon(icons::PLUS).size(px(14.0)).text_color(plus_ink))
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.new_tab(Profile::PowerShell, cx);
-                    window.focus(&view.focus);
-                })),
-        );
-
         bar = bar.child(caption_spacer(0));
-
-        let top_btn_hover = tb.card_hover;
 
         if let Some(ref update) = self.available_update {
             let badge_ink = tb.accent;
@@ -1135,54 +1144,7 @@ impl Render for AtlasView {
                     .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb.faint_fg))
                     .child(div().text_size(px(11.5)).child("Checking...")),
             );
-        } else {
-            bar = bar.child(
-                div()
-                    .id(ElementId::named_usize("topbar-update-btn", 0))
-                    .w(px(26.0))
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(6.0))
-                    .hover(move |s| s.bg(top_btn_hover))
-                    .active(move |s| s.opacity(0.78))
-                    .child(icons::icon(icons::REFRESH).size(px(14.0)).text_color(chrome_ink))
-                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        view.toggle_update_panel(cx);
-                    })),
-            );
         }
-
-        bar = bar.child(div().w(px(3.0)));
-
-        bar = bar.child(
-            div()
-                .id(ElementId::named_usize("topbar-settings-btn", 0))
-                .w(px(26.0))
-                .h(px(26.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .hover(move |s| s.bg(top_btn_hover))
-                .active(move |s| s.opacity(0.78))
-                .child(icons::icon(icons::SETTINGS).size(px(14.0)).text_color(chrome_ink))
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.settings_open = !view.settings_open;
-                    if view.settings_open {
-                        view.settings_tab_open = true;
-                        view.settings_tab = SettingsTab::General;
-                        view.settings_scroll_pos = 0.0;
-                        view.settings_scroll_target = 0.0;
-                        view.settings_scroll_handle.set_offset(gpui::Point::default());
-                        window.focus(&view.settings_focus);
-                    } else {
-                        window.focus(&view.focus);
-                    }
-                    cx.notify();
-                })),
-        );
 
         bar = bar.child(div().w(px(6.0)));
 

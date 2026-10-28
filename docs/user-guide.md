@@ -265,7 +265,7 @@ Press `Ctrl+,` or click the gear icon (`⚙`) in the top right to open the Setti
 
 Atlas Terminal automatically detects installed Windows Subsystem for Linux (WSL) distributions on startup and registers native vector distro marks (`Ubuntu`, `Arch Linux`, `Debian`, `Fedora`, `Kali`, `Alpine`, `Docker`):
 
-- **Workspace Profile Menu**: Click the workspace pill on the left of the top bar to open the shell profile menu.
+- **Unified Launch Capsule (`+ │ ▾`)**: Click `+` on the left of the top bar to instantly spawn a new tab with your default shell, or click `▾` to open the shell profile menu, access Settings, check for updates, or launch the Command Palette.
 - **Fast Profile Launching**: Spawn dedicated tabs directly into PowerShell, Command Prompt, or any detected WSL Linux distribution.
 - **Terminal Identity Forwarding**: Atlas forwards terminal identity into WSL environments so tools like `fastfetch` automatically detect and display the Atlas Terminal logo.
 - **Procedural Prompt Vector Precision**: Native box-drawing and corner characters (`╭`, `╰`, `─`, `│`) render via DirectX GPU vector curves with dynamic stroke scaling. Starship, Oh-My-Posh, and WSL Arch/Ubuntu multi-line prompt arrows join seamlessly without gaps or jagged pixel steps, even when zoomed out.

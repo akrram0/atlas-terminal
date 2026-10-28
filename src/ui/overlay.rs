@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, IntoElement,
+    Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement,
     Window, canvas, div, px, rgba,
 };
 
@@ -85,7 +85,7 @@ pub fn caption_spacer(slot: usize) -> impl IntoElement {
         )
 }
 
-/// Profile picker behind the workspace pill, anchored under the top bar.
+/// Unified Launch & Action Menu anchored under the left-side ( + │ ▾ ) capsule.
 pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
     let wsl_label = crate::wsl::default_distro()
         .map(|distro| format!("{} (WSL)", distro.title))
@@ -93,24 +93,27 @@ pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -
     let entries: [(String, Profile); 5] = [
         ("PowerShell".to_string(), Profile::PowerShell),
         (wsl_label, Profile::Wsl),
-        ("OpenCode".to_string(), Profile::OpenCode),
         ("Command Prompt".to_string(), Profile::Cmd),
         ("Git Bash".to_string(), Profile::GitBash),
+        ("OpenCode".to_string(), Profile::OpenCode),
     ];
     let item_hover = theme.card_hover;
     let mut menu = div()
+        .id(ElementId::named_usize("launch-menu-dropdown", 0))
         .absolute()
         .top(px(40.0))
         .left(px(8.0))
-        .w(px(220.0))
+        .w(px(230.0))
         .flex()
         .flex_col()
         .p(px(6.0))
-        .rounded(px(8.0))
+        .gap(px(1.0))
+        .rounded(px(10.0))
         .bg(theme.elevated_bg)
         .border_1()
         .border_color(theme.elevated_border)
-        .shadow_lg();
+        .shadow_xl();
+
     for (index, (label, profile)) in entries.into_iter().enumerate() {
         let icon = session_icon(&profile_title(profile), profile);
         menu = menu.child(
@@ -122,11 +125,15 @@ pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -
                 .items_center()
                 .gap(px(8.0))
                 .rounded(px(6.0))
-                .text_size(px(12.5))
-                .text_color(theme.chrome_fg_active)
+                .cursor_pointer()
                 .hover(move |style| style.bg(item_hover))
                 .child(icons::icon(icon).size(px(13.0)).text_color(theme.chrome_fg))
-                .child(label)
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .text_color(theme.chrome_fg_active)
+                        .child(label),
+                )
                 .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                     view.new_tab(profile, cx);
                     view.dismiss_profile(cx);
@@ -134,6 +141,124 @@ pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -
                 })),
         );
     }
+
+    // Divider
+    menu = menu.child(
+        div()
+            .h(px(1.0))
+            .my(px(4.0))
+            .bg(theme.elevated_border),
+    );
+
+    // Settings item (Ctrl+,)
+    menu = menu.child(
+        div()
+            .id(ElementId::named_usize("menu-item-settings", 0))
+            .h(px(30.0))
+            .px(px(10.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .rounded(px(6.0))
+            .cursor_pointer()
+            .hover(move |style| style.bg(item_hover))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(icons::icon(icons::SETTINGS).size(px(13.0)).text_color(theme.chrome_fg))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(theme.chrome_fg_active)
+                            .child("Settings"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.chrome_fg)
+                    .child("Ctrl+,"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.dismiss_profile(cx);
+                view.settings_tab_open = true;
+                view.settings_open = true;
+                view.settings_tab = crate::config::SettingsTab::General;
+                view.settings_scroll_pos = 0.0;
+                view.settings_scroll_target = 0.0;
+                view.settings_scroll_handle.set_offset(gpui::Point::default());
+                window.focus(&view.settings_focus);
+                cx.notify();
+            })),
+    );
+
+    // Check for updates item
+    menu = menu.child(
+        div()
+            .id(ElementId::named_usize("menu-item-updates", 0))
+            .h(px(30.0))
+            .px(px(10.0))
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .rounded(px(6.0))
+            .cursor_pointer()
+            .hover(move |style| style.bg(item_hover))
+            .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(theme.chrome_fg))
+            .child(
+                div()
+                    .text_size(px(12.5))
+                    .text_color(theme.chrome_fg_active)
+                    .child("Check for Updates"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.dismiss_profile(cx);
+                view.check_updates_manual(cx);
+                view.toggle_update_panel(cx);
+            })),
+    );
+
+    // Command palette item (Ctrl+K)
+    menu = menu.child(
+        div()
+            .id(ElementId::named_usize("menu-item-palette", 0))
+            .h(px(30.0))
+            .px(px(10.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .rounded(px(6.0))
+            .cursor_pointer()
+            .hover(move |style| style.bg(item_hover))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(icons::icon(icons::SEARCH).size(px(13.0)).text_color(theme.chrome_fg))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(theme.chrome_fg_active)
+                            .child("Command Palette"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.chrome_fg)
+                    .child("Ctrl+K"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.dismiss_profile(cx);
+                view.open_palette(window, cx);
+            })),
+    );
+
     menu.with_animation(
         ElementId::named_usize("profile-anim", closing as usize),
         Animation::new(Duration::from_millis(if closing {
