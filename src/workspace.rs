@@ -313,3 +313,118 @@ pub fn tab_name(raw: &str, fallback: &str) -> String {
     }
     name
 }
+
+/// Format dropped file/folder paths for shell pasting.
+///
+/// Quoting rules:
+/// - Paths containing whitespace are enclosed in double quotes.
+/// - When `is_wsl` is true, Windows paths are converted to WSL mount points (`/mnt/c/...`).
+/// - Multiple items are space-separated, with a trailing space for CLI typing ergonomics.
+pub fn format_dropped_paths(paths: &[PathBuf], is_wsl: bool) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+    let mut parts = Vec::with_capacity(paths.len());
+    for path in paths {
+        let formatted = if is_wsl {
+            crate::wsl::windows_to_wsl_path(path)
+        } else {
+            path.to_string_lossy().to_string()
+        };
+        if formatted.contains(' ') || formatted.contains('\t') {
+            parts.push(format!("\"{formatted}\""));
+        } else {
+            parts.push(formatted);
+        }
+    }
+    format!("{} ", parts.join(" "))
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SavedSession {
+    #[serde(default)]
+    pub active_tab: usize,
+    pub tabs: Vec<SavedTab>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SavedTab {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_title: Option<String>,
+    #[serde(default)]
+    pub active_pane: usize,
+    #[serde(default = "default_axis")]
+    pub axis: String,
+    pub panes: Vec<SavedPane>,
+}
+
+fn default_axis() -> String {
+    "columns".to_string()
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SavedPane {
+    pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<PathBuf>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_dropped_paths() {
+        let p1 = PathBuf::from(r"C:\Users\Neweye\Desktop\file.txt");
+        let p2 = PathBuf::from(r"C:\Users\Neweye\My Documents\notes.txt");
+        
+        let win = format_dropped_paths(&[p1.clone(), p2.clone()], false);
+        assert_eq!(
+            win,
+            r#"C:\Users\Neweye\Desktop\file.txt "C:\Users\Neweye\My Documents\notes.txt" "#
+        );
+
+        let wsl = format_dropped_paths(&[p1, p2], true);
+        assert_eq!(
+            wsl,
+            r#"/mnt/c/Users/Neweye/Desktop/file.txt "/mnt/c/Users/Neweye/My Documents/notes.txt" "#
+        );
+    }
+
+    #[test]
+    fn test_saved_session_serde() {
+        let session = SavedSession {
+            active_tab: 1,
+            tabs: vec![
+                SavedTab {
+                    custom_title: Some("Project A".into()),
+                    active_pane: 0,
+                    axis: "columns".into(),
+                    panes: vec![SavedPane {
+                        profile: "powershell".into(),
+                        cwd: Some(PathBuf::from(r"C:\Users\test")),
+                    }],
+                },
+                SavedTab {
+                    custom_title: None,
+                    active_pane: 1,
+                    axis: "rows".into(),
+                    panes: vec![
+                        SavedPane {
+                            profile: "wsl".into(),
+                            cwd: Some(PathBuf::from(r"/home/test")),
+                        },
+                        SavedPane {
+                            profile: "cmd".into(),
+                            cwd: None,
+                        },
+                    ],
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&session).unwrap();
+        let deserialized: SavedSession = serde_json::from_str(&json).unwrap();
+        assert_eq!(session, deserialized);
+    }
+}

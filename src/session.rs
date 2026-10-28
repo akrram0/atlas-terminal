@@ -85,6 +85,28 @@ pub enum Profile {
     OpenCode,
 }
 
+impl Profile {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Profile::PowerShell => "powershell",
+            Profile::Cmd => "cmd",
+            Profile::Wsl => "wsl",
+            Profile::GitBash => "gitbash",
+            Profile::OpenCode => "opencode",
+        }
+    }
+
+    pub fn from_name(s: &str) -> Self {
+        match s.to_ascii_lowercase().as_str() {
+            "cmd" | "command prompt" => Profile::Cmd,
+            "wsl" | "ubuntu" | "arch" | "debian" | "kali" | "fedora" | "linux" => Profile::Wsl,
+            "gitbash" | "git bash" | "bash" => Profile::GitBash,
+            "opencode" => Profile::OpenCode,
+            _ => Profile::PowerShell,
+        }
+    }
+}
+
 /// Absolute candidates for Git for Windows' bash, most preferred first.
 ///
 /// `bash.exe` on PATH is ambiguous: the Microsoft Store WSL alias lives in

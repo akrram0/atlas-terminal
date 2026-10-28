@@ -45,6 +45,7 @@ impl AtlasView {
             let name = self.rename_value.trim().to_string();
             tab.custom_title = if name.is_empty() { None } else { Some(name) };
         }
+        self.save_session();
         self.close_rename(window, cx);
     }
 

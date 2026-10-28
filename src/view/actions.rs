@@ -65,7 +65,14 @@ impl AtlasView {
             let start_current = self.app_settings.start_directory.eq_ignore_ascii_case("current");
             if start_current {
                 self.active_pane()
-                    .and_then(|pane| pane.cwd.clone())
+                    .and_then(|pane| {
+                        pane.session
+                            .borrow()
+                            .pid
+                            .and_then(crate::cwd::process_cwd)
+                            .or_else(|| pane.cwd.clone())
+                    })
+                    .or_else(|| std::env::current_dir().ok())
                     .or_else(home_dir)
             } else {
                 home_dir()
@@ -106,6 +113,7 @@ impl AtlasView {
                     close_hover_progress: 0.0,
                 });
                 self.active = self.tabs.len() - 1;
+                self.save_session();
                 Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("tab {id}: shell spawned"));
             }
@@ -167,6 +175,7 @@ impl AtlasView {
             if self.active >= self.tabs.len() {
                 self.active = self.tabs.len() - 1;
             }
+            self.save_session();
             cx.notify();
             return;
         }
@@ -181,12 +190,14 @@ impl AtlasView {
                 self.active = next_active;
             }
         }
+        self.save_session();
         cx.notify();
     }
 
     /// Answer "yes" to the close-confirmation dialog.
     pub(crate) fn confirm_pending_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.pending_close_window {
+            self.save_session();
             self.pending_close_window = false;
             self.pending_close_tab = None;
             window.remove_window();
@@ -255,7 +266,10 @@ impl AtlasView {
             return;
         };
         let (profile, inherit_cwd) = match tab.panes.get(tab.active_pane) {
-            Some(pane) => (pane.profile, pane.cwd.clone()),
+            Some(pane) => {
+                let live_cwd = pane.session.borrow().pid.and_then(crate::cwd::process_cwd);
+                (pane.profile, live_cwd.or_else(|| pane.cwd.clone()))
+            }
             None => return,
         };
         let epoch = self.next_epoch;
@@ -291,6 +305,7 @@ impl AtlasView {
                     tab.axis = axis;
                     tab.maximized = false;
                 }
+                self.save_session();
                 Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("pane split: shell spawned (epoch {epoch})"));
             }
@@ -319,6 +334,7 @@ impl AtlasView {
         if let Some(next_active) = tab.panes.iter().enumerate().position(|(i, p)| i != tab.active_pane && !p.closing) {
             tab.active_pane = next_active;
         }
+        self.save_session();
         cx.notify();
     }
 
@@ -593,5 +609,159 @@ impl AtlasView {
                     ),
             )
             .into_any_element()
+    }
+
+    pub(crate) fn handle_file_drop(&mut self, paths: &[PathBuf], cx: &mut Context<Self>) {
+        if paths.is_empty() {
+            return;
+        }
+        let is_wsl = self
+            .active_pane()
+            .map(|p| matches!(p.profile, Profile::Wsl))
+            .unwrap_or(false);
+        let formatted = crate::workspace::format_dropped_paths(paths, is_wsl);
+        if !formatted.is_empty() {
+            self.paste_text(&formatted, cx);
+        }
+    }
+
+    pub(crate) fn save_session(&self) {
+        let tabs: Vec<crate::workspace::SavedTab> = self
+            .tabs
+            .iter()
+            .filter(|t| !t.closing)
+            .map(|t| {
+                let panes = t
+                    .panes
+                    .iter()
+                    .filter(|p| !p.closing)
+                    .map(|p| {
+                        let cwd = p
+                            .session
+                            .borrow()
+                            .pid
+                            .and_then(crate::cwd::process_cwd)
+                            .or_else(|| p.cwd.clone());
+                        crate::workspace::SavedPane {
+                            profile: p.profile.as_str().to_string(),
+                            cwd,
+                        }
+                    })
+                    .collect();
+                let axis = if t.axis == SplitAxis::Rows {
+                    "rows".to_string()
+                } else {
+                    "columns".to_string()
+                };
+                crate::workspace::SavedTab {
+                    custom_title: t.custom_title.clone(),
+                    active_pane: t.active_pane,
+                    axis,
+                    panes,
+                }
+            })
+            .collect();
+
+        if tabs.is_empty() {
+            return;
+        }
+
+        let saved = crate::workspace::SavedSession {
+            active_tab: self.active,
+            tabs,
+        };
+
+        if let Ok(json) = serde_json::to_string_pretty(&saved) {
+            let session_path = crate::user_data_dir().join("sessions").join("last_session.json");
+            let _ = std::fs::write(session_path, json);
+        }
+    }
+
+    pub(crate) fn restore_session(&mut self, cx: &mut Context<Self>) -> bool {
+        let session_path = crate::user_data_dir().join("sessions").join("last_session.json");
+        let Ok(data) = std::fs::read_to_string(&session_path) else {
+            return false;
+        };
+        let Ok(saved) = serde_json::from_str::<crate::workspace::SavedSession>(&data) else {
+            return false;
+        };
+        if saved.tabs.is_empty() {
+            return false;
+        }
+
+        let (init_cols, init_rows) = self.default_grid_size();
+        let mut restored_tabs = Vec::new();
+
+        for saved_tab in saved.tabs {
+            let tab_id = self.next_id;
+            self.next_id += 1;
+            let mut restored_panes = Vec::new();
+
+            for saved_pane in saved_tab.panes {
+                let epoch = self.next_epoch;
+                self.next_epoch += 1;
+                let profile = Profile::from_name(&saved_pane.profile);
+                let cwd = saved_pane.cwd;
+
+                match Session::spawn(
+                    init_cols,
+                    init_rows,
+                    cwd.clone(),
+                    profile,
+                    self.app_settings.scrollback_lines,
+                ) {
+                    Ok((session, rx)) => {
+                        let session = Rc::new(RefCell::new(session));
+                        let live_cwd = session.borrow().pid.and_then(crate::cwd::process_cwd).or(cwd);
+                        restored_panes.push(Pane {
+                            epoch,
+                            profile,
+                            title: profile_title(profile),
+                            session: session.clone(),
+                            cwd: live_cwd,
+                            branch: None,
+                            exited: false,
+                            cursor_pos: None,
+                            cursor_target: (0.0, 0.0),
+                            pane_expansion: 1.0,
+                            closing: false,
+                        });
+                        Self::watch(epoch, session, rx, cx);
+                    }
+                    Err(err) => {
+                        eprintln!("failed to restore pane {}: {err:#}", saved_pane.profile);
+                    }
+                }
+            }
+
+            if !restored_panes.is_empty() {
+                let axis = if saved_tab.axis.eq_ignore_ascii_case("rows") {
+                    SplitAxis::Rows
+                } else {
+                    SplitAxis::Columns
+                };
+                let active_pane = saved_tab.active_pane.min(restored_panes.len().saturating_sub(1));
+                restored_tabs.push(Tab {
+                    id: tab_id,
+                    custom_title: saved_tab.custom_title,
+                    panes: restored_panes,
+                    active_pane,
+                    axis,
+                    maximized: false,
+                    closing: false,
+                    close_progress: 0.0,
+                    close_hover_progress: 0.0,
+                });
+            }
+        }
+
+        if restored_tabs.is_empty() {
+            return false;
+        }
+
+        self.tabs = restored_tabs;
+        self.active = saved.active_tab.min(self.tabs.len().saturating_sub(1));
+        cx.notify();
+        true
     }
 }

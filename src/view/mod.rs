@@ -35,7 +35,7 @@ use crate::ui::overlay::{
 };
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
-    format_tab_title, git_branch, git_cwd, session_icon,
+    format_tab_title, git_branch, git_cwd, home_dir, session_icon,
     SplitAxis, Tab,
 };
 
@@ -303,7 +303,29 @@ impl AtlasView {
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(opacity);
         let default_shell_prof = view.get_default_profile();
-        view.new_tab_with_cwd(default_shell_prof, initial_dir, cx);
+        let mut restored = false;
+        if initial_dir.is_none()
+            && view
+                .app_settings
+                .startup_mode
+                .eq_ignore_ascii_case("restore_session")
+        {
+            restored = view.restore_session(cx);
+        }
+        if !restored {
+            let startup_cwd = initial_dir.or_else(|| {
+                if view
+                    .app_settings
+                    .start_directory
+                    .eq_ignore_ascii_case("current")
+                {
+                    std::env::current_dir().ok().or_else(home_dir)
+                } else {
+                    home_dir()
+                }
+            });
+            view.new_tab_with_cwd(default_shell_prof, startup_cwd, cx);
+        }
 
         // Window close is interruptible while shells are still alive and the
         // user asked for confirmation. Confirming calls `remove_window()`,
@@ -319,6 +341,8 @@ impl AtlasView {
                         view.pending_close_window = true;
                         allow = false;
                         cx.notify();
+                    } else {
+                        view.save_session();
                     }
                 });
             }
@@ -1336,7 +1360,16 @@ impl Render for AtlasView {
                 if self.hovered_link.as_ref().map_or(false, |(p, _)| *p == pane_ix) {
                     cell = cell.cursor_pointer();
                 }
+                let pane_drop = pane_ix;
                 cell = cell
+                    .on_drop::<gpui::ExternalPaths>(cx.listener(
+                        move |view, paths: &gpui::ExternalPaths, _window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                tab.active_pane = pane_drop;
+                            }
+                            view.handle_file_drop(paths.paths(), cx);
+                        },
+                    ))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |view, event: &MouseDownEvent, window, cx| {
@@ -1747,6 +1780,11 @@ impl Render for AtlasView {
             .overflow_hidden()
             .rounded_b(px(if zoomed { 0.0 } else { 13.0 }))
             .bg(sheet_bg)
+            .on_drop::<gpui::ExternalPaths>(cx.listener(
+                |view, paths: &gpui::ExternalPaths, _window, cx| {
+                    view.handle_file_drop(paths.paths(), cx);
+                },
+            ))
             .child(body);
 
         let container = div()

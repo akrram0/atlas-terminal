@@ -23,14 +23,8 @@ use crate::workspace::{Pane, SplitAxis};
 use super::AtlasView;
 
 impl AtlasView {
-    pub(crate) fn paste(&self, cx: &mut Context<Self>) {
+    pub(crate) fn paste_text(&self, text: &str, cx: &mut Context<Self>) {
         let Some(pane) = self.active_pane() else {
-            return;
-        };
-        let Some(item) = cx.read_from_clipboard() else {
-            return;
-        };
-        let Some(text) = item.text() else {
             return;
         };
         let bracketed = pane
@@ -50,6 +44,14 @@ impl AtlasView {
         }
         pane.session.borrow_mut().write_bytes(&bytes);
         cx.notify();
+    }
+
+    pub(crate) fn paste(&self, cx: &mut Context<Self>) {
+        if let Some(item) = cx.read_from_clipboard() {
+            if let Some(text) = item.text() {
+                self.paste_text(&text, cx);
+            }
+        }
     }
 
     pub(crate) fn cycle(&mut self, delta: i32) {
@@ -100,13 +102,7 @@ impl AtlasView {
     }
 
     pub fn get_default_profile(&self) -> Profile {
-        match self.app_settings.default_shell.to_ascii_lowercase().as_str() {
-            "cmd" | "command prompt" => Profile::Cmd,
-            "wsl" | "ubuntu" => Profile::Wsl,
-            "git bash" | "bash" => Profile::GitBash,
-            "opencode" => Profile::OpenCode,
-            _ => Profile::PowerShell,
-        }
+        Profile::from_name(&self.app_settings.default_shell)
     }
 
     pub fn adjust_font_size(&mut self, new_size: f32, cx: &mut Context<Self>) {

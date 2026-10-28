@@ -97,6 +97,40 @@ pub fn title_for_name(name: &str) -> String {
     title.to_string()
 }
 
+/// Convert a Windows path to a WSL mount or distribution path.
+///
+/// Handles:
+/// - Windows drive letters: `C:\Users\foo` -> `/mnt/c/Users/foo`
+/// - WSL UNC paths: `\\wsl$\Ubuntu\home\user` or `\\wsl.localhost\Arch\root` -> `/home/user` or `/root`
+/// - Relative and forward-slash paths: `foo\bar` -> `foo/bar`
+pub fn windows_to_wsl_path(path: &std::path::Path) -> String {
+    let s = path.to_string_lossy();
+    let normalized = s.replace('\\', "/");
+
+    // Handle UNC paths like //wsl$/<distro>/path or //wsl.localhost/<distro>/path
+    let unc_prefixes = ["//wsl$/", "//wsl.localhost/"];
+    for prefix in unc_prefixes {
+        if let Some(rest) = normalized.strip_prefix(prefix) {
+            if let Some((_distro, linux_path)) = rest.split_once('/') {
+                return format!("/{}", linux_path.trim_start_matches('/'));
+            } else {
+                return "/".to_string();
+            }
+        }
+    }
+
+    // Handle drive letter: "C:/..." or "c:/..."
+    let bytes = s.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        let drive = (bytes[0] as char).to_ascii_lowercase();
+        let rest = &normalized[2..];
+        let rest_trimmed = rest.trim_start_matches('/');
+        return format!("/mnt/{drive}/{rest_trimmed}");
+    }
+
+    normalized
+}
+
 /// Decode UTF-16LE bytes (registry `REG_SZ` data) up to the first NUL unit.
 fn wide_string(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
@@ -331,5 +365,30 @@ mod tests {
         let text = "Ubuntu-24.04\0ignored";
         let bytes: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
         assert_eq!(wide_string(&bytes), "Ubuntu-24.04");
+    }
+
+    #[test]
+    fn converts_windows_paths_to_wsl() {
+        use std::path::Path;
+        assert_eq!(
+            windows_to_wsl_path(Path::new(r"C:\Users\Neweye\Desktop\file.txt")),
+            "/mnt/c/Users/Neweye/Desktop/file.txt"
+        );
+        assert_eq!(
+            windows_to_wsl_path(Path::new(r"d:\Games\Steam\steam.exe")),
+            "/mnt/d/Games/Steam/steam.exe"
+        );
+        assert_eq!(
+            windows_to_wsl_path(Path::new(r"\\wsl$\Ubuntu\home\neweye\code\atlas")),
+            "/home/neweye/code/atlas"
+        );
+        assert_eq!(
+            windows_to_wsl_path(Path::new(r"\\wsl.localhost\Arch\root\test.sh")),
+            "/root/test.sh"
+        );
+        assert_eq!(
+            windows_to_wsl_path(Path::new(r"relative\folder\file.md")),
+            "relative/folder/file.md"
+        );
     }
 }
