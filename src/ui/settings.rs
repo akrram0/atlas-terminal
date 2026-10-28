@@ -14,7 +14,7 @@ use gpui::{
 use crate::config::{
     action_display_name, default_shortcuts, format_keystroke_chord,
     pretty_shortcut, save_app_settings, SettingsTab, ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB,
-    ACTION_COPY, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN,
+    ACTION_COPY, ACTION_FIND, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN,
     ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE,
     ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL, ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN,
     ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP,
@@ -716,6 +716,57 @@ impl AtlasView {
             cx,
         );
 
+        let editor_options = vec![
+            ("auto".to_string(), "Auto".to_string()),
+            ("code".to_string(), "VS Code".to_string()),
+            ("cursor".to_string(), "Cursor".to_string()),
+            ("zed".to_string(), "Zed".to_string()),
+            ("system".to_string(), "Default".to_string()),
+        ];
+        let editor_ctrl = segmented_control(
+            342,
+            editor_options,
+            &self.app_settings.default_editor,
+            theme,
+            |editor, view, cx| {
+                view.app_settings.default_editor = editor;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let notify_ctrl = toggle_pill(
+            345,
+            self.app_settings.notify_on_complete,
+            theme,
+            |view, cx| {
+                view.app_settings.notify_on_complete = !view.app_settings.notify_on_complete;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let threshold_options = vec![
+            (5, "5s".to_string()),
+            (10, "10s".to_string()),
+            (30, "30s".to_string()),
+            (60, "60s".to_string()),
+        ];
+        let threshold_ctrl = segmented_control(
+            346,
+            threshold_options,
+            &self.app_settings.notify_threshold_secs,
+            theme,
+            |secs, view, cx| {
+                view.app_settings.notify_threshold_secs = secs;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         let auto_check_ctrl = toggle_pill(
             350,
             self.updater_settings.auto_check_updates,
@@ -870,6 +921,17 @@ impl AtlasView {
                     .child(setting_row("Scrollback History", Some("Maximum stored buffer lines per pane"), scroll_ctrl, false))
                     .child(setting_row("Copy on Select", Some("Automatically copy selected terminal text to clipboard"), copy_on_select_ctrl, false))
                     .child(setting_row("Confirm Process Exit", Some("Warn before closing tabs running foreground processes"), confirm_close_ctrl, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("DEVELOPER & EDITOR"))
+                    .child(setting_row("Default Code Editor", Some("Application launched on Ctrl+Click file paths with line & col coordinates"), editor_ctrl, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("BACKGROUND NOTIFICATIONS"))
+                    .child(setting_row("Notify on Long Commands", Some("Send native Windows notification when a task finishes while Atlas is unfocused"), notify_ctrl, false))
+                    .child(setting_row("Alert Threshold", Some("Minimum running duration before triggering an alert"), threshold_ctrl, true)),
             )
             .child(
                 card()
@@ -1067,6 +1129,7 @@ impl AtlasView {
         }
 
         let text_actions = [
+            ACTION_FIND,
             ACTION_COPY,
             ACTION_PASTE,
             ACTION_SELECT_ALL,

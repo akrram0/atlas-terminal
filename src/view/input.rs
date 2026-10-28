@@ -8,7 +8,7 @@ use gpui::{ClipboardItem, Context, Keystroke, Pixels, Rgba, Window};
 
 use crate::config::{
     default_shortcuts, format_keystroke_chord, SettingsTab, ACTION_CLEAR_SCROLLBACK,
-    ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE,
+    ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FIND, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE,
     ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_OPEN_URL_PICKER,
     ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_TO_BOTTOM, ACTION_SCROLL_TO_TOP, ACTION_SELECT_ALL, ACTION_SPLIT_HORIZONTAL,
@@ -367,6 +367,10 @@ impl AtlasView {
                 // even if a user remapped it onto another action's chord.
                 if chord == self.get_shortcut(ACTION_PALETTE) || chord == "ctrl+k" || chord == "ctrl+shift+p" {
                     self.open_palette(window, cx);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_FIND) || chord == "ctrl+f" {
+                    self.open_search(window, cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_NEW_TAB) {

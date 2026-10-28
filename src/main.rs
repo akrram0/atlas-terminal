@@ -130,6 +130,7 @@ pub(crate) fn init_user_data() {
     "prev_tab": "ctrl+shift+tab",
     "copy": "ctrl+shift+c",
     "paste": "ctrl+shift+v",
+    "find": "ctrl+f",
     "open_settings": "ctrl+,",
     "zoom_in": "ctrl+=",
     "zoom_out": "ctrl+-"
@@ -140,6 +141,9 @@ pub(crate) fn init_user_data() {
   "confirm_close_process": true,
   "copy_on_select": false,
   "startup_mode": "restore_session",
+  "default_editor": "auto",
+  "notify_on_complete": true,
+  "notify_threshold_secs": 10,
   "auto_check_updates": true,
   "update_check_interval_mins": 60
 }

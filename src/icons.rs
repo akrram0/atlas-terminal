@@ -54,6 +54,8 @@ icon_assets![
     (WINDOW_RESTORE, "window-restore"),
     (CHEVRON_LEFT, "chevron-left"),
     (CHEVRON_RIGHT, "chevron-right"),
+    (CHEVRON_UP, "chevron-up"),
+    (CHEVRON_DOWN, "chevron-down"),
     (ATLAS_MARK, "atlas-mark"),
     (MINUS, "minus"),
     (KEYBOARD, "keyboard"),

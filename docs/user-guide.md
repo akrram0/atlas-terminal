@@ -76,7 +76,9 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 
 | Category | Shortcut | Action | Description |
 | :--- | :--- | :--- | :--- |
-| **Command Palette** | `Ctrl+K` / `Ctrl+Shift+P` | **Open Palette** | Open Command Palette with multi-word search |
+| **Command Palette & Search** | `Ctrl+K` / `Ctrl+Shift+P` | **Open Palette** | Open Command Palette with multi-word search |
+| | `Ctrl+F` | **Find in Terminal** | Floating search pill with live buffer match highlighting |
+| | `Enter` / `Shift+Enter` | **Next / Prev Match** | Cycle through search matches in active buffer |
 | **Tabs** | `Ctrl+Shift+T` / `Ctrl+Shift+N` | **New Tab** | Open a new tab with the default shell profile |
 | | `Ctrl+Shift+W` | **Close Tab / Pane** | Close active pane (or tab if single pane) |
 | | `Ctrl+Tab` / `Ctrl+PageDown` | **Next Tab** | Cycle focus to the next tab |
@@ -102,7 +104,7 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 | **Zoom & Sizing** | `Ctrl+=` / `Ctrl++` | **Zoom In** | Increase font size by 1px |
 | | `Ctrl+-` | **Zoom Out** | Decrease font size by 1px |
 | | `Ctrl+0` | **Reset Zoom** | Reset font size to default (12px) |
-| **Links & URLs** | `Ctrl + Click` | **Open Link** | Open hovered URL in default browser |
+| **Links & Code Jumps** | `Ctrl + Click` | **Open Link / Jump to Code** | Open URL in browser, or jump to `file:line:col` in editor |
 | | `Ctrl+Shift+O` | **Link Picker** | Pre-filter Command Palette with visible URLs |
 | **Window & Shell** | `F11` | **Fullscreen** | Toggle borderless fullscreen |
 | | `Ctrl+,` | **Settings** | Open Atlas settings dashboard |

@@ -35,6 +35,8 @@ pub struct TerminalElement {
     pub subpixel_y: f32,
     pub scrollbar_opacity: f32,
     pub hovered_link: Option<crate::url::DetectedUrl>,
+    pub search_matches: Vec<(alacritty_terminal::index::Point, alacritty_terminal::index::Point)>,
+    pub active_search_match: Option<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -248,6 +250,28 @@ impl Element for TerminalElement {
 
                 let mut fg = theme.resolve(cell.fg, flags.contains(Flags::DIM), &over);
                 let mut bg = theme.resolve(cell.bg, false, &over);
+
+                let mut is_search_active = false;
+                let mut is_search_match = false;
+                if !self.search_matches.is_empty() {
+                    for (i, (start, end)) in self.search_matches.iter().enumerate() {
+                        if point >= *start && point <= *end {
+                            if self.active_search_match == Some(i) {
+                                is_search_active = true;
+                                break;
+                            } else {
+                                is_search_match = true;
+                            }
+                        }
+                    }
+                }
+                if is_search_active {
+                    bg = Rgba { a: 0.55, ..theme.accent };
+                    fg = theme.elevated_bg;
+                } else if is_search_match {
+                    bg = Rgba { a: 0.25, ..theme.accent };
+                }
+
                 let is_link_hovered = self
                     .hovered_link
                     .as_ref()
@@ -701,9 +725,9 @@ impl Element for TerminalElement {
                 // one-to-one onto cells, shaping with `force_width =
                 // cell_width` makes gpui pin glyph i to
                 // `start + i * cell_width` (it moves any glyph sitting more
-                // than 1px off its snapped spot), so long runs can never
+                // than 1px off its snapped spot), so long runs can neve
                 // accumulate drift off the grid. Segments with wide glyphs
-                // (CJK, emoji) or combining marks flow naturally — their
+                // (CJK, emoji) or combining marks flow naturally — thei
                 // start is already pinned to the exact column.
                 let glyphs = segment.text.chars().count();
                 let force = if glyphs == segment.cells {

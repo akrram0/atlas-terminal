@@ -39,6 +39,10 @@ pub struct Pane {
     pub pane_expansion: f32,
     /// Smooth pane collapse on close.
     pub closing: bool,
+    /// Timestamp when a foreground command started running (for background job notifications).
+    pub cmd_start: Option<std::time::Instant>,
+    /// Name/title of the currently running foreground command.
+    pub running_cmd: Option<String>,
 }
 
 pub struct Tab {

@@ -61,16 +61,49 @@ fn is_url_terminator(c: char) -> bool {
 fn is_trailing_punctuation(c: char) -> bool {
     matches!(
         c,
-        '.' | ',' | ':' | ';' | ')' | ']' | '}' | '\'' | '"' | '!' | '?'
+        '.' | ',' | ';' | ')' | ']' | '}' | '\'' | '"' | '!' | '?'
     )
 }
 
-/// Find all URLs and their `[start, end)` CHARACTER ranges in `text`.
-///
-/// Offsets count characters (not bytes), so they can index parallel
-/// per-character data such as the grid points collected alongside a terminal
-/// line. Scanning only ever slices at UTF-8 char boundaries, so multibyte
-/// glyphs in the prompt cannot panic the detector.
+const CODE_EXTS: &[&str] = &[
+    "rs", "ts", "tsx", "js", "jsx", "py", "go", "c", "cpp", "cc", "cxx", "h", "hpp", "cs",
+    "java", "kt", "rb", "php", "json", "jsonc", "toml", "yaml", "yml", "md", "txt", "html",
+    "css", "scss", "sh", "bash", "zsh", "ps1", "bat", "cmd", "vue", "svelte", "zig", "lua",
+    "sql", "xml", "ini", "env", "lock",
+];
+
+pub fn parse_file_line_col(target: &str) -> (String, Option<u32>, Option<u32>) {
+    let parts: Vec<&str> = target.split(':').collect();
+    if parts.len() >= 3 {
+        if let (Ok(line), Ok(col)) = (
+            parts[parts.len() - 2].parse::<u32>(),
+            parts[parts.len() - 1].parse::<u32>(),
+        ) {
+            let file = parts[..parts.len() - 2].join(":");
+            return (file, Some(line), Some(col));
+        }
+    }
+    if parts.len() >= 2 {
+        if let Ok(line) = parts[parts.len() - 1].parse::<u32>() {
+            let file = parts[..parts.len() - 1].join(":");
+            return (file, Some(line), None);
+        }
+    }
+    (target.to_string(), None, None)
+}
+
+fn is_file_token(token: &str) -> bool {
+    let (file, _, _) = parse_file_line_col(token);
+    let p = std::path::Path::new(&file);
+    if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+        if CODE_EXTS.iter().any(|&ce| ce.eq_ignore_ascii_case(ext)) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Find all URLs and file locations with their `[start, end)` CHARACTER ranges in `text`.
 pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
     let mut results = Vec::new();
     let schemes = [
@@ -84,7 +117,7 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
         "www.",
     ];
 
-    // `pos` is always a UTF-8 char boundary; advance one char at a time.
+    // 1. Scan for web URLs
     let mut pos = 0;
     while pos < text.len() {
         let remaining = &text[pos..];
@@ -100,7 +133,6 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
             let start = pos;
             let mut end = start + scheme.len();
 
-            // Scan forward while characters are valid URL characters.
             for c in text[end..].chars() {
                 if is_url_terminator(c) {
                     break;
@@ -108,7 +140,6 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
                 end += c.len_utf8();
             }
 
-            // Trim common trailing punctuation that is not part of the URL.
             let mut trimmed_end = end;
             while trimmed_end > start + scheme.len() {
                 let last = text[start..trimmed_end]
@@ -136,7 +167,6 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
             }
         }
 
-        // Skip exactly one character so `pos` stays on a char boundary.
         pos += text[pos..]
             .chars()
             .next()
@@ -144,6 +174,25 @@ pub fn find_urls_in_text(text: &str) -> Vec<(String, usize, usize)> {
             .unwrap_or(1);
     }
 
+    // 2. Scan for source file coordinates (e.g. src/main.rs:42:15)
+    let delims = [' ', '\t', '"', '\'', '`', '<', '>', '(', ')', '[', ']', '{', '}'];
+    let mut char_idx = 0;
+    for token in text.split(&delims[..]) {
+        let trimmed = token.trim_end_matches(&[',', ';', '!', '?', '.'][..]);
+        if is_file_token(trimmed) && !trimmed.starts_with("http") {
+            let start_char = char_idx;
+            let end_char = start_char + trimmed.chars().count();
+            let overlaps = results.iter().any(|(_, s, e)| {
+                (start_char >= *s && start_char < *e) || (end_char > *s && end_char <= *e)
+            });
+            if !overlaps {
+                results.push((trimmed.to_string(), start_char, end_char));
+            }
+        }
+        char_idx += token.chars().count() + 1;
+    }
+
+    results.sort_by_key(|(_, s, _)| *s);
     results
 }
 
@@ -293,9 +342,145 @@ pub fn open_url(url: &str) {
     }
 }
 
+pub fn open_target(target: &str, editor_pref: &str, cwd: Option<&std::path::Path>) {
+    if target.starts_with("http://")
+        || target.starts_with("https://")
+        || target.starts_with("mailto:")
+        || target.starts_with("ftp://")
+        || target.starts_with("ssh://")
+    {
+        open_url(target);
+        return;
+    }
+
+    open_in_editor(target, editor_pref, cwd);
+}
+
+pub fn open_in_editor(target: &str, editor_pref: &str, cwd: Option<&std::path::Path>) {
+    let (file, line, col) = parse_file_line_col(target);
+    let path = if let Some(cwd) = cwd {
+        let p = std::path::Path::new(&file);
+        if p.is_relative() {
+            cwd.join(p).to_string_lossy().to_string()
+        } else {
+            file
+        }
+    } else {
+        file
+    };
+
+    let goto_arg = match (line, col) {
+        (Some(l), Some(c)) => format!("{path}:{l}:{c}"),
+        (Some(l), None) => format!("{path}:{l}"),
+        _ => path.clone(),
+    };
+
+    let pref = editor_pref.trim().to_ascii_lowercase();
+    let editor_cmd = match pref.as_str() {
+        "vscode" | "code" => Some("code".to_string()),
+        "cursor" => Some("cursor".to_string()),
+        "zed" => Some("zed".to_string()),
+        "system" | "default" => None,
+        _ => {
+            if is_cmd_available("code") {
+                Some("code".to_string())
+            } else if is_cmd_available("cursor") {
+                Some("cursor".to_string())
+            } else if is_cmd_available("zed") {
+                Some("zed".to_string())
+            } else {
+                None
+            }
+        }
+    };
+
+    if let Some(cmd) = editor_cmd {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let _ = std::process::Command::new("cmd.exe")
+                .arg("/c")
+                .arg(&cmd)
+                .arg("--goto")
+                .arg(&goto_arg)
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+            return;
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new(&cmd)
+                .arg("--goto")
+                .arg(&goto_arg)
+                .spawn();
+            return;
+        }
+    }
+
+    open_url(&path);
+}
+
+fn is_cmd_available(name: &str) -> bool {
+    #[cfg(windows)]
+    {
+        if let Some(path_var) = std::env::var_os("PATH") {
+            for dir in std::env::split_paths(&path_var) {
+                if dir.join(format!("{name}.cmd")).is_file()
+                    || dir.join(format!("{name}.exe")).is_file()
+                {
+                    return true;
+                }
+            }
+        }
+        if name == "code" {
+            if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+                let p = std::path::PathBuf::from(local)
+                    .join("Programs")
+                    .join("Microsoft VS Code")
+                    .join("bin")
+                    .join("code.cmd");
+                if p.is_file() {
+                    return true;
+                }
+            }
+            if std::path::Path::new(r"C:\Program Files\Microsoft VS Code\bin\code.cmd").is_file() {
+                return true;
+            }
+        }
+        false
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = name;
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_file_line_col() {
+        let (f, l, c) = parse_file_line_col("src/main.rs:42:15");
+        assert_eq!(f, "src/main.rs");
+        assert_eq!(l, Some(42));
+        assert_eq!(c, Some(15));
+
+        let (f2, l2, c2) = parse_file_line_col(r"C:\Project\app.ts:88");
+        assert_eq!(f2, r"C:\Project\app.ts");
+        assert_eq!(l2, Some(88));
+        assert_eq!(c2, None);
+    }
+
+    #[test]
+    fn test_find_file_links() {
+        let text = "error in src/view/mod.rs:324:21 check also README.md";
+        let urls = find_urls_in_text(text);
+        assert!(urls.iter().any(|(u, _, _)| u == "src/view/mod.rs:324:21"));
+        assert!(urls.iter().any(|(u, _, _)| u == "README.md"));
+    }
 
     #[test]
     fn test_find_simple_https() {

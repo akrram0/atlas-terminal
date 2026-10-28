@@ -29,6 +29,7 @@ pub const ACTION_SCROLL_TO_BOTTOM: &str = "scroll_to_bottom";
 pub const ACTION_OPEN_URL_PICKER: &str = "open_url_picker";
 pub const ACTION_TOGGLE_THEME: &str = "toggle_theme";
 pub const ACTION_TOGGLE_MAXIMIZE: &str = "toggle_maximize";
+pub const ACTION_FIND: &str = "find";
 
 pub fn action_display_name(action: &str) -> &'static str {
     match action {
@@ -40,6 +41,7 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_PREV_TAB => "Previous Tab",
         ACTION_COPY => "Copy Selection",
         ACTION_PASTE => "Paste Clipboard",
+        ACTION_FIND => "Find in Terminal",
         ACTION_OPEN_SETTINGS => "Open Settings",
         ACTION_ZOOM_IN => "Zoom In (Font Size)",
         ACTION_ZOOM_OUT => "Zoom Out (Font Size)",
@@ -88,6 +90,7 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_FOCUS_PREV_PANE.to_string(), "alt+left".to_string());
     m.insert(ACTION_TOGGLE_THEME.to_string(), "ctrl+shift+t".to_string());
     m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "ctrl+shift+m".to_string());
+    m.insert(ACTION_FIND.to_string(), "ctrl+f".to_string());
     m
 }
 
@@ -190,6 +193,12 @@ pub struct AppSettingsFile {
     pub copy_on_select: bool,
     #[serde(default = "default_startup_mode")]
     pub startup_mode: String,
+    #[serde(default = "default_editor")]
+    pub default_editor: String,
+    #[serde(default = "default_notify_on_complete")]
+    pub notify_on_complete: bool,
+    #[serde(default = "default_notify_threshold_secs")]
+    pub notify_threshold_secs: u64,
 
     #[serde(default = "default_auto_check")]
     pub auto_check_updates: bool,
@@ -259,6 +268,15 @@ fn default_auto_check() -> bool {
 fn default_interval_mins() -> u32 {
     60
 }
+fn default_editor() -> String {
+    "auto".to_string()
+}
+fn default_notify_on_complete() -> bool {
+    true
+}
+fn default_notify_threshold_secs() -> u64 {
+    10
+}
 
 impl Default for AppSettingsFile {
     fn default() -> Self {
@@ -280,6 +298,9 @@ impl Default for AppSettingsFile {
             confirm_close_process: default_confirm_close(),
             copy_on_select: default_copy_on_select(),
             startup_mode: default_startup_mode(),
+            default_editor: default_editor(),
+            notify_on_complete: default_notify_on_complete(),
+            notify_threshold_secs: default_notify_threshold_secs(),
             auto_check_updates: default_auto_check(),
             update_check_interval_mins: default_interval_mins(),
             last_check_time: None,

@@ -852,3 +852,28 @@ pub fn apply() {
         crate::log_line("dwm corners: own window never appeared");
     });
 }
+
+/// Send a native Windows desktop notification asynchronously.
+pub fn send_desktop_notification(title: &str, message: &str) {
+    let t = title.replace('\'', "''");
+    let m = message.replace('\'', "''");
+    let script = format!(
+        "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; \
+         $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \
+         $nodes = $template.GetElementsByTagName('text'); \
+         $nodes.Item(0).AppendChild($template.CreateTextNode('{t}')) | Out-Null; \
+         $nodes.Item(1).AppendChild($template.CreateTextNode('{m}')) | Out-Null; \
+         $toast = [Windows.UI.Notifications.ToastNotification]::new($template); \
+         [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Atlas.Terminal').Show($toast)"
+    );
+    std::thread::spawn(move || {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let _ = std::process::Command::new("powershell.exe")
+            .arg("-NoProfile")
+            .arg("-Command")
+            .arg(&script)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    });
+}

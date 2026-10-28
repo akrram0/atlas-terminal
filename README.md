@@ -90,6 +90,20 @@ Comprehensive guides and architecture specifications are available in the [`docs
 - Temporary pane maximization (`Ctrl+Shift+M`) to focus on single tasks without breaking split layouts.
 - Auto-detected WSL Linux distributions (`Ubuntu`, `Debian`, `Arch`, `Fedora`, etc.) with native vector marks.
 
+### 🔍 Find in Terminal (`Ctrl+F`)
+- Floating macOS-style search bar with live buffer highlighting across the active screen and scrollback history.
+- Match stepping (<kbd>Enter</kbd> for next, <kbd>Shift</kbd>+<kbd>Enter</kbd> for previous) with live match counter (`3 of 18`).
+- Smooth viewport auto-scrolling directly to matching lines.
+
+### ⚡ Click-to-Code: Smart File Jumps (`Ctrl`+Click)
+- Click compiler errors, panic stack traces, and source coordinates (e.g. `src/main.rs:42:15`, `app.ts:18`) to jump directly to the exact file, line, and column.
+- Configurable default editor: **Auto-detect**, **VS Code** (`code --goto`), **Cursor**, **Zed**, or system default.
+- Seamlessly resolves relative file paths against the active pane's current working directory.
+
+### 🔔 Native Background Job Notifications
+- Native Windows Action Center toast alerts when long-running commands finish while Atlas is unfocused or minimized.
+- Configurable duration threshold (5s, 10s, 30s, 60s) and full toggle in Settings.
+
 ### 🔍 Floating Command Palette (`Ctrl+K` / `Ctrl+Shift+P`)
 - Raycast-style instant palette with multi-word fuzzy search.
 - Launch shell profiles, split panes, and actions without touching the mouse.
@@ -126,13 +140,14 @@ powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1
 | Shortcut | Action |
 | :--- | :--- |
 | `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette |
+| `Ctrl+F` | Find in Terminal (Search & Match Navigation) |
 | `Ctrl+Shift+T` | New Tab (Default Shell) |
 | `Ctrl+Shift+W` | Close Active Pane / Tab |
 | `Ctrl+Shift+E` | Split Pane Vertically (Columns) |
 | `Ctrl+Shift+D` | Split Pane Horizontally (Rows) |
 | `Ctrl+Shift+M` | Toggle Maximize / Restore Active Pane |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / Previous Tab |
-| `Ctrl + Click` | Open Hovered URL in Browser |
+| `Ctrl + Click` | Open Hovered URL or Click-to-Code File Jump |
 | `Ctrl+Shift+O` | Keyboard Link Picker |
 | `Ctrl+,` | Open Settings Dashboard |
 | `F11` | Toggle Borderless Fullscreen |

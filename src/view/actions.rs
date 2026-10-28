@@ -6,10 +6,14 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use alacritty_terminal::event::Event;
+use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::index::{Column, Line, Point};
+use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::TermMode;
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement, Rgba, Window, div, px,
+    AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement, KeyDownEvent, Keystroke,
+    MouseButton, Rgba, Window, div, px, rgb, rgba, svg,
 };
 
 use crate::session::{Profile, Session, SessionMsg};
@@ -104,6 +108,8 @@ impl AtlasView {
                         cursor_target: (0.0, 0.0),
                         pane_expansion: 1.0,
                         closing: false,
+                        cmd_start: None,
+                        running_cmd: None,
                     }],
                     active_pane: 0,
                     axis: SplitAxis::Columns,
@@ -300,6 +306,8 @@ impl AtlasView {
                         cursor_target: (0.0, 0.0),
                         pane_expansion: 0.05,
                         closing: false,
+                        cmd_start: None,
+                        running_cmd: None,
                     });
                     tab.active_pane = tab.panes.len() - 1;
                     tab.axis = axis;
@@ -377,11 +385,53 @@ impl AtlasView {
                             pane.session.borrow_mut().feed(&bytes);
                         }
                         SessionMsg::Event(Event::Title(title)) => {
-                            if !title.trim().is_empty() {
+                            let trimmed_new = title.trim();
+                            if !trimmed_new.is_empty() {
+                                let default_title = profile_title(pane.profile);
+                                let is_shell_prompt = trimmed_new.eq_ignore_ascii_case("powershell")
+                                    || trimmed_new.eq_ignore_ascii_case("pwsh")
+                                    || trimmed_new.eq_ignore_ascii_case("cmd")
+                                    || trimmed_new.eq_ignore_ascii_case("cmd.exe")
+                                    || trimmed_new.eq_ignore_ascii_case(&default_title)
+                                    || (trimmed_new.contains('@') && trimmed_new.contains(':'));
+
+                                if is_shell_prompt {
+                                    if let Some(start) = pane.cmd_start.take() {
+                                        let elapsed = start.elapsed().as_secs();
+                                        let cmd_name = pane.running_cmd.take().unwrap_or_else(|| "Command".to_string());
+                                        if elapsed >= view.app_settings.notify_threshold_secs
+                                            && view.app_settings.notify_on_complete
+                                            && !crate::rounded_corners::is_active()
+                                        {
+                                            crate::platform::send_desktop_notification(
+                                                "Atlas Terminal",
+                                                &format!("{cmd_name} finished in {elapsed}s"),
+                                            );
+                                        }
+                                    }
+                                } else if pane.cmd_start.is_none() {
+                                    pane.cmd_start = Some(std::time::Instant::now());
+                                    pane.running_cmd = Some(trimmed_new.to_string());
+                                }
                                 pane.title = title;
                             }
                         }
-                        SessionMsg::Event(Event::Exit) => pane.exited = true,
+                        SessionMsg::Event(Event::Exit) => {
+                            pane.exited = true;
+                            if let Some(start) = pane.cmd_start.take() {
+                                let elapsed = start.elapsed().as_secs();
+                                let cmd_name = pane.running_cmd.take().unwrap_or_else(|| "Process".to_string());
+                                if elapsed >= view.app_settings.notify_threshold_secs
+                                    && view.app_settings.notify_on_complete
+                                    && !crate::rounded_corners::is_active()
+                                {
+                                    crate::platform::send_desktop_notification(
+                                        "Atlas Terminal",
+                                        &format!("{cmd_name} exited in {elapsed}s"),
+                                    );
+                                }
+                            }
+                        }
                         SessionMsg::Event(Event::TextAreaSizeRequest(formatter)) => {
                             let (cols, rows, cell_w, cell_h) = {
                                 let s = pane.session.borrow();
@@ -404,7 +454,7 @@ impl AtlasView {
                             pane.session.borrow_mut().write_bytes(s.as_bytes());
                         }
                         SessionMsg::Event(Event::ColorRequest(index, formatter)) => {
-                            // OSC 4/10/11/12 colour query (`\e]11;?`): answer
+                            // OSC 4/10/11/12 colour query (`\e]11;?`): answe
                             // with what is actually on screen — the current
                             // theme, or a program's own earlier override — so
                             // CLI agents can adapt to the live palette.
@@ -725,6 +775,8 @@ impl AtlasView {
                             cursor_target: (0.0, 0.0),
                             pane_expansion: 1.0,
                             closing: false,
+                            cmd_start: None,
+                            running_cmd: None,
                         });
                         Self::watch(epoch, session, rx, cx);
                     }
@@ -763,5 +815,346 @@ impl AtlasView {
         self.active = saved.active_tab.min(self.tabs.len().saturating_sub(1));
         cx.notify();
         true
+    }
+
+    pub fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search_open = true;
+        if self.palette_open {
+            self.close_palette(window, cx);
+        }
+        if self.rename_open {
+            self.close_rename(window, cx);
+        }
+        window.focus(&self.search_focus);
+        if !self.search_query.is_empty() {
+            self.perform_search(cx);
+        }
+        cx.notify();
+    }
+
+    pub fn close_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search_open = false;
+        self.search_matches.clear();
+        self.focus_main(window);
+        cx.notify();
+    }
+
+    pub fn perform_search(&mut self, cx: &mut Context<Self>) {
+        let query = self.search_query.trim().to_lowercase();
+        self.search_matches.clear();
+        self.search_index = 0;
+
+        if query.is_empty() {
+            cx.notify();
+            return;
+        }
+
+        let session = match self.active_pane() {
+            Some(pane) => pane.session.clone(),
+            None => return,
+        };
+
+        let s_borrow = session.borrow();
+        let term = &s_borrow.term;
+        let history_size = term.history_size();
+        let screen_lines = term.screen_lines();
+        let total_cols = term.columns();
+
+        let mut lines: Vec<(Line, Vec<(Point, char)>, bool)> = Vec::new();
+        let start_line = -(history_size as i32);
+        let end_line = (screen_lines as i32) - 1;
+
+        for l in start_line..=end_line {
+            let line = Line(l);
+            let row = &term.grid()[line];
+            let mut cells = Vec::new();
+            let mut wraps = false;
+
+            for c in 0..total_cols {
+                let col = Column(c);
+                let cell = &row[col];
+                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                if cell.flags.contains(Flags::WRAPLINE) {
+                    wraps = true;
+                }
+                let ch = if (cell.c as u32) < 32 && cell.c != '\t' {
+                    ' '
+                } else {
+                    cell.c
+                };
+                cells.push((Point::new(line, col), ch));
+            }
+            lines.push((line, cells, wraps));
+        }
+
+        struct LogLine {
+            text: String,
+            points: Vec<Point>,
+        }
+        let mut logical_lines: Vec<LogLine> = Vec::new();
+        let mut cur_log = LogLine {
+            text: String::new(),
+            points: Vec::new(),
+        };
+
+        for (_, cells, wraps_next) in lines {
+            for (pt, ch) in cells {
+                cur_log.text.push(ch);
+                cur_log.points.push(pt);
+            }
+            if !wraps_next {
+                logical_lines.push(cur_log);
+                cur_log = LogLine {
+                    text: String::new(),
+                    points: Vec::new(),
+                };
+            }
+        }
+        if !cur_log.text.is_empty() {
+            logical_lines.push(cur_log);
+        }
+        drop(s_borrow);
+
+        let mut matches = Vec::new();
+        let query_chars_len = query.chars().count();
+        for log in logical_lines {
+            let lower_text = log.text.to_lowercase();
+            let mut search_from = 0;
+            while let Some(byte_idx) = lower_text[search_from..].find(&query) {
+                let actual_byte_idx = search_from + byte_idx;
+                let char_start = lower_text[..actual_byte_idx].chars().count();
+                let char_end = char_start + query_chars_len - 1;
+
+                if char_end < log.points.len() {
+                    let start_pt = log.points[char_start];
+                    let end_pt = log.points[char_end];
+                    matches.push((start_pt, end_pt));
+                }
+                search_from = actual_byte_idx + query.len().max(1);
+            }
+        }
+
+        self.search_matches = matches;
+        if !self.search_matches.is_empty() {
+            self.search_index = 0;
+            self.scroll_to_search_match(0, cx);
+        }
+
+        cx.notify();
+    }
+
+    pub fn scroll_to_search_match(&mut self, match_ix: usize, cx: &mut Context<Self>) {
+        let target_line = match self.search_matches.get(match_ix) {
+            Some((start, _)) => start.line.0,
+            None => return,
+        };
+        let session = match self.active_pane() {
+            Some(pane) => pane.session.clone(),
+            None => return,
+        };
+        let (screen_lines, history_size, current_offset) = {
+            let s = session.borrow();
+            (s.term.screen_lines(), s.term.history_size(), s.term.renderable_content().display_offset as i32)
+        };
+        let desired_offset = (-target_line - (screen_lines as i32 / 2)).clamp(0, history_size as i32);
+        let delta = desired_offset - current_offset;
+        if delta != 0 {
+            session.borrow_mut().term.scroll_display(alacritty_terminal::grid::Scroll::Delta(delta));
+        }
+        cx.notify();
+    }
+
+    pub fn next_search_match(&mut self, cx: &mut Context<Self>) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.search_index = (self.search_index + 1) % self.search_matches.len();
+        self.scroll_to_search_match(self.search_index, cx);
+        cx.notify();
+    }
+
+    pub fn prev_search_match(&mut self, cx: &mut Context<Self>) {
+        if self.search_matches.is_empty() {
+            return;
+        }
+        self.search_index = if self.search_index == 0 {
+            self.search_matches.len() - 1
+        } else {
+            self.search_index - 1
+        };
+        self.scroll_to_search_match(self.search_index, cx);
+        cx.notify();
+    }
+
+    pub fn handle_search_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) {
+        match ks.key.as_str() {
+            "escape" => self.close_search(window, cx),
+            "enter" => {
+                if ks.modifiers.shift {
+                    self.prev_search_match(cx);
+                } else {
+                    self.next_search_match(cx);
+                }
+            }
+            "up" => self.prev_search_match(cx),
+            "down" => self.next_search_match(cx),
+            "backspace" => {
+                if self.search_query.pop().is_some() {
+                    self.perform_search(cx);
+                }
+            }
+            _ => {
+                if !ks.modifiers.control && !ks.modifiers.alt {
+                    let typed: String = if ks.key == "space" {
+                        " ".to_string()
+                    } else {
+                        ks.key_char
+                            .as_deref()
+                            .map(|text| {
+                                text.chars().filter(|c| !c.is_control()).collect()
+                            })
+                            .unwrap_or_default()
+                    };
+                    if !typed.is_empty() {
+                        self.search_query.push_str(&typed);
+                        self.perform_search(cx);
+                    }
+                }
+            }
+        }
+    }
+
+    pub(crate) fn search_bar(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let match_count = self.search_matches.len();
+        let count_text = if self.search_query.is_empty() {
+            String::new()
+        } else if match_count == 0 {
+            "No results".to_string()
+        } else {
+            format!("{} of {}", self.search_index + 1, match_count)
+        };
+
+        let is_no_results = match_count == 0 && !self.search_query.is_empty();
+
+        let query_text = if self.search_query.is_empty() {
+            div()
+                .text_size(px(12.0))
+                .text_color(theme.chrome_fg)
+                .child("Find in terminal...")
+        } else {
+            div()
+                .text_size(px(12.0))
+                .text_color(theme.chrome_fg_active)
+                .child(self.search_query.clone())
+        };
+
+        let caret = div()
+            .w(px(1.5))
+            .h(px(14.0))
+            .bg(if self.cursor_on { theme.accent } else { rgba(0x00000000) });
+
+        let prev_btn = div()
+            .id(ElementId::named_usize("search-prev", 0))
+            .w(px(22.0))
+            .h(px(22.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(4.0))
+            .hover(|s| s.bg(theme.card_hover))
+            .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, cx.listener(|view, _, _, cx| {
+                view.prev_search_match(cx);
+            }))
+            .child(svg().path(crate::icons::CHEVRON_UP).size(px(13.0)).text_color(theme.chrome_fg_active));
+
+        let next_btn = div()
+            .id(ElementId::named_usize("search-next", 0))
+            .w(px(22.0))
+            .h(px(22.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(4.0))
+            .hover(|s| s.bg(theme.card_hover))
+            .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, cx.listener(|view, _, _, cx| {
+                view.next_search_match(cx);
+            }))
+            .child(svg().path(crate::icons::CHEVRON_DOWN).size(px(13.0)).text_color(theme.chrome_fg_active));
+
+        let close_btn = div()
+            .id(ElementId::named_usize("search-close", 0))
+            .w(px(22.0))
+            .h(px(22.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(4.0))
+            .hover(|s| s.bg(theme.card_hover))
+            .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, cx.listener(|view, _, window, cx| {
+                view.close_search(window, cx);
+            }))
+            .child(svg().path(crate::icons::CLOSE).size(px(11.0)).text_color(theme.chrome_fg));
+
+        let mut row = div()
+            .id(ElementId::named_usize("search-bar-pill", 0))
+            .absolute()
+            .top(px(44.0))
+            .right(px(20.0))
+            .h(px(34.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .bg(theme.elevated_bg)
+            .border_1()
+            .border_color(theme.elevated_border)
+            .rounded(px(8.0))
+            .shadow_md()
+            .px(px(8.0))
+            .gap(px(6.0))
+            .track_focus(&self.search_focus)
+            .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                view.handle_search_key(&event.keystroke, window, cx);
+            }))
+            .child(
+                svg()
+                    .path(crate::icons::SEARCH)
+                    .size(px(14.0))
+                    .text_color(theme.chrome_fg),
+            )
+            .child(
+                div()
+                    .min_w(px(140.0))
+                    .max_w(px(220.0))
+                    .overflow_hidden()
+                    .flex()
+                    .items_center()
+                    .gap(px(1.0))
+                    .child(query_text)
+                    .child(caret),
+            );
+
+        if !count_text.is_empty() {
+            row = row.child(
+                div()
+                    .text_size(px(11.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(if is_no_results { rgb(0xE06C75) } else { theme.chrome_fg })
+                    .px(px(4.0))
+                    .child(count_text),
+            );
+        }
+
+        row = row
+            .child(div().w(px(1.0)).h(px(16.0)).bg(theme.elevated_border))
+            .child(prev_btn)
+            .child(next_btn)
+            .child(close_btn);
+
+        row.into_any_element()
     }
 }

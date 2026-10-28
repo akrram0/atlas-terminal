@@ -51,6 +51,7 @@ pub enum Command {
     FontReset,
     CheckUpdates,
     OpenLatestUrl,
+    FindInTerminal,
 }
 
 /// Action to execute from the palette (a built-in command or opening a detected URL).
@@ -61,7 +62,8 @@ pub enum PaletteAction {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 31] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 32] = [
+    (Command::FindInTerminal, icons::SEARCH, "Find in terminal...", "Ctrl F"),
     (Command::NewTab, icons::PLUS, "New tab (PowerShell)", "Ctrl Shift N"),
     (Command::NewTabWsl, icons::LINUX, "New WSL tab", ""),
     (Command::NewTabCmd, icons::CMD, "New Command Prompt tab", ""),
@@ -422,6 +424,9 @@ impl AtlasView {
             }
             Command::OpenLatestUrl => {
                 self.open_buffer_urls(window, cx);
+            }
+            Command::FindInTerminal => {
+                self.open_search(window, cx);
             }
         }
     }

@@ -12,3 +12,5 @@ pub use windows as rounded_corners;
 pub mod fallback;
 #[cfg(not(windows))]
 pub use fallback as rounded_corners;
+
+pub use rounded_corners::send_desktop_notification;

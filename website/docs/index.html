@@ -63,6 +63,7 @@
           <ul class="docs-nav-items">
             <li><a href="#installation" class="docs-nav-link active">Installation</a></li>
             <li><a href="#shortcuts" class="docs-nav-link">Keyboard Shortcuts</a></li>
+            <li><a href="#dev-superpowers" class="docs-nav-link">Developer Superpowers</a></li>
             <li><a href="#split-panes" class="docs-nav-link">Tabs & Split Panes</a></li>
             <li><a href="#fastfetch-setup" class="docs-nav-link">Fastfetch Inline Images</a></li>
             <li><a href="#mouse-reporting" class="docs-nav-link">Mouse & Hyperlinks</a></li>
@@ -121,6 +122,11 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
             </thead>
             <tbody>
               <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>F</kbd></td>
+                <td>Find in Terminal (floating search bar & match highlight)</td>
+                <td>Global</td>
+              </tr>
+              <tr>
                 <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd></td>
                 <td>Open floating Command Palette</td>
                 <td>Global</td>
@@ -165,13 +171,49 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
                 <td>Open Settings drawer</td>
                 <td>Global</td>
               </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + Click</td>
+                <td>Click-to-Code File Jump / Open Web URL</td>
+                <td>Terminal Pane</td>
+              </tr>
             </tbody>
           </table>
         </article>
 
+        <!-- Article: Developer Superpowers -->
+        <article class="docs-article" id="dev-superpowers">
+          <div class="section-tag">[ 03 // developer-powerhouse ]</div>
+          <h2>Developer Superpowers</h2>
+          <p>
+            Atlas Terminal is built specifically for software engineers with integrated workflows that eliminate context switching:
+          </p>
+
+          <h3>1. Find in Terminal (<kbd>Ctrl</kbd>+<kbd>F</kbd>)</h3>
+          <p>
+            A floating, non-intrusive macOS-style search bar that hovers cleanly over the active pane. Features live buffer highlighting across both the active screen and scrollback history, instant match navigation (<kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd>), a real-time match counter badge (<code>3 of 18</code>), and kinetic auto-scrolling to matching lines.
+          </p>
+
+          <h3>2. Click-to-Code: Smart File Jumps (<kbd>Ctrl</kbd>+Click)</h3>
+          <p>
+            Hover any compiler error, panic stack trace, or source path (e.g. <code>src/main.rs:42:15</code>, <code>server.ts:108</code>) with <kbd>Ctrl</kbd> held to reveal an accent highlight. Clicking it automatically resolves relative paths against the active pane's working directory and launches your preferred editor directly at the exact line and column coordinates:
+          </p>
+          <ul>
+            <li><strong>Auto-Detect</strong>: Automatically probes for VS Code (<code>code --goto</code>), Cursor, or Zed on your <code>%PATH%</code>.</li>
+            <li><strong>Configurable</strong>: Select your preferred editor (VS Code, Cursor, Zed, or System Default) in the Settings drawer under <strong>Developer & Editor</strong>.</li>
+          </ul>
+
+          <h3>3. Native Background Task Notifications</h3>
+          <p>
+            Never wait idly on a terminal prompt again. When a long-running build or command (such as <code>cargo build</code>, <code>npm install</code>, or <code>docker build</code>) finishes while Atlas Terminal is unfocused or minimized, Atlas sends a native Windows Action Center notification alert with the job duration.
+          </p>
+          <p>
+            The duration threshold can be configured to <strong>5s</strong>, <strong>10s</strong>, <strong>30s</strong>, or <strong>60s</strong> in Settings under <strong>Background Notifications</strong>.
+          </p>
+        </article>
+
         <!-- Article: Split Panes & Tabs -->
         <article class="docs-article" id="split-panes">
-          <div class="section-tag">[ 03 // workflows ]</div>
+          <div class="section-tag">[ 04 // workflows ]</div>
           <h2>Tabs & Split Panes</h2>
           <p>
             Atlas supports nested horizontal and vertical split layouts. Each pane maintains its own independent PTY process, working directory, and mouse capture state.

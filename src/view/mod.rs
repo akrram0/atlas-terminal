@@ -112,6 +112,12 @@ pub struct AtlasView {
     pub(crate) settings_focus: FocusHandle,
     pub(crate) palette_focus: FocusHandle,
     pub(crate) rename_focus: FocusHandle,
+    pub(crate) search_focus: FocusHandle,
+    /// Find in Terminal search state.
+    pub(crate) search_open: bool,
+    pub(crate) search_query: String,
+    pub(crate) search_matches: Vec<(alacritty_terminal::index::Point, alacritty_terminal::index::Point)>,
+    pub(crate) search_index: usize,
     /// Fade-out flags: an overlay stays mounted while it animates away and a
     /// timer task unmounts it (cleared whenever the open flag drops).
     pub(crate) palette_closing: bool,
@@ -258,6 +264,11 @@ impl AtlasView {
             settings_focus: cx.focus_handle(),
             palette_focus: cx.focus_handle(),
             rename_focus: cx.focus_handle(),
+            search_focus: cx.focus_handle(),
+            search_open: false,
+            search_query: String::new(),
+            search_matches: Vec::new(),
+            search_index: 0,
             palette_closing: false,
             profile_closing: false,
             scroll_anim: None,
@@ -1390,7 +1401,7 @@ impl Render for AtlasView {
                                         if let Some(pane) = tab.panes.get(pane_down) {
                                             let term = &pane.session.borrow().term;
                                             if let Some(detected) = crate::url::find_url_at_point(term, pt) {
-                                                crate::url::open_url(&detected.url);
+                                                crate::url::open_target(&detected.url, &view.app_settings.default_editor, pane.cwd.as_deref());
                                                 view.mouse_down_pane = None;
                                                 return;
                                             }
@@ -1741,6 +1752,8 @@ impl Render for AtlasView {
                                 None
                             }
                         }),
+                        search_matches: if self.search_open { self.search_matches.clone() } else { Vec::new() },
+                        active_search_match: if self.search_open { Some(self.search_index) } else { None },
                     });
                 }
                 area = area.child(cell.with_animation(
@@ -1876,6 +1889,10 @@ impl Render for AtlasView {
                 cx,
             ));
             root = root.child(self.confirm_close_dialog(&theme, cx));
+        }
+
+        if self.search_open {
+            root = root.child(self.search_bar(&theme, cx));
         }
 
         root
