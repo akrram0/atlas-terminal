@@ -279,6 +279,10 @@ impl AtlasView {
             updater_settings: UpdaterSettings {
                 auto_check_updates: app_settings.auto_check_updates,
                 update_check_interval_mins: app_settings.update_check_interval_mins,
+                channel: match app_settings.update_channel.as_str() {
+                    "preview" => updater::UpdateChannel::Preview,
+                    _ => updater::UpdateChannel::Stable,
+                },
                 last_check_time: app_settings.last_check_time,
                 etag: app_settings.etag.clone(),
                 last_seen_version: app_settings.last_seen_version.clone(),

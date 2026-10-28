@@ -85,10 +85,11 @@ impl AtlasView {
         } else {
             self.updater_settings.etag.clone()
         };
+        let channel = self.updater_settings.channel;
 
         cx.spawn(async move |this, cx| {
             let result = smol::unblock(move || {
-                updater::check_for_updates(&current_version, etag.as_deref())
+                updater::check_for_updates(&current_version, etag.as_deref(), channel)
             })
             .await;
 

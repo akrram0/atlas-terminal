@@ -204,6 +204,8 @@ pub struct AppSettingsFile {
     pub auto_check_updates: bool,
     #[serde(default = "default_interval_mins")]
     pub update_check_interval_mins: u32,
+    #[serde(default = "default_update_channel")]
+    pub update_channel: String,
     #[serde(default)]
     pub last_check_time: Option<u64>,
     #[serde(default)]
@@ -268,6 +270,9 @@ fn default_auto_check() -> bool {
 fn default_interval_mins() -> u32 {
     60
 }
+fn default_update_channel() -> String {
+    "stable".to_string()
+}
 fn default_editor() -> String {
     "auto".to_string()
 }
@@ -303,6 +308,7 @@ impl Default for AppSettingsFile {
             notify_threshold_secs: default_notify_threshold_secs(),
             auto_check_updates: default_auto_check(),
             update_check_interval_mins: default_interval_mins(),
+            update_channel: default_update_channel(),
             last_check_time: None,
             etag: None,
             last_seen_version: None,

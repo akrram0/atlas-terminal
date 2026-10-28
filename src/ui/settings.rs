@@ -49,6 +49,7 @@ impl AtlasView {
         self.app_settings.cursor_blink = self.cursor_blink;
         self.app_settings.auto_check_updates = self.updater_settings.auto_check_updates;
         self.app_settings.update_check_interval_mins = self.updater_settings.update_check_interval_mins;
+        self.app_settings.update_channel = self.updater_settings.channel.as_str().to_string();
         self.app_settings.last_check_time = self.updater_settings.last_check_time;
         self.app_settings.etag = self.updater_settings.etag.clone();
         self.app_settings.last_seen_version = self.updater_settings.last_seen_version.clone();
@@ -88,6 +89,10 @@ impl AtlasView {
             }
         }
         crate::rounded_corners::set_opacity(self.opacity);
+        self.updater_settings.channel = match loaded.update_channel.as_str() {
+            "preview" => crate::updater::UpdateChannel::Preview,
+            _ => crate::updater::UpdateChannel::Stable,
+        };
         self.app_settings = loaded;
         cx.notify();
     }
@@ -767,6 +772,23 @@ impl AtlasView {
             cx,
         );
 
+        let channel_options = vec![
+            (crate::updater::UpdateChannel::Stable, "Stable (Official)".to_string()),
+            (crate::updater::UpdateChannel::Preview, "Preview (Rolling Cloud)".to_string()),
+        ];
+        let channel_ctrl = segmented_control(
+            348,
+            channel_options,
+            &self.updater_settings.channel,
+            theme,
+            |channel, view, cx| {
+                view.updater_settings.channel = channel;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         let auto_check_ctrl = toggle_pill(
             350,
             self.updater_settings.auto_check_updates,
@@ -936,6 +958,7 @@ impl AtlasView {
             .child(
                 card()
                     .child(section_header("SOFTWARE UPDATES"))
+                    .child(setting_row("Update Channel", Some("Official milestone releases or early rolling cloud builds"), channel_ctrl, false))
                     .child(setting_row("Automatic Checks", Some("Background release inspection on focus"), auto_check_ctrl, false))
                     .child(setting_row("Check Frequency", Some("Interval between update scans"), interval_ctrl, false))
                     .child(setting_row("Manual Check", Some("Poll GitHub release channels immediately"), check_updates_btn, true)),

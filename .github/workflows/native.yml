@@ -11,7 +11,10 @@ on:
   push:
     branches:
       - main
+      - dev
       - feat/smart-updater
+    tags:
+      - 'v*'
     paths-ignore:
       - 'website/**'
       - '.github/workflows/deploy-pages.yml'
@@ -314,8 +317,10 @@ jobs:
           # 5. Incremental updater assets: zstd binary deltas + atlas-update.json
           # The app resolves assets under the future release tag URL, so patch
           # URLs are built up-front (repo hardcoded to match the app).
+          $isStable = $env:GITHUB_REF -like 'refs/tags/v*'
+          $targetTag = if ($isStable) { "v$version" } else { "preview" }
           $repoSlug = "akrram0/atlas-terminal"
-          $releaseBaseUrl = "https://github.com/$repoSlug/releases/download/v$version"
+          $releaseBaseUrl = "https://github.com/$repoSlug/releases/download/$targetTag"
 
           $newExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
           if (-not (Test-Path $newExe)) { throw "Current release exe not found at $newExe" }
@@ -578,10 +583,16 @@ jobs:
             }
           }
 
+          $manifestVersion = if ($isStable) {
+            $version
+          } else {
+            "$version-preview+$($env:GITHUB_SHA.Substring(0,7))"
+          }
+
           $manifest = [ordered]@{
             schema    = 1
-            version   = $version
-            tag       = "v$version"
+            version   = $manifestVersion
+            tag       = $targetTag
             # ManifestFile requires url on every file object, including exe.
             # The bare exe ships inside the release zip, so point at that.
             exe       = [ordered]@{
@@ -679,56 +690,83 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-      - name: Publish GitHub Release (main)
-        if: success() && github.ref == 'refs/heads/main'
+      - name: Publish GitHub Release (Rolling Preview vs Official Stable)
+        if: success() && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
         shell: pwsh
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v$($env:APP_VERSION)"
-          Write-Output "Publishing release $tag from $env:GITHUB_SHA"
-
-          # The updater requires atlas-update.json; never publish without it.
+          $isStable = $env:GITHUB_REF -like 'refs/tags/v*'
           $manifest = Join-Path "$env:GITHUB_WORKSPACE\dist" "atlas-update.json"
           if (-not (Test-Path $manifest)) { throw "atlas-update.json missing from dist; refusing to publish" }
 
-          # Reuse a complete release from an earlier main run for this version.
-          $existingJson = gh release view $tag --json isDraft,assets 2>$null
-          $viewExit = $LASTEXITCODE
-          if ($viewExit -eq 0 -and $existingJson) {
-            $existing = $existingJson | ConvertFrom-Json
-            $hasManifest = @($existing.assets | Where-Object { $_.name -eq 'atlas-update.json' }).Count -gt 0
-            if ($hasManifest -and -not $existing.isDraft) {
-              Write-Output "Release $tag is already published with a manifest; skipping."
-              exit 0
-            }
-            if ($existing.isDraft) {
-              Write-Output "Draft release $tag found; resuming its upload."
+          if ($isStable) {
+            # =========================================================
+            # OFFICIAL STABLE RELEASE (e.g. v0.2.0 for WinGet & Users)
+            # =========================================================
+            $tag = "v$($env:APP_VERSION)"
+            Write-Output "==> Publishing OFFICIAL STABLE RELEASE: $tag"
+
+            $existingJson = gh release view $tag --json isDraft,assets 2>$null
+            if ($LASTEXITCODE -eq 0 -and $existingJson) {
+              $existing = $existingJson | ConvertFrom-Json
+              $hasManifest = @($existing.assets | Where-Object { $_.name -eq 'atlas-update.json' }).Count -gt 0
+              if ($hasManifest -and -not $existing.isDraft) {
+                Write-Output "Release $tag is already published with a manifest; skipping."
+                exit 0
+              }
+              if ($existing.isDraft) {
+                Write-Output "Draft release $tag found; resuming upload."
+              } else {
+                Write-Output "Published release $tag found without manifest; repairing."
+              }
             } else {
-              Write-Output "Published release $tag found without a manifest; repairing it."
+              gh release create $tag --draft --target $env:GITHUB_SHA --title "Atlas Terminal $tag" --generate-notes
+              if ($LASTEXITCODE -ne 0) { throw "gh release create failed for $tag (exit $LASTEXITCODE)" }
             }
+
+            $files = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\*" -File |
+              Where-Object { $_.Name -ne 'atlas-update.json' } |
+              ForEach-Object { $_.FullName }
+            if ($files) {
+              gh release upload $tag $files --clobber
+              if ($LASTEXITCODE -ne 0) { throw "asset upload failed for $tag (exit $LASTEXITCODE)" }
+            }
+            gh release upload $tag $manifest --clobber
+            if ($LASTEXITCODE -ne 0) { throw "manifest upload failed for $tag (exit $LASTEXITCODE)" }
+
+            gh release edit $tag --draft=false --latest
+            if ($LASTEXITCODE -ne 0) { throw "gh release publish failed for $tag (exit $LASTEXITCODE)" }
+            Write-Output "Successfully published OFFICIAL STABLE RELEASE $tag with --latest"
+
           } else {
-            # Draft first: clients only see the release after every asset,
-            # including the manifest, is in place.
-            gh release create $tag --draft --target $env:GITHUB_SHA --title "Atlas Terminal $tag" --generate-notes
-            if ($LASTEXITCODE -ne 0) { throw "gh release create failed for $tag (exit $LASTEXITCODE)" }
-          }
+            # =========================================================
+            # ROLLING CLOUD PREVIEW (Pre-Release — Overwrites tag: preview)
+            # =========================================================
+            $previewTag = "preview"
+            $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+            Write-Output "==> Publishing ROLLING CLOUD PREVIEW (commit $shortSha)"
 
-          # Upload every referenced asset first, the manifest last, so clients
-          # never resolve a manifest pointing at not-yet-uploaded files.
-          $files = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\*" -File |
-            Where-Object { $_.Name -ne 'atlas-update.json' } |
-            ForEach-Object { $_.FullName }
-          if ($files) {
-            gh release upload $tag $files --clobber
-            if ($LASTEXITCODE -ne 0) { throw "asset upload failed for $tag (exit $LASTEXITCODE)" }
-          }
-          gh release upload $tag $manifest --clobber
-          if ($LASTEXITCODE -ne 0) { throw "manifest upload failed for $tag (exit $LASTEXITCODE)" }
+            $previewExists = gh release view $previewTag --json id 2>$null
+            if ($LASTEXITCODE -ne 0 -or -not $previewExists) {
+              Write-Output "Creating initial 'preview' pre-release..."
+              gh release create $previewTag --prerelease --target $env:GITHUB_SHA --title "Atlas Terminal (Rolling Cloud Preview)" --notes "Automated rolling cloud build from commit $shortSha on branch $env:GITHUB_REF_NAME."
+              if ($LASTEXITCODE -ne 0) { throw "Failed to create preview release" }
+            } else {
+              Write-Output "Updating existing 'preview' pre-release target commit..."
+              gh release edit $previewTag --target $env:GITHUB_SHA --title "Atlas Terminal (Rolling Cloud Preview)" --notes "Automated rolling cloud build from commit $shortSha on branch $env:GITHUB_REF_NAME." --prerelease
+            }
 
-          # Publish last. A canceled run leaves a draft, which the next main
-          # run can safely repair instead of exposing a partial release.
-          gh release edit $tag --draft=false --latest
-          if ($LASTEXITCODE -ne 0) { throw "gh release publish failed for $tag (exit $LASTEXITCODE)" }
-          Write-Output "Released $tag with atlas-update.json last"
+            $files = Get-ChildItem "$env:GITHUB_WORKSPACE\dist\*" -File |
+              Where-Object { $_.Name -ne 'atlas-update.json' } |
+              ForEach-Object { $_.FullName }
+            if ($files) {
+              gh release upload $previewTag $files --clobber
+              if ($LASTEXITCODE -ne 0) { throw "asset upload failed for preview (exit $LASTEXITCODE)" }
+            }
+            gh release upload $previewTag $manifest --clobber
+            if ($LASTEXITCODE -ne 0) { throw "manifest upload failed for preview (exit $LASTEXITCODE)" }
+
+            Write-Output "Successfully updated ROLLING CLOUD PREVIEW ($previewTag)"
+          }

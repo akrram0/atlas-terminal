@@ -16,6 +16,28 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    Stable,
+    Preview,
+}
+
+impl Default for UpdateChannel {
+    fn default() -> Self {
+        Self::Stable
+    }
+}
+
+impl UpdateChannel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Preview => "preview",
+        }
+    }
+}
+
 pub const INTERVAL_OPTIONS: &[(u32, &str)] = &[
     (30, "30 min"),
     (60, "1 hour"),
@@ -29,6 +51,8 @@ pub struct UpdaterSettings {
     pub auto_check_updates: bool,
     #[serde(default = "default_interval_mins")]
     pub update_check_interval_mins: u32,
+    #[serde(default)]
+    pub channel: UpdateChannel,
     #[serde(default)]
     pub last_check_time: Option<u64>,
     #[serde(default)]
@@ -52,6 +76,7 @@ impl Default for UpdaterSettings {
         Self {
             auto_check_updates: true,
             update_check_interval_mins: 60,
+            channel: UpdateChannel::default(),
             last_check_time: None,
             etag: None,
             last_seen_version: None,
@@ -650,7 +675,11 @@ mod winhttp {
 // =====================================================================
 
 #[cfg(windows)]
-pub fn check_for_updates(current_version: &str, etag: Option<&str>) -> UpdateCheckResult {
+pub fn check_for_updates(
+    current_version: &str,
+    etag: Option<&str>,
+    channel: UpdateChannel,
+) -> UpdateCheckResult {
     use winhttp::*;
 
     let user_agent = format!("Atlas-Terminal/{current_version}");
@@ -681,7 +710,10 @@ pub fn check_for_updates(current_version: &str, etag: Option<&str>) -> UpdateChe
     }
     let _connect_guard = HandleGuard(connect);
 
-    let path = "/repos/akrram0/atlas-terminal/releases/latest";
+    let path = match channel {
+        UpdateChannel::Stable => "/repos/akrram0/atlas-terminal/releases/latest",
+        UpdateChannel::Preview => "/repos/akrram0/atlas-terminal/releases/tags/preview",
+    };
     let request = unsafe {
         WinHttpOpenRequest(
             connect,
@@ -857,7 +889,7 @@ pub fn check_for_updates(current_version: &str, etag: Option<&str>) -> UpdateChe
     }
 
     let json_str = String::from_utf8_lossy(&body);
-    match parse_github_release(&json_str, current_version, resp_etag, rate_limit_reset) {
+    match parse_github_release(&json_str, current_version, resp_etag, rate_limit_reset, channel) {
         UpdateCheckResult::UpdateAvailable(info) => {
             UpdateCheckResult::UpdateAvailable(enrich_with_manifest(info, current_version))
         }
@@ -935,7 +967,11 @@ fn enrich_with_manifest(mut info: ReleaseInfo, current_version: &str) -> Release
 }
 
 #[cfg(not(windows))]
-pub fn check_for_updates(_current_version: &str, _etag: Option<&str>) -> UpdateCheckResult {
+pub fn check_for_updates(
+    _current_version: &str,
+    _etag: Option<&str>,
+    _channel: UpdateChannel,
+) -> UpdateCheckResult {
     UpdateCheckResult::UpToDate {
         etag: None,
         reset_epoch: None,
@@ -1881,6 +1917,7 @@ fn parse_github_release(
     current_version: &str,
     etag: Option<String>,
     reset_epoch: Option<u64>,
+    channel: UpdateChannel,
 ) -> UpdateCheckResult {
     #[derive(Deserialize)]
     struct GhAsset {
@@ -1892,6 +1929,7 @@ fn parse_github_release(
     #[derive(Deserialize)]
     struct GhRelease {
         tag_name: Option<String>,
+        target_commitish: Option<String>,
         name: Option<String>,
         body: Option<String>,
         html_url: Option<String>,
@@ -2001,7 +2039,22 @@ fn parse_github_release(
         }
     }
 
-    if is_newer_version(&detected_version, current_version) {
+    if channel == UpdateChannel::Preview {
+        if let Some(ref commit) = release.target_commitish {
+            let short_sha = if commit.len() > 7 { &commit[..7] } else { commit };
+            if !detected_version.contains(short_sha) {
+                detected_version = format!("{detected_version}-preview+{short_sha}");
+            }
+        }
+    }
+
+    let is_update = if channel == UpdateChannel::Preview {
+        !detected_version.is_empty() && detected_version != current_version
+    } else {
+        is_newer_version(&detected_version, current_version)
+    };
+
+    if is_update {
         if installer_url.is_none() || manifest_url.is_none() {
             // CI may still be compiling and uploading release assets (or the
             // manifest). Don't advertise an update until the payload is ready,
