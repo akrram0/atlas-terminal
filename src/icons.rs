@@ -56,6 +56,7 @@ icon_assets![
     (CHEVRON_RIGHT, "chevron-right"),
     (CHEVRON_UP, "chevron-up"),
     (CHEVRON_DOWN, "chevron-down"),
+    (DROPDOWN_ARROW, "dropdown-arrow"),
     (ATLAS_MARK, "atlas-mark"),
     (MINUS, "minus"),
     (KEYBOARD, "keyboard"),

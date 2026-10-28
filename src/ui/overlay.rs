@@ -15,7 +15,8 @@ use crate::view::AtlasView;
 use crate::workspace::{profile_title, session_icon};
 use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 
-pub const HOVER_MARK_NEW_TAB: u64 = 0;
+pub const HOVER_MARK_CAPSULE_PLUS: u64 = 1;
+pub const HOVER_MARK_CAPSULE_CHEVRON: u64 = 2;
 pub const HOVER_MARK_WINDOW: u64 = 10; // + window control index
 
 pub fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut Context<AtlasView>) {

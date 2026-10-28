@@ -31,7 +31,7 @@ use crate::theme::{Theme, ThemeRegistry};
 use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, EASE_OUT};
 use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark,
-    HOVER_MARK_WINDOW,
+    HOVER_MARK_CAPSULE_CHEVRON, HOVER_MARK_CAPSULE_PLUS, HOVER_MARK_WINDOW,
 };
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
@@ -764,6 +764,21 @@ impl Render for AtlasView {
         let capsule_border = tb.hairline;
         let is_menu_open = self.profile_menu;
 
+        let plus_hovered = self.hover_mark == Some(HOVER_MARK_CAPSULE_PLUS);
+        let chevron_hovered = self.hover_mark == Some(HOVER_MARK_CAPSULE_CHEVRON);
+
+        let plus_ink = if plus_hovered {
+            tb.chrome_fg_active
+        } else {
+            tb.chrome_fg
+        };
+
+        let chevron_ink = if is_menu_open || chevron_hovered {
+            tb.chrome_fg_active
+        } else {
+            tb.chrome_fg
+        };
+
         let plus_btn = div()
             .id(ElementId::named_usize("capsule-plus", 0))
             .w(px(26.0))
@@ -772,10 +787,17 @@ impl Render for AtlasView {
             .items_center()
             .justify_center()
             .rounded_l_full()
-            .text_color(chrome_ink)
-            .hover(move |s| s.bg(tb.card_hover).text_color(tb.chrome_fg_active))
+            .hover(move |s| s.bg(tb.card_hover))
             .active(move |s| s.opacity(0.75))
-            .child(icons::icon(icons::PLUS).size(px(12.0)))
+            .cursor_pointer()
+            .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                set_hover_mark(view, HOVER_MARK_CAPSULE_PLUS, *hovered, cx);
+            }))
+            .child(
+                icons::icon(icons::PLUS)
+                    .size(px(13.0))
+                    .text_color(plus_ink),
+            )
             .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                 view.new_tab(default_prof, cx);
                 window.focus(&view.focus);
@@ -794,11 +816,18 @@ impl Render for AtlasView {
             .items_center()
             .justify_center()
             .rounded_r_full()
-            .text_color(if is_menu_open { tb.accent } else { chrome_ink })
             .bg(if is_menu_open { tb.card_hover } else { rgba(0x00000000) })
-            .hover(move |s| s.bg(tb.card_hover).text_color(tb.chrome_fg_active))
+            .hover(move |s| s.bg(tb.card_hover))
             .active(move |s| s.opacity(0.75))
-            .child(icons::icon(icons::CHEVRON_DOWN).size(px(10.0)))
+            .cursor_pointer()
+            .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                set_hover_mark(view, HOVER_MARK_CAPSULE_CHEVRON, *hovered, cx);
+            }))
+            .child(
+                icons::icon(icons::DROPDOWN_ARROW)
+                    .size(px(9.0))
+                    .text_color(chevron_ink),
+            )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                 view.toggle_profile_menu(cx);
                 window.focus(&view.focus);
@@ -820,7 +849,7 @@ impl Render for AtlasView {
             .child(chevron_btn);
 
         bar = bar.child(capsule);
-        bar = bar.child(div().w(px(6.0)));
+        bar = bar.child(div().w(px(8.0)));
 
         // Horizontal tabs: active tab is a clean rounded rect (elevated bg + subtle border)
         // carrying the running process's own mark; inactive tabs are quiet with folder icon.
