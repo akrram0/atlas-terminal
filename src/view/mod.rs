@@ -757,7 +757,6 @@ impl Render for AtlasView {
             .w(relative(1.0))
             .h(px(36.0))
             .pl(px(8.0))
-            .rounded_t(px(if zoomed { 0.0 } else { 13.0 }))
             .bg(chrome_bg)
             .border_b_1()
             .border_color(tb.hairline);
@@ -799,7 +798,7 @@ impl Render for AtlasView {
             }))
             .child(
                 icons::icon(icons::PLUS)
-                    .size(px(13.5))
+                    .size(px(13.0))
                     .text_color(plus_ink),
             )
             .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
@@ -828,8 +827,8 @@ impl Render for AtlasView {
                 set_hover_mark(view, HOVER_MARK_CAPSULE_CHEVRON, *hovered, cx);
             }))
             .child(
-                icons::icon(icons::DROPDOWN_ARROW)
-                    .size(px(12.0))
+                icons::icon(icons::CHEVRON_DOWN)
+                    .size(px(11.0))
                     .text_color(chevron_ink),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -868,6 +867,14 @@ impl Render for AtlasView {
                 }),
                 None => "Terminal".to_string(),
             };
+            if active {
+                let win_title = if label == "Terminal" || label.is_empty() {
+                    "Atlas Terminal".to_string()
+                } else {
+                    format!("{label} — Atlas Terminal")
+                };
+                crate::rounded_corners::set_window_title(&win_title);
+            }
             let icon = match pane {
                 Some(pane) => session_icon(&pane.title, pane.profile),
                 None => icons::TERMINAL,
@@ -1212,8 +1219,7 @@ impl Render for AtlasView {
             } else {
                 chrome_ink
             };
-            let is_close = index == 2;
-            let mut btn = div()
+            let btn = div()
                 .id(ElementId::named_usize("window-control", index))
                 .w(px(38.0))
                 .h(relative(1.0))
@@ -1222,9 +1228,6 @@ impl Render for AtlasView {
                 .justify_center()
                 .hover(move |style| style.bg(hover_bg))
                 .active(move |style| style.opacity(0.80));
-            if is_close {
-                btn = btn.rounded_tr(px(if zoomed { 0.0 } else { 13.0 }));
-            }
             let btn = btn
                 .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
                     set_hover_mark(view, hover_id, *hovered, cx);
@@ -1351,9 +1354,6 @@ impl Render for AtlasView {
                     } else {
                         rgba(0x00000000)
                     });
-                if tab.panes.len() == 1 {
-                    cell = cell.rounded_b(px(if zoomed { 0.0 } else { 13.0 }));
-                }
                 if tab.panes.len() > 1 {
                     cell = cell
                         .border_1()
@@ -1787,7 +1787,6 @@ impl Render for AtlasView {
             .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_hidden()
-            .rounded_b(px(if zoomed { 0.0 } else { 13.0 }))
             .bg(sheet_bg)
             .on_drop::<gpui::ExternalPaths>(cx.listener(
                 |view, paths: &gpui::ExternalPaths, window, cx| {
@@ -1808,7 +1807,6 @@ impl Render for AtlasView {
             .min_w(px(0.0))
             .min_h(px(0.0))
             .bg(container_bg)
-            .rounded(px(if zoomed { 0.0 } else { 14.0 }))
             .overflow_hidden()
             .child(bar)
             .child(sheet);

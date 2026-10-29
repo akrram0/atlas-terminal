@@ -12,8 +12,12 @@ type Wparam = usize;
 
 const GWL_STYLE: i32 = -16;
 const GWLP_WNDPROC: i32 = -4;
+const WS_POPUP: i32 = 0x8000_0000_u32 as i32;
 const WS_CAPTION: i32 = 0x00C0_0000;
 const WS_THICKFRAME: i32 = 0x0004_0000;
+const WS_MINIMIZEBOX: i32 = 0x0002_0000;
+const WS_MAXIMIZEBOX: i32 = 0x0001_0000;
+const WS_SYSMENU: i32 = 0x0008_0000;
 // SetWindowPos flags.
 const SWP_NOSIZE: u32 = 0x0001;
 const SWP_NOMOVE: u32 = 0x0002;
@@ -22,6 +26,11 @@ const SWP_NOACTIVATE: u32 = 0x0010;
 const SWP_FRAMECHANGED: u32 = 0x0020;
 // Window messages, hit-test codes and metrics.
 const WM_SIZE: u32 = 0x0005;
+const WM_SYSCOMMAND: u32 = 0x0112;
+const SC_RESTORE: usize = 0xF120;
+const SC_MINIMIZE: usize = 0xF020;
+const SC_MAXIMIZE: usize = 0xF030;
+const SC_CLOSE: usize = 0xF060;
 const WM_GETMINMAXINFO: u32 = 0x0024;
 const WM_NCCALCSIZE: u32 = 0x0083;
 const WM_NCHITTEST: u32 = 0x0084;
@@ -171,6 +180,7 @@ unsafe extern "system" {
     fn GetMonitorInfoW(hwnd: Hwnd, info: *mut MonitorInfo) -> i32;
     fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
     fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
+    fn SetWindowTextW(hwnd: Hwnd, lp_string: *const u16) -> i32;
     fn GetForegroundWindow() -> Hwnd;
 }
 
@@ -408,9 +418,9 @@ fn caption_hit(hwnd: Hwnd, client_x: f32, client_y: f32) -> bool {
 }
 
 /// Window controls from the titlebar buttons: 0 minimize, 1 toggle
-/// maximize, 2 close. The buttons are ordinary client clicks (the OS
-/// non-client path is reserved for the drag band and resize borders), so
-/// the view wires them here.
+/// maximize, 2 close. Dispatches native WM_SYSCOMMAND messages so Windows
+/// DWM executes fluid window zoom animations and Explorer registers the
+/// state for Win+M and Win+Shift+M.
 pub fn window_button(index: usize) {
     let raw = MAIN_HWND.load(Ordering::SeqCst);
     if raw == 0 {
@@ -421,19 +431,40 @@ pub fn window_button(index: usize) {
     unsafe {
         match index {
             0 => {
-                ShowWindowAsync(hwnd, SW_MINIMIZE);
+                PostMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
             }
             1 => {
-                if IsZoomed(hwnd) != 0 {
-                    ShowWindowAsync(hwnd, SW_RESTORE);
+                let cmd = if IsZoomed(hwnd) != 0 {
+                    SC_RESTORE
                 } else {
-                    ShowWindowAsync(hwnd, SW_MAXIMIZE);
-                }
+                    SC_MAXIMIZE
+                };
+                PostMessageW(hwnd, WM_SYSCOMMAND, cmd, 0);
             }
             _ => {
-                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0);
             }
         }
+    }
+}
+
+static LAST_WINDOW_TITLE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Set the native OS window title (shown in Taskbar thumbnail preview, Alt+Tab, and Task Manager).
+pub fn set_window_title(title: &str) {
+    let mut last = LAST_WINDOW_TITLE.lock().unwrap_or_else(|e| e.into_inner());
+    if last.as_deref() == Some(title) {
+        return;
+    }
+    *last = Some(title.to_string());
+    let raw = MAIN_HWND.load(Ordering::Relaxed);
+    if raw == 0 {
+        return;
+    }
+    let mut wide: Vec<u16> = title.encode_utf16().collect();
+    wide.push(0);
+    unsafe {
+        SetWindowTextW(raw as Hwnd, wide.as_ptr());
     }
 }
 
@@ -651,6 +682,12 @@ unsafe extern "system" fn window_proc(
                 unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
             }
         }
+        WM_SYSCOMMAND => {
+            // Forward minimize, maximize, and restore directly to DefWindowProc so
+            // Windows DWM executes the full native fly-in/zoom animation and
+            // Explorer tracks the minimized window for Win+Shift+M.
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
         WM_APP_BACKDROP => {
             // USER32/DWM composition calls run here, on the window's UI
             // thread, rather than on the helper thread that subclasses it.
@@ -715,15 +752,18 @@ pub fn apply() {
                     ORIGINAL_WNDPROC.store(original, Ordering::SeqCst);
                     SetWindowLongPtrW(hwnd, GWLP_WNDPROC, window_proc as *const () as isize);
 
-                    // 2. Windows 11 DWM rounded corners and compositor shadows require
-                    //    the window to retain standard desktop styles (WS_THICKFRAME).
-                    //    We explicitly STRIP WS_CAPTION so DWM never draws native caption buttons
-                    //    (minimize, maximize, close) inside our extended acrylic frame.
-                    //    Our WM_NCCALCSIZE returns 0 so USER32 removes standard caption/border space,
-                    //    giving our custom chrome 100% full-bleed coverage.
+                    // 2. Windows 11 DWM rounded corners, animations, and compositor shadows require
+                    //    standard desktop styles (WS_THICKFRAME, WS_CAPTION, WS_SYSMENU, WS_MINIMIZEBOX, WS_MAXIMIZEBOX).
+                    //    Because our WM_NCCALCSIZE returns 0, the custom client chrome covers 100%
+                    //    of the window so no native caption/border is drawn, while DWM preserves full
+                    //    native minimize/maximize animations and Win+Shift+M restore capability.
                     let style = GetWindowLongW(hwnd, GWL_STYLE);
-                    let styled = (style & !WS_CAPTION) | WS_THICKFRAME;
+                    let styled = (style | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME) & !WS_POPUP;
                     SetWindowLongW(hwnd, GWL_STYLE, styled);
+
+                    // 2b. Set initial native window title for taskbar preview, Alt+Tab, and Task Manager.
+                    let title: Vec<u16> = "Atlas Terminal\0".encode_utf16().collect();
+                    SetWindowTextW(hwnd, title.as_ptr());
 
                     // 3. Force the frame change: reruns WM_NCCALCSIZE
                     //    through the subclass and makes DWM re-evaluate the

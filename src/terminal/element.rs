@@ -343,8 +343,6 @@ impl Element for TerminalElement {
             )
         };
 
-        let is_zoomed = crate::rounded_corners::is_zoomed();
-        let corner_r = if is_zoomed { px(0.0) } else { px(13.0) };
         let total_rows = rows.len();
 
         for (row_index, row) in rows.iter().enumerate() {
@@ -373,21 +371,13 @@ impl Element for TerminalElement {
                     let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(col) };
                     let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
 
-                    let mut quad = fill(
+                    let quad = fill(
                         Bounds::from_corners(
                             point(px(rx0), px(y0)),
                             point(px(rx1), px(ry1)),
                         ),
                         span_bg,
                     );
-                    if is_bottom_row && (is_left_edge || is_right_edge) {
-                        quad.corner_radii = Corners {
-                            top_left: px(0.0),
-                            top_right: px(0.0),
-                            bottom_left: if is_left_edge { corner_r } else { px(0.0) },
-                            bottom_right: if is_right_edge { corner_r } else { px(0.0) },
-                        };
-                    }
                     window.paint_quad(quad);
                 }
             };
@@ -454,21 +444,13 @@ impl Element for TerminalElement {
                         let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(sel_c1 + 1) };
                         let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
 
-                        let mut quad = fill(
+                        let quad = fill(
                             Bounds::from_corners(
                                 point(px(rx0), px(y0)),
                                 point(px(rx1), px(ry1)),
                             ),
                             sel_bg,
                         );
-                        if is_bottom_row && (is_left_edge || is_right_edge) {
-                            quad.corner_radii = Corners {
-                                top_left: px(0.0),
-                                top_right: px(0.0),
-                                bottom_left: if is_left_edge { corner_r } else { px(0.0) },
-                                bottom_right: if is_right_edge { corner_r } else { px(0.0) },
-                            };
-                        }
                         window.paint_quad(quad);
                     }
                 }
