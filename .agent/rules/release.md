@@ -40,3 +40,44 @@
 - **User Preference**:
   - Configurable in **Settings → SOFTWARE UPDATES → Update Channel**.
   - Persisted in `settings.json` under `update_channel` (`"stable"` or `"preview"`).
+
+---
+
+## 4. WinGet Package Lifecycle & Update Operations
+
+### Package Identity Specifications
+- **PackageIdentifier**: `AtlasTerminalTeam.AtlasTerminal`
+- **PackageName**: `Atlas Terminal`
+- **Publisher**: `Atlas Terminal Team`
+- **InstallerType**: `inno`
+- **Scope**: `user` (per-user install, zero UAC required)
+- **Architecture**: `x64`
+- **Silent Switches**: `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-`
+- **Upstream Repository**: `microsoft/winget-pkgs` (Initial onboarding PR: [#464195](https://github.com/microsoft/winget-pkgs/pull/464195))
+
+### Exact Step-by-Step Release Protocol for Every New Version
+When delivering a new official milestone (e.g. `v0.1.81`):
+
+1. **Bump Version in Codebase**:
+   - Update `version = "x.y.z"` in `Cargo.toml`.
+   - Update version string in `installer/atlas-terminal.iss` if applicable.
+   - Commit changes: `git commit -m "release(vx.y.z): ..."`
+
+2. **Tag and Push to Trigger Cloud Build**:
+   ```bash
+   git tag vx.y.z
+   git push origin vx.y.z
+   ```
+   - GitHub Actions automatically compiles, builds Inno installer, computes SHA-256, and publishes the immutable GitHub Release marked as `--latest`.
+
+3. **Submit WinGet Update (Single Command)**:
+   Once the GitHub Release build completes:
+   ```bash
+   wingetcreate update AtlasTerminalTeam.AtlasTerminal --version x.y.z --urls https://github.com/akrram0/atlas-terminal/releases/download/vx.y.z/AtlasTerminal-Setup-x.y.z.exe
+   ```
+   - Uses the cached GitHub OAuth token in `wingetcreate`.
+   - Automatically downloads the release binary, calculates the new SHA-256 hash, generates the version manifest, and opens a PR against `microsoft/winget-pkgs`.
+
+4. **Automated Microsoft CI Approval**:
+   - Because the package is already onboarded, version updates are validated by Microsoft's automated bots (`Azure Pipelines`) and merged automatically within minutes without requiring human review.
+
