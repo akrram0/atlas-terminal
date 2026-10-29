@@ -866,8 +866,8 @@ impl AtlasView {
             381,
             false,
             theme,
-            |_view, _cx| {
-                open_file(&crate::user_data_dir().join("settings.json"));
+            |view, _cx| {
+                open_file(&crate::user_data_dir().join("settings.json"), &view.app_settings.default_editor);
             },
             cx,
         );
@@ -877,8 +877,8 @@ impl AtlasView {
             382,
             false,
             theme,
-            |_view, _cx| {
-                open_file(&powershell_profile_path());
+            |view, _cx| {
+                open_file(&powershell_profile_path(), &view.app_settings.default_editor);
             },
             cx,
         );
@@ -911,8 +911,8 @@ impl AtlasView {
                 385,
                 false,
                 theme,
-                move |_view, _cx| {
-                    open_fastfetch_config(&ff_path);
+                move |view, _cx| {
+                    open_fastfetch_config(&ff_path, &view.app_settings.default_editor);
                 },
                 cx,
             )
@@ -1349,25 +1349,14 @@ impl AtlasView {
     }
 }
 
-pub fn open_file(path: &std::path::Path) {
+pub fn open_file(path: &std::path::Path, editor_pref: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     if !path.exists() {
         let _ = std::fs::write(path, "");
     }
-    #[cfg(windows)]
-    {
-        let _ = std::process::Command::new("cmd")
-            .args(["/c", "start", "", &path.to_string_lossy()])
-            .spawn();
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn();
-    }
+    crate::url::open_in_editor(&path.to_string_lossy(), editor_pref, None);
 }
 
 pub fn open_folder(path: &std::path::Path) {
@@ -1389,21 +1378,27 @@ pub fn open_folder(path: &std::path::Path) {
 pub fn powershell_profile_path() -> std::path::PathBuf {
     if let Some(home) = std::env::var_os("USERPROFILE") {
         let p = std::path::PathBuf::from(home);
-        let win_ps = p.join("Documents").join("WindowsPowerShell").join("Microsoft.PowerShell_profile.ps1");
-        if win_ps.exists() {
-            return win_ps;
-        }
         let core_ps = p.join("Documents").join("PowerShell").join("Microsoft.PowerShell_profile.ps1");
         if core_ps.exists() {
             return core_ps;
         }
-        win_ps
+        let win_ps = p.join("Documents").join("WindowsPowerShell").join("Microsoft.PowerShell_profile.ps1");
+        if win_ps.exists() {
+            return win_ps;
+        }
+        // If neither exists yet, default to modern PowerShell (pwsh) directory if it exists, else WindowsPowerShell
+        let ps_core_dir = p.join("Documents").join("PowerShell");
+        if ps_core_dir.is_dir() {
+            core_ps
+        } else {
+            win_ps
+        }
     } else {
         std::path::PathBuf::from("Microsoft.PowerShell_profile.ps1")
     }
 }
 
-pub fn open_fastfetch_config(path: &std::path::Path) {
+pub fn open_fastfetch_config(path: &std::path::Path, editor_pref: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -1437,7 +1432,7 @@ pub fn open_fastfetch_config(path: &std::path::Path) {
 "#;
         let _ = std::fs::write(path, default_config);
     }
-    open_file(path);
+    open_file(path, editor_pref);
 }
 
 pub fn is_fastfetch_installed() -> bool {

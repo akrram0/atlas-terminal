@@ -492,6 +492,16 @@ impl AtlasView {
             .and_then(|tab| tab.panes.get(tab.active_pane))
     }
 
+    pub(crate) fn active_pane_mut(&mut self) -> Option<&mut Pane> {
+        let active = self.active;
+        self.tabs
+            .get_mut(active)
+            .and_then(|tab| {
+                let p = tab.active_pane;
+                tab.panes.get_mut(p)
+            })
+    }
+
     pub(crate) fn active_mode(&self) -> TermMode {
         self.active_pane()
             .map(|pane| *pane.session.borrow().term.mode())

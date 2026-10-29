@@ -11,7 +11,8 @@ impl AtlasView {
     /// Keyboard paging: instant, and it wins over any in-flight wheel easing.
     pub(crate) fn scroll(&mut self, lines: i32) {
         self.scroll_anim = None;
-        if let Some(pane) = self.active_pane() {
+        if let Some(pane) = self.active_pane_mut() {
+            pane.cursor_pos = Some(pane.cursor_target);
             pane.session
                 .borrow_mut()
                 .term
@@ -30,9 +31,10 @@ impl AtlasView {
         let elapsed = now.duration_since(self.last_scroll_time).as_millis();
         self.last_scroll_time = now;
         self.scrollbar_opacity = 1.0;
-        let Some(pane) = self.active_pane() else {
+        let Some(pane) = self.active_pane_mut() else {
             return;
         };
+        pane.cursor_pos = Some(pane.cursor_target);
         let session = pane.session.clone();
         let current = session.borrow().term.renderable_content().display_offset as f32;
         let max = session.borrow().term.history_size() as f32;

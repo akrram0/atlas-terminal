@@ -225,7 +225,7 @@ impl Element for TerminalElement {
                 let cell = indexed.cell;
 
                 let virtual_row = point.line.0 + offset;
-                if virtual_row < 0 {
+                if virtual_row < 0 || (virtual_row as usize) >= max_rows {
                     continue;
                 }
                 let row_index = virtual_row as usize;
@@ -345,103 +345,31 @@ impl Element for TerminalElement {
 
         let total_rows = rows.len();
 
-        for (row_index, row) in rows.iter().enumerate() {
-            let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
-            let y1 = y0 + cell_height;
-            let x = |col: usize| left + cell_width * col as f32;
+        window.with_content_mask(Some(ContentMask { bounds }), |window| {
+            for (row_index, row) in rows.iter().enumerate() {
+                let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
+                let y1 = y0 + cell_height;
+                let x = |col: usize| left + cell_width * col as f32;
 
-            // Cell backgrounds: one quad per run of equal colour, so
-            // highlight strips (prompt rows) paint as a single seamless rectangle.
-            let mut col = 0usize;
-            let mut span_start = 0usize;
-            let active_bg = self.active_bg;
-            let mut span_bg = active_bg;
-            let is_bottom_row = row_index + 1 >= total_rows || row_index + 1 >= max_rows;
-            let is_tui = is_alt_screen || active_bg.a > 0.01;
-            let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
-                let should_skip = if is_tui {
-                    span_bg == active_bg
-                } else {
-                    span_bg == default_bg || span_bg == active_bg
-                };
-                if !should_skip && col > span_start {
-                    let is_left_edge = span_start == 0;
-                    let is_right_edge = col >= cols;
-                    let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(span_start) };
-                    let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(col) };
-                    let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
-
-                    let quad = fill(
-                        Bounds::from_corners(
-                            point(px(rx0), px(y0)),
-                            point(px(rx1), px(ry1)),
-                        ),
-                        span_bg,
-                    );
-                    window.paint_quad(quad);
-                }
-            };
-            for run in &row.runs {
-                if run.style.bg != span_bg {
-                    flush(col, span_start, span_bg, window);
-                    span_start = col;
-                    span_bg = run.style.bg;
-                }
-                col += run.cells;
-            }
-            flush(col, span_start, span_bg, window);
-
-            // Selection highlight layer: paints seamlessly behind intact text runs
-            // so text shaping and character advances never jitter during drag selection.
-            if let Some(ref range) = selection_range {
-                let row_line = Line(row_index as i32 - offset);
-                let row_sel = if range.is_block {
-                    let (min_col, max_col) = if range.start.column <= range.end.column {
-                        (range.start.column.0, range.end.column.0)
+                // Cell backgrounds: one quad per run of equal colour, so
+                // highlight strips (prompt rows) paint as a single seamless rectangle.
+                let mut col = 0usize;
+                let mut span_start = 0usize;
+                let active_bg = self.active_bg;
+                let mut span_bg = active_bg;
+                let is_bottom_row = row_index + 1 >= max_rows;
+                let is_tui = is_alt_screen || active_bg.a > 0.01;
+                let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
+                    let should_skip = if is_tui {
+                        span_bg == active_bg
                     } else {
-                        (range.end.column.0, range.start.column.0)
+                        span_bg == default_bg || span_bg == active_bg
                     };
-                    let (min_line, max_line) = if range.start.line <= range.end.line {
-                        (range.start.line.0, range.end.line.0)
-                    } else {
-                        (range.end.line.0, range.start.line.0)
-                    };
-                    if row_line.0 >= min_line && row_line.0 <= max_line {
-                        Some((min_col, max_col.min(cols.saturating_sub(1))))
-                    } else {
-                        None
-                    }
-                } else {
-                    let (start, end) = if range.start <= range.end {
-                        (range.start, range.end)
-                    } else {
-                        (range.end, range.start)
-                    };
-                    if row_line < start.line || row_line > end.line {
-                        None
-                    } else if row_line == start.line && row_line == end.line {
-                        Some((start.column.0, end.column.0.min(cols.saturating_sub(1))))
-                    } else if row_line == start.line {
-                        Some((start.column.0, cols.saturating_sub(1)))
-                    } else if row_line == end.line {
-                        Some((0, end.column.0.min(cols.saturating_sub(1))))
-                    } else {
-                        Some((0, cols.saturating_sub(1)))
-                    }
-                };
-
-                if let Some((sel_c0, sel_c1)) = row_sel {
-                    if sel_c1 >= sel_c0 {
-                        let sel_bg = Rgba {
-                            r: theme.accent.r,
-                            g: theme.accent.g,
-                            b: theme.accent.b,
-                            a: 0.38,
-                        };
-                        let is_left_edge = sel_c0 == 0;
-                        let is_right_edge = sel_c1 + 1 >= cols;
-                        let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(sel_c0) };
-                        let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(sel_c1 + 1) };
+                    if !should_skip && col > span_start {
+                        let is_left_edge = span_start == 0;
+                        let is_right_edge = col >= cols;
+                        let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(span_start) };
+                        let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(col) };
                         let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
 
                         let quad = fill(
@@ -449,13 +377,87 @@ impl Element for TerminalElement {
                                 point(px(rx0), px(y0)),
                                 point(px(rx1), px(ry1)),
                             ),
-                            sel_bg,
+                            span_bg,
                         );
                         window.paint_quad(quad);
                     }
+                };
+                for run in &row.runs {
+                    if run.style.bg != span_bg {
+                        flush(col, span_start, span_bg, window);
+                        span_start = col;
+                        span_bg = run.style.bg;
+                    }
+                    col += run.cells;
+                }
+                flush(col, span_start, span_bg, window);
+
+                // Selection highlight layer: paints seamlessly behind intact text runs
+                // so text shaping and character advances never jitter during drag selection.
+                if let Some(ref range) = selection_range {
+                    let row_line = Line(row_index as i32 - offset);
+                    let row_sel = if range.is_block {
+                        let (min_col, max_col) = if range.start.column <= range.end.column {
+                            (range.start.column.0, range.end.column.0)
+                        } else {
+                            (range.end.column.0, range.start.column.0)
+                        };
+                        let (min_line, max_line) = if range.start.line <= range.end.line {
+                            (range.start.line.0, range.end.line.0)
+                        } else {
+                            (range.end.line.0, range.start.line.0)
+                        };
+                        if row_line.0 >= min_line && row_line.0 <= max_line {
+                            Some((min_col, max_col.min(cols.saturating_sub(1))))
+                        } else {
+                            None
+                        }
+                    } else {
+                        let (start, end) = if range.start <= range.end {
+                            (range.start, range.end)
+                        } else {
+                            (range.end, range.start)
+                        };
+                        if row_line < start.line || row_line > end.line {
+                            None
+                        } else if row_line == start.line && row_line == end.line {
+                            Some((start.column.0, end.column.0.min(cols.saturating_sub(1))))
+                        } else if row_line == start.line {
+                            Some((start.column.0, cols.saturating_sub(1)))
+                        } else if row_line == end.line {
+                            Some((0, end.column.0.min(cols.saturating_sub(1))))
+                        } else {
+                            Some((0, cols.saturating_sub(1)))
+                        }
+                    };
+
+                    if let Some((sel_c0, sel_c1)) = row_sel {
+                        if sel_c1 >= sel_c0 {
+                            let sel_bg = Rgba {
+                                r: theme.accent.r,
+                                g: theme.accent.g,
+                                b: theme.accent.b,
+                                a: 0.38,
+                            };
+                            let is_left_edge = sel_c0 == 0;
+                            let is_right_edge = sel_c1 + 1 >= cols;
+                            let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(sel_c0) };
+                            let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(sel_c1 + 1) };
+                            let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
+
+                            let quad = fill(
+                                Bounds::from_corners(
+                                    point(px(rx0), px(y0)),
+                                    point(px(rx1), px(ry1)),
+                                ),
+                                sel_bg,
+                            );
+                            window.paint_quad(quad);
+                        }
+                    }
                 }
             }
-        }
+        });
 
         // --------------------------------------------------------------------
         // Inline Images (OSC 1337 iTerm2 protocol)
@@ -519,12 +521,9 @@ impl Element for TerminalElement {
             let target_row = target_row.min(max_rows.saturating_sub(1));
             let tgt_col_f = target_col as f32;
             let tgt_row_f = target_row as f32;
-            let (cur_col, cur_row) = match self.cursor_pos {
-                Some((c, r)) if (c - tgt_col_f).abs() < 15.0 && (r - tgt_row_f).abs() < 10.0 => {
-                    (c.min(cols.saturating_sub(1) as f32), r.min(max_rows.saturating_sub(1) as f32))
-                }
-                _ => (tgt_col_f, tgt_row_f),
-            };
+            let (cur_col, cur_row) = self.cursor_pos.unwrap_or((tgt_col_f, tgt_row_f));
+            let cur_col = cur_col.min(cols.saturating_sub(1) as f32);
+            let cur_row = cur_row.min(max_rows.saturating_sub(1) as f32);
             let is_settled = (cur_col - tgt_col_f).abs() < 0.01 && (cur_row - tgt_row_f).abs() < 0.01;
             let cx0 = if is_settled {
                 (left + cell_width * tgt_col_f).round().clamp(left, left + avail_w)

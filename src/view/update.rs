@@ -134,6 +134,37 @@ impl AtlasView {
                             .text_color(text_color)
                             .child(message.to_string()),
                     )
+                    .when_some(self.available_update.as_ref(), |el, _info| {
+                        let btn_label = match &self.update_download_state {
+                            UpdateDownloadState::Downloading { percent, .. } => {
+                                format!("{:.0}%", percent)
+                            }
+                            UpdateDownloadState::Verifying { .. } => "Verifying…".to_string(),
+                            UpdateDownloadState::ReadyToRestart { .. } => "Restart & Apply".to_string(),
+                            _ => "Update".to_string(),
+                        };
+                        el.child(
+                            div()
+                                .id(ElementId::named_usize("toast-update-btn", 0))
+                                .px(px(9.0))
+                                .py(px(2.0))
+                                .rounded_full()
+                                .bg(theme.accent)
+                                .text_color(theme.elevated_bg)
+                                .text_size(px(12.0))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .cursor_pointer()
+                                .hover(|s| s.opacity(0.85))
+                                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                                    if matches!(view.update_download_state, UpdateDownloadState::ReadyToRestart { .. }) {
+                                        view.apply_update_and_restart(cx);
+                                    } else if matches!(view.update_download_state, UpdateDownloadState::Idle) {
+                                        view.start_download_update(cx);
+                                    }
+                                }))
+                                .child(btn_label),
+                        )
+                    })
                     .child(
                         div()
                             .pl(px(4.0))
@@ -234,13 +265,9 @@ impl AtlasView {
                 } else {
                     self.available_update = Some(info.clone());
                     self.updater_settings.last_seen_version = Some(info.version.clone());
-                    if is_manual {
-                        self.manual_status_message =
-                            Some(format!("v{} is available!", info.version));
-                        self.update_toast = None;
-                        self.update_panel_open = true;
-                        self.update_panel_closing = false;
-                    }
+                    let msg = format!("Atlas Terminal v{} is available!", info.version);
+                    self.manual_status_message = Some(msg.clone());
+                    self.show_update_toast(msg, true, cx);
                 }
                 self.sync_and_save_settings();
             }
@@ -306,16 +333,12 @@ impl AtlasView {
     }
 
     pub(crate) fn toggle_update_panel(&mut self, cx: &mut Context<Self>) {
-        if self.update_panel_closing {
-            self.update_panel_closing = false;
+        if let Some(ref info) = self.available_update {
+            let msg = format!("Atlas Terminal v{} is available!", info.version);
+            self.show_update_toast(msg, true, cx);
         } else {
-            self.update_panel_open = !self.update_panel_open;
-            if self.update_panel_open {
-                self.palette_open = false;
-                self.profile_menu = false;
-            }
+            self.check_updates_manual(cx);
         }
-        cx.notify();
     }
 
     pub(crate) fn dismiss_update_panel(&mut self, cx: &mut Context<Self>) {

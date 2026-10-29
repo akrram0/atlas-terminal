@@ -376,41 +376,39 @@ pub fn open_in_editor(target: &str, editor_pref: &str, cwd: Option<&std::path::P
     };
 
     let pref = editor_pref.trim().to_ascii_lowercase();
-    let editor_cmd = match pref.as_str() {
-        "vscode" | "code" => Some("code".to_string()),
-        "cursor" => Some("cursor".to_string()),
-        "zed" => Some("zed".to_string()),
+    let editor_resolved = match pref.as_str() {
+        "vscode" | "code" => resolve_editor_path("code").or_else(|| Some(std::path::PathBuf::from("code"))),
+        "cursor" => resolve_editor_path("cursor").or_else(|| Some(std::path::PathBuf::from("cursor"))),
+        "zed" => resolve_editor_path("zed").or_else(|| Some(std::path::PathBuf::from("zed"))),
         "system" | "default" => None,
         _ => {
-            if is_cmd_available("code") {
-                Some("code".to_string())
-            } else if is_cmd_available("cursor") {
-                Some("cursor".to_string())
-            } else if is_cmd_available("zed") {
-                Some("zed".to_string())
-            } else {
-                None
-            }
+            resolve_editor_path("code")
+                .or_else(|| resolve_editor_path("cursor"))
+                .or_else(|| resolve_editor_path("zed"))
         }
     };
 
-    if let Some(cmd) = editor_cmd {
+    if let Some(cmd_path) = editor_resolved {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
-            let _ = std::process::Command::new("cmd.exe")
-                .arg("/c")
-                .arg(&cmd)
-                .arg("--goto")
-                .arg(&goto_arg)
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn();
+            let path_str = cmd_path.to_string_lossy().to_string();
+            let mut command = if path_str.ends_with(".cmd") || path_str.ends_with(".bat") {
+                let mut c = std::process::Command::new("cmd.exe");
+                c.args(["/c", &path_str, "--goto", &goto_arg]);
+                c
+            } else {
+                let mut c = std::process::Command::new(&cmd_path);
+                c.arg("--goto").arg(&goto_arg);
+                c
+            };
+            let _ = command.creation_flags(CREATE_NO_WINDOW).spawn();
             return;
         }
         #[cfg(not(windows))]
         {
-            let _ = std::process::Command::new(&cmd)
+            let _ = std::process::Command::new(&cmd_path)
                 .arg("--goto")
                 .arg(&goto_arg)
                 .spawn();
@@ -421,15 +419,18 @@ pub fn open_in_editor(target: &str, editor_pref: &str, cwd: Option<&std::path::P
     open_url(&path);
 }
 
-fn is_cmd_available(name: &str) -> bool {
+fn resolve_editor_path(name: &str) -> Option<std::path::PathBuf> {
     #[cfg(windows)]
     {
         if let Some(path_var) = std::env::var_os("PATH") {
             for dir in std::env::split_paths(&path_var) {
-                if dir.join(format!("{name}.cmd")).is_file()
-                    || dir.join(format!("{name}.exe")).is_file()
-                {
-                    return true;
+                let cmd = dir.join(format!("{name}.cmd"));
+                if cmd.is_file() {
+                    return Some(cmd);
+                }
+                let exe = dir.join(format!("{name}.exe"));
+                if exe.is_file() {
+                    return Some(exe);
                 }
             }
         }
@@ -441,20 +442,51 @@ fn is_cmd_available(name: &str) -> bool {
                     .join("bin")
                     .join("code.cmd");
                 if p.is_file() {
-                    return true;
+                    return Some(p);
                 }
             }
-            if std::path::Path::new(r"C:\Program Files\Microsoft VS Code\bin\code.cmd").is_file() {
-                return true;
+            let program_files = std::path::Path::new(r"C:\Program Files\Microsoft VS Code\bin\code.cmd");
+            if program_files.is_file() {
+                return Some(program_files.to_path_buf());
             }
         }
-        false
+        if name == "cursor" {
+            if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+                let p = std::path::PathBuf::from(local)
+                    .join("Programs")
+                    .join("cursor")
+                    .join("resources")
+                    .join("app")
+                    .join("bin")
+                    .join("cursor.cmd");
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+        }
+        if name == "zed" {
+            if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+                let p = std::path::PathBuf::from(local)
+                    .join("Programs")
+                    .join("Zed")
+                    .join("bin")
+                    .join("zed.exe");
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+        }
+        None
     }
     #[cfg(not(windows))]
     {
         let _ = name;
-        false
+        None
     }
+}
+
+fn is_cmd_available(name: &str) -> bool {
+    resolve_editor_path(name).is_some()
 }
 
 #[cfg(test)]

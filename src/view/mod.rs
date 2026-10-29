@@ -485,10 +485,15 @@ impl AtlasView {
                                 let (tgt_col, tgt_row) = pane.cursor_target;
                                 let d_col = tgt_col - cur_col;
                                 let d_row = tgt_row - cur_row;
-                                if d_col.abs() > 0.01 || d_row.abs() > 0.01 {
+                                // When moving across more than 2 rows (page jumps, scrolling, large movements in Vim/Neovim)
+                                // or across a massive column leap (> 35 cols), snap immediately to prevent dizzying flying/rubberbanding.
+                                if d_row.abs() > 2.0 || d_col.abs() > 35.0 {
+                                    pane.cursor_pos = Some((tgt_col, tgt_row));
+                                    needs_paint = true;
+                                } else if d_col.abs() > 0.01 || d_row.abs() > 0.01 {
                                     active_motion = true;
-                                    // Snappy Apple spring deceleration (~70ms)
-                                    let factor = (1.0 - (-28.0 * dt).exp()).clamp(0.0, 1.0);
+                                    // Snappy Apple spring deceleration (~45ms)
+                                    let factor = (1.0 - (-36.0 * dt).exp()).clamp(0.0, 1.0);
                                     let next_col = if d_col.abs() < 0.03 {
                                         tgt_col
                                     } else {
@@ -1174,7 +1179,12 @@ impl Render for AtlasView {
                         .child(label),
                 )
                 .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                    view.toggle_update_panel(cx);
+                    if let Some(ref info) = view.available_update {
+                        let msg = format!("Atlas Terminal v{} is available!", info.version);
+                        view.show_update_toast(msg, true, cx);
+                    } else {
+                        view.check_updates_manual(cx);
+                    }
                 }));
 
             bar = bar.child(badge);
@@ -1662,8 +1672,9 @@ impl Render for AtlasView {
                         }
                         if !event.modifiers.shift {
                             if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_down) {
+                                if let Some(pane) = tab.panes.get_mut(pane_down) {
                                     if Self::is_mouse_reporting(pane) {
+                                        pane.cursor_pos = Some(pane.cursor_target);
                                         let delta_y = match event.delta {
                                             gpui::ScrollDelta::Lines(delta) => delta.y,
                                             gpui::ScrollDelta::Pixels(delta) => {
@@ -1865,19 +1876,7 @@ impl Render for AtlasView {
             ));
             root = root.child(self.rename_dialog(&theme, cx));
         }
-        if self.update_panel_open {
-            let closing = self.update_panel_closing;
-            root = root.child(overlay_backdrop(
-                4,
-                closing,
-                |view, window, cx| {
-                    window.focus(&view.focus);
-                    view.dismiss_update_panel(cx);
-                },
-                cx,
-            ));
-            root = root.child(self.render_update_panel(&theme, closing, cx));
-        }
+
         // Close confirmation is topmost: it must win over every other overlay.
         if self.pending_close_tab.is_some() || self.pending_close_window {
             root = root.child(overlay_backdrop(

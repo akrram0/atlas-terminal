@@ -221,7 +221,6 @@ pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -
             .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                 view.dismiss_profile(cx);
                 view.check_updates_manual(cx);
-                view.toggle_update_panel(cx);
             })),
     );
 

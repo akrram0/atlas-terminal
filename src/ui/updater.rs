@@ -16,6 +16,7 @@ use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 use super::controls::pill_button;
 
 impl AtlasView {
+    #[allow(dead_code)]
     pub fn render_update_panel(&self, theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
         let item_hover = theme.card_hover;
         let mut panel = div()
