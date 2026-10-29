@@ -751,14 +751,19 @@ impl Render for AtlasView {
             (tb.panel_bg, term_base, tb.panel_bg)
         };
 
+        let bar_h = if zoomed { px(50.0) } else { px(42.0) };
+        let bar_pt = if zoomed { px(8.0) } else { px(0.0) };
+        let bar_pl = if zoomed { px(18.0) } else { px(12.0) };
+
         let mut bar = div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(6.0))
             .w(relative(1.0))
-            .h(px(42.0))
-            .pl(px(12.0))
+            .h(bar_h)
+            .pt(bar_pt)
+            .pl(bar_pl)
             .bg(chrome_bg)
             .border_b_1()
             .border_color(tb.hairline);

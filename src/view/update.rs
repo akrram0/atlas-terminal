@@ -90,10 +90,13 @@ impl AtlasView {
             rgb(0xE6A700)
         };
 
+        let zoomed = crate::rounded_corners::is_zoomed();
+        let toast_top = if zoomed { px(58.0) } else { px(50.0) };
+
         div()
             .id(ElementId::named_usize("update-toast-container", 0))
             .absolute()
-            .top(px(50.0))
+            .top(toast_top)
             .left_0()
             .right_0()
             .flex()

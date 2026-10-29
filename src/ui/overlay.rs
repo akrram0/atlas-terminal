@@ -99,11 +99,14 @@ pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -
         ("OpenCode".to_string(), Profile::OpenCode),
     ];
     let item_hover = theme.card_hover;
+    let zoomed = crate::rounded_corners::is_zoomed();
+    let menu_top = if zoomed { px(54.0) } else { px(46.0) };
+    let menu_left = if zoomed { px(18.0) } else { px(12.0) };
     let mut menu = div()
         .id(ElementId::named_usize("launch-menu-dropdown", 0))
         .absolute()
-        .top(px(46.0))
-        .left(px(12.0))
+        .top(menu_top)
+        .left(menu_left)
         .w(px(260.0))
         .flex()
         .flex_col()

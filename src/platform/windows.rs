@@ -562,29 +562,6 @@ unsafe extern "system" fn window_proc(
 ) -> Lresult {
     match msg {
         WM_GETMINMAXINFO => {
-            let mmi = lparam as *mut MinMaxInfo;
-            if !mmi.is_null() {
-                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
-                if !monitor.is_null() {
-                    let mut info = MonitorInfo {
-                        cb_size: core::mem::size_of::<MonitorInfo>() as u32,
-                        rc_monitor: Rect::default(),
-                        rc_work: Rect::default(),
-                        dw_flags: 0,
-                    };
-                    if unsafe { GetMonitorInfoW(monitor, &mut info) } != 0 {
-                        unsafe {
-                            (*mmi).pt_max_position.x = info.rc_work.left - info.rc_monitor.left;
-                            (*mmi).pt_max_position.y = info.rc_work.top - info.rc_monitor.top;
-                            (*mmi).pt_max_size.x = info.rc_work.right - info.rc_work.left;
-                            (*mmi).pt_max_size.y = info.rc_work.bottom - info.rc_work.top;
-                            (*mmi).pt_max_track_size.x = (*mmi).pt_max_size.x;
-                            (*mmi).pt_max_track_size.y = (*mmi).pt_max_size.y;
-                        }
-                        return 0;
-                    }
-                }
-            }
             let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
             if prev == 0 {
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
