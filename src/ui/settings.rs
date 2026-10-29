@@ -267,7 +267,7 @@ impl AtlasView {
             ("light".to_string(), "Light".to_string()),
         ];
         let color_mode_ctrl = segmented_control(
-            118,
+            "color-mode-ctrl",
             mode_options,
             &self.theme_mode,
             theme,
@@ -489,7 +489,7 @@ impl AtlasView {
             (Some(CursorShape::HollowBlock), "Hollow".to_string()),
         ];
         let cursor_shape_ctrl = segmented_control(
-            130,
+            "cursor-shape-ctrl",
             cursor_options,
             &self.cursor_style,
             theme,
@@ -649,7 +649,7 @@ impl AtlasView {
             ("new_tab".to_string(), "New Tab".to_string()),
         ];
         let startup_ctrl = segmented_control(
-            330,
+            "startup-ctrl",
             startup_options,
             &self.app_settings.startup_mode,
             theme,
@@ -666,7 +666,7 @@ impl AtlasView {
             ("current".to_string(), "Current Working Dir".to_string()),
         ];
         let start_dir_ctrl = segmented_control(
-            310,
+            "start-dir-ctrl",
             start_dir_options,
             &self.app_settings.start_directory,
             theme,
@@ -685,7 +685,7 @@ impl AtlasView {
             (50000, "50,000".to_string()),
         ];
         let scroll_ctrl = segmented_control(
-            320,
+            "scrollback-ctrl",
             scroll_options,
             &self.app_settings.scrollback_lines,
             theme,
@@ -729,7 +729,7 @@ impl AtlasView {
             ("system".to_string(), "Default".to_string()),
         ];
         let editor_ctrl = segmented_control(
-            342,
+            "default-editor-ctrl",
             editor_options,
             &self.app_settings.default_editor,
             theme,
@@ -760,7 +760,7 @@ impl AtlasView {
             (60, "60s".to_string()),
         ];
         let threshold_ctrl = segmented_control(
-            346,
+            "alert-threshold-ctrl",
             threshold_options,
             &self.app_settings.notify_threshold_secs,
             theme,
@@ -777,7 +777,7 @@ impl AtlasView {
             (crate::updater::UpdateChannel::Preview, "Preview (Rolling Cloud)".to_string()),
         ];
         let channel_ctrl = segmented_control(
-            348,
+            "update-channel-ctrl",
             channel_options,
             &self.updater_settings.channel,
             theme,
@@ -809,7 +809,7 @@ impl AtlasView {
             (1440, "24h".to_string()),
         ];
         let interval_ctrl = segmented_control(
-            360,
+            "check-interval-ctrl",
             interval_options,
             &self.updater_settings.update_check_interval_mins,
             theme,

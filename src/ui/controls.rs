@@ -249,9 +249,9 @@ pub fn pill_button(
     button.into_any_element()
 }
 
-/// Modern Apple/macOS-style segmented control.
+/// Modern Apple/macOS-style segmented control with unique named ElementId scope.
 pub fn segmented_control<T: Clone + PartialEq + 'static>(
-    id_base: usize,
+    name: &'static str,
     options: Vec<(T, String)>,
     selected: &T,
     theme: &Theme,
@@ -298,7 +298,7 @@ pub fn segmented_control<T: Clone + PartialEq + 'static>(
         };
 
         let item = div()
-            .id(ElementId::named_usize("segmented-item", id_base + idx))
+            .id(ElementId::named_usize(name, idx))
             .h(px(24.0))
             .px(px(10.0))
             .flex()
