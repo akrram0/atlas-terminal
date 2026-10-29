@@ -1007,7 +1007,7 @@ impl AtlasView {
             }
             _ => {
                 if !ks.modifiers.control && !ks.modifiers.alt {
-                    let typed: String = if ks.key == "space" {
+                    let raw_typed: String = if ks.key == "space" {
                         " ".to_string()
                     } else {
                         ks.key_char
@@ -1017,6 +1017,7 @@ impl AtlasView {
                             })
                             .unwrap_or_default()
                     };
+                    let typed = crate::keymap::adjust_for_caps_lock(&raw_typed, ks.modifiers.shift);
                     if !typed.is_empty() {
                         self.search_query.push_str(&typed);
                         self.perform_search(cx);

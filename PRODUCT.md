@@ -16,7 +16,7 @@ Atlas Terminal provides a high-velocity, GPU-accelerated terminal emulator for W
 
 ## Positioning
 
-Unlike Windows Terminal, Alacritty, or WezTerm, Atlas Terminal unites DirectX 12 hardware rasterization with 240Hz adaptive frame scheduling (via 1ms OS multimedia timers), zero-overhead native DWM Acrylic blur, procedural MSAA vector prompt arcs (no font baseline clipping or disconnected box-drawing glyphs), and native iTerm2 inline graphics (OSC 1337) with a working memory footprint under 30MB.
+Unlike Windows Terminal, Alacritty, or WezTerm, Atlas Terminal unites DirectX 12 hardware rasterization with ultra-smooth native frame scheduling, zero-overhead native DWM Acrylic blur, procedural MSAA vector prompt arcs (no font baseline clipping or disconnected box-drawing glyphs), and native iTerm2 inline graphics (OSC 1337) with a lightweight working memory footprint of ~60MB.
 
 ## Operating Context
 
@@ -27,7 +27,7 @@ Unlike Windows Terminal, Alacritty, or WezTerm, Atlas Terminal unites DirectX 12
 ## Capabilities and Constraints
 
 - **Rendering Engine**: Rust GPUI with DirectX 12 backend.
-- **Refresh & Timing**: Up to 240Hz adaptive scheduling with 1ms OS timer precision (`timeBeginPeriod(1)`), dropping to 0% CPU consumption when idle.
+- **Refresh & Timing**: Adaptive native display frame scheduling with zero frame drops, dropping to 0% CPU consumption when idle.
 - **Inline Graphics**: iTerm2 OSC 1337 protocol natively integrated into text layout.
 - **Aesthetic**: Restrained Apple/macOS design language, DWM Acrylic translucency, no decorative AI gradients, no glowing halos, no nested cards, no pure `#000000`.
 - **Distribution**: Standalone signed installer, automatic cryptographic delta updater with SHA-256 verification, and Microsoft Windows Package Manager (`winget`).

@@ -2,8 +2,10 @@
 
 use std::time::Duration;
 
-use gpui::Context;
+use gpui::*;
 
+use crate::icons;
+use crate::theme::Theme;
 use crate::ui::animation::OVERLAY_OUT_MS;
 use crate::updater;
 
@@ -48,23 +50,114 @@ impl AtlasView {
         self.trigger_update_check(false, cx);
     }
 
+    pub(crate) fn show_update_toast(&mut self, message: String, is_ok: bool, cx: &mut Context<Self>) {
+        self.update_toast = Some((message, is_ok, std::time::Instant::now()));
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            smol::Timer::after(Duration::from_millis(3800)).await;
+            let _ = this.update(cx, |view, cx| {
+                if let Some((_, _, inst)) = view.update_toast {
+                    if inst.elapsed() >= Duration::from_millis(3700) {
+                        view.update_toast = None;
+                        cx.notify();
+                    }
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn render_update_toast(
+        &self,
+        message: &str,
+        is_ok: bool,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let text_color = theme.chrome_fg_active;
+        let icon_path = if is_ok {
+            if message.starts_with("Checking") {
+                icons::REFRESH
+            } else {
+                icons::CHECK
+            }
+        } else {
+            icons::CLOSE
+        };
+        let icon_color = if is_ok {
+            theme.accent
+        } else {
+            rgb(0xE6A700)
+        };
+
+        div()
+            .id(ElementId::named_usize("update-toast-container", 0))
+            .absolute()
+            .top(px(50.0))
+            .left_0()
+            .right_0()
+            .flex()
+            .flex_row()
+            .justify_center()
+            .items_center()
+            .child(
+                div()
+                    .id(ElementId::named_usize("update-toast-pill", 0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(10.0))
+                    .px(px(16.0))
+                    .py(px(8.0))
+                    .rounded_full()
+                    .bg(theme.elevated_bg)
+                    .border_1()
+                    .border_color(theme.elevated_border)
+                    .shadow_lg()
+                    .cursor_pointer()
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.update_toast = None;
+                        cx.notify();
+                    }))
+                    .child(
+                        icons::icon(icon_path)
+                            .size(px(14.0))
+                            .text_color(icon_color),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(text_color)
+                            .child(message.to_string()),
+                    )
+                    .child(
+                        div()
+                            .pl(px(4.0))
+                            .text_color(theme.faint_fg)
+                            .hover(|s| s.text_color(theme.fg))
+                            .child(icons::icon(icons::CLOSE).size(px(11.0))),
+                    ),
+            )
+            .into_any_element()
+    }
+
     /// Manual update check triggered by button in top bar or Settings.
     pub(crate) fn check_updates_manual(&mut self, cx: &mut Context<Self>) {
         if self.is_checking_updates {
             return;
         }
 
-        // 10 second cooldown on manual checks to prevent spam
+        // 2 second cooldown on manual checks to prevent spam
         if let Some(last) = self.last_manual_check {
-            if last.elapsed() < Duration::from_secs(10) {
-                self.manual_status_message =
-                    Some("Please wait a few seconds before checking again.".to_string());
-                cx.notify();
+            if last.elapsed() < Duration::from_secs(2) {
+                self.show_update_toast("Checking for updates...".to_string(), true, cx);
                 return;
             }
         }
 
         self.last_manual_check = Some(std::time::Instant::now());
+        self.show_update_toast("Checking for updates...".to_string(), true, cx);
         self.trigger_update_check(true, cx);
     }
 
@@ -131,8 +224,9 @@ impl AtlasView {
 
                 if is_skipped {
                     if is_manual {
-                        self.manual_status_message =
-                            Some(format!("v{} is available (skipped)", info.version));
+                        let msg = format!("Atlas v{} is available (skipped)", info.version);
+                        self.manual_status_message = Some(msg.clone());
+                        self.show_update_toast(msg, true, cx);
                     }
                 } else {
                     self.available_update = Some(info.clone());
@@ -140,6 +234,7 @@ impl AtlasView {
                     if is_manual {
                         self.manual_status_message =
                             Some(format!("v{} is available!", info.version));
+                        self.update_toast = None;
                         self.update_panel_open = true;
                         self.update_panel_closing = false;
                     }
@@ -154,7 +249,9 @@ impl AtlasView {
                     self.updater_settings.etag = Some(e);
                 }
                 if is_manual {
-                    self.manual_status_message = Some("You're up to date".to_string());
+                    let msg = format!("Atlas Terminal is up to date (v{})", env!("CARGO_PKG_VERSION"));
+                    self.manual_status_message = Some(msg.clone());
+                    self.show_update_toast(msg, true, cx);
                 }
                 self.sync_and_save_settings();
             }
@@ -170,7 +267,9 @@ impl AtlasView {
                 self.update_panel_closing = false;
                 self.update_download_state = UpdateDownloadState::Idle;
                 if is_manual {
-                    self.manual_status_message = Some("You're up to date".to_string());
+                    let msg = format!("Atlas Terminal is up to date (v{})", env!("CARGO_PKG_VERSION"));
+                    self.manual_status_message = Some(msg.clone());
+                    self.show_update_toast(msg, true, cx);
                 }
                 self.sync_and_save_settings();
             }
@@ -180,20 +279,23 @@ impl AtlasView {
                 self.current_backoff_secs = (self.current_backoff_secs * 2).min(14400);
                 if is_manual {
                     let time_str = updater::format_epoch_time(reset_epoch);
-                    self.manual_status_message =
-                        Some(format!("Rate limited, try again at {time_str}"));
+                    let msg = format!("Rate limited, try again at {time_str}");
+                    self.manual_status_message = Some(msg.clone());
+                    self.show_update_toast(msg, false, cx);
                 }
             }
             updater::UpdateCheckResult::Offline => {
-                // Silently skip when offline; manual check reports status
                 if is_manual {
-                    self.manual_status_message = Some("No internet connection".to_string());
+                    let msg = "No internet connection".to_string();
+                    self.manual_status_message = Some(msg.clone());
+                    self.show_update_toast(msg, false, cx);
                 }
             }
             updater::UpdateCheckResult::Error(msg) => {
-                // Auto check silently ignores errors; only manual check reports
                 if is_manual {
-                    self.manual_status_message = Some(format!("Check failed: {msg}"));
+                    let text = format!("Check failed: {msg}");
+                    self.manual_status_message = Some(text.clone());
+                    self.show_update_toast(text, false, cx);
                 }
             }
         }

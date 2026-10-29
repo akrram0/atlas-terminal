@@ -148,22 +148,66 @@ impl AtlasView {
         .detach();
     }
 
+    pub fn shortcut_for_palette_command(&self, cmd: Command) -> String {
+        use crate::config::*;
+        let action = match cmd {
+            Command::FindInTerminal => Some(ACTION_FIND),
+            Command::NewTab => Some(ACTION_NEW_TAB),
+            Command::SplitPane => Some(ACTION_SPLIT_VERTICAL),
+            Command::SplitPaneDown => Some(ACTION_SPLIT_HORIZONTAL),
+            Command::FocusNextPane => Some(ACTION_FOCUS_NEXT_PANE),
+            Command::FocusPrevPane => Some(ACTION_FOCUS_PREV_PANE),
+            Command::MaximizePane => Some(ACTION_TOGGLE_MAXIMIZE),
+            Command::ClosePane | Command::CloseTab => Some(ACTION_CLOSE_TAB),
+            Command::NextTab => Some(ACTION_NEXT_TAB),
+            Command::PrevTab => Some(ACTION_PREV_TAB),
+            Command::CopySelection => Some(ACTION_COPY),
+            Command::PasteClipboard => Some(ACTION_PASTE),
+            Command::SelectAll => Some(ACTION_SELECT_ALL),
+            Command::ClearScrollback => Some(ACTION_CLEAR_SCROLLBACK),
+            Command::ScrollPageUp => Some(ACTION_SCROLL_PAGE_UP),
+            Command::ScrollPageDown => Some(ACTION_SCROLL_PAGE_DOWN),
+            Command::ScrollToTop => Some(ACTION_SCROLL_TO_TOP),
+            Command::ScrollToBottom => Some(ACTION_SCROLL_TO_BOTTOM),
+            Command::OpenLatestUrl => Some(ACTION_OPEN_URL_PICKER),
+            Command::ToggleTheme => Some(ACTION_TOGGLE_THEME),
+            Command::OpenSettings => Some(ACTION_OPEN_SETTINGS),
+            Command::FontInc => Some(ACTION_ZOOM_IN),
+            Command::FontDec => Some(ACTION_ZOOM_OUT),
+            Command::FontReset => Some(ACTION_ZOOM_RESET),
+            Command::RestartTab => Some("r"),
+            _ => None,
+        };
+
+        if let Some(act) = action {
+            if act == "r" {
+                return "R".to_string();
+            }
+            let chord = self.get_shortcut(act);
+            if !chord.is_empty() {
+                return crate::config::pretty_shortcut(&chord);
+            }
+        }
+        String::new()
+    }
+
     /// Commands matching the current query, with multi-word search and detected buffer URLs.
-    pub fn palette_matches(&self) -> Vec<(PaletteAction, &'static str, String, &'static str)> {
+    pub fn palette_matches(&self) -> Vec<(PaletteAction, &'static str, String, String)> {
         let mut items = Vec::new();
-        for (cmd, icon, label, shortcut) in &COMMANDS {
+        for (cmd, icon, label, _) in &COMMANDS {
+            let shortcut = self.shortcut_for_palette_command(*cmd);
             if matches!(cmd, Command::NewTabWsl) {
                 let (icon, label) = match wsl::default_distro() {
                     Some(distro) => (distro.icon, format!("New {} (WSL) tab", distro.title)),
                     None => (icons::LINUX, "New WSL tab".to_string()),
                 };
-                items.push((PaletteAction::Command(*cmd), icon, label, *shortcut));
+                items.push((PaletteAction::Command(*cmd), icon, label, shortcut));
             } else {
                 items.push((
                     PaletteAction::Command(*cmd),
                     *icon,
                     label.to_string(),
-                    *shortcut,
+                    shortcut,
                 ));
             }
         }
@@ -174,7 +218,7 @@ impl AtlasView {
             let urls = crate::url::find_all_urls_in_viewport(&session.term);
             for url in urls {
                 let label = format!("Open link: {url}");
-                items.push((PaletteAction::OpenUrl(url), icons::LINK, label, ""));
+                items.push((PaletteAction::OpenUrl(url), icons::LINK, label, String::new()));
             }
         }
 
@@ -233,7 +277,7 @@ impl AtlasView {
                 if !ks.modifiers.control && !ks.modifiers.alt {
                     // The space bar arrives without `key_char` (gpui treats
                     // it as an immutable key), so type it by hand.
-                    let typed: String = if ks.key == "space" {
+                    let raw_typed: String = if ks.key == "space" {
                         " ".to_string()
                     } else {
                         ks.key_char
@@ -243,6 +287,7 @@ impl AtlasView {
                             })
                             .unwrap_or_default()
                     };
+                    let typed = crate::keymap::adjust_for_caps_lock(&raw_typed, ks.modifiers.shift);
                     if !typed.is_empty() {
                         self.palette_query.push_str(&typed);
                         self.palette_index = 0;

@@ -104,8 +104,8 @@ struct MinMaxInfo {
     pt_reserved: Point,
     pt_max_size: Point,
     pt_max_position: Point,
-    pt_max_track_size: Point,
     pt_min_track_size: Point,
+    pt_max_track_size: Point,
 }
 
 #[repr(C)]
@@ -562,6 +562,29 @@ unsafe extern "system" fn window_proc(
 ) -> Lresult {
     match msg {
         WM_GETMINMAXINFO => {
+            let mmi = lparam as *mut MinMaxInfo;
+            if !mmi.is_null() {
+                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+                if !monitor.is_null() {
+                    let mut info = MonitorInfo {
+                        cb_size: core::mem::size_of::<MonitorInfo>() as u32,
+                        rc_monitor: Rect::default(),
+                        rc_work: Rect::default(),
+                        dw_flags: 0,
+                    };
+                    if unsafe { GetMonitorInfoW(monitor, &mut info) } != 0 {
+                        unsafe {
+                            (*mmi).pt_max_position.x = info.rc_work.left - info.rc_monitor.left;
+                            (*mmi).pt_max_position.y = info.rc_work.top - info.rc_monitor.top;
+                            (*mmi).pt_max_size.x = info.rc_work.right - info.rc_work.left;
+                            (*mmi).pt_max_size.y = info.rc_work.bottom - info.rc_work.top;
+                            (*mmi).pt_max_track_size.x = (*mmi).pt_max_size.x;
+                            (*mmi).pt_max_track_size.y = (*mmi).pt_max_size.y;
+                        }
+                        return 0;
+                    }
+                }
+            }
             let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
             if prev == 0 {
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -570,39 +593,8 @@ unsafe extern "system" fn window_proc(
             }
         }
         WM_NCCALCSIZE => {
-            if unsafe { IsZoomed(hwnd) } != 0 {
-                // When maximized, Windows outdents a WS_THICKFRAME window by the resize frame
-                // (SM_CYFRAME + SM_CXPADDEDBORDER, usually 8px) into negative coordinates.
-                // Insetting rgrc[0] by this frame prevents the top bar and controls from being clipped offscreen.
-                let frame_y = unsafe {
-                    GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
-                };
-                let frame_x = unsafe {
-                    GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
-                };
-                if wparam != 0 {
-                    let params = lparam as *mut NcCalcSizeParams;
-                    if !params.is_null() {
-                        unsafe {
-                            (*params).rgrc[0].top += frame_y;
-                            (*params).rgrc[0].left += frame_x;
-                            (*params).rgrc[0].right -= frame_x;
-                            (*params).rgrc[0].bottom -= frame_y;
-                        }
-                    }
-                } else {
-                    let rect = lparam as *mut Rect;
-                    if !rect.is_null() {
-                        unsafe {
-                            (*rect).top += frame_y;
-                            (*rect).left += frame_x;
-                            (*rect).right -= frame_x;
-                            (*rect).bottom -= frame_y;
-                        }
-                    }
-                }
-                return 0;
-            }
+            // Full client area coverage: 100% of window rect is client area so
+            // DWM DirectComposition acrylic blur extends smoothly to every screen edge.
             0
         }
         WM_NCHITTEST => {
@@ -617,18 +609,8 @@ unsafe extern "system" fn window_proc(
                         return hit;
                     }
                 }
-                let (frame_x, frame_y) = if zoomed {
-                    unsafe {
-                        (
-                            GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
-                            GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
-                        )
-                    }
-                } else {
-                    (0, 0)
-                };
-                let client_x = (x - (rect.left + frame_x)) as f32;
-                let client_y = (y - (rect.top + frame_y)) as f32;
+                let client_x = (x - rect.left) as f32;
+                let client_y = (y - rect.top) as f32;
                 if caption_hit(hwnd, client_x, client_y) {
                     return HTCAPTION;
                 }

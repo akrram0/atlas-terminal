@@ -85,9 +85,13 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
                 return None;
             }
 
-            // Printable characters (already shift-resolved by the platform).
+            // Printable characters (already shift-resolved by the platform,
+            // with OS Caps Lock inversion applied where needed).
             match ks.key_char.as_ref() {
-                Some(text) if !text.is_empty() => text.as_bytes().to_vec(),
+                Some(text) if !text.is_empty() => {
+                    let adjusted = adjust_for_caps_lock(text, modifiers.shift);
+                    adjusted.into_bytes()
+                }
                 _ => return None,
             }
         }
@@ -110,4 +114,38 @@ fn cursor_key(final_byte: u8, app_cursor: bool) -> Vec<u8> {
     } else {
         vec![0x1b, b'[', final_byte] // CSI
     }
+}
+
+#[cfg(windows)]
+pub fn is_caps_lock_active() -> bool {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetKeyState(n_virt_key: i32) -> i16;
+    }
+    // VK_CAPITAL = 0x14; low-order bit is 1 if toggled on.
+    unsafe { (GetKeyState(0x14) & 1) != 0 }
+}
+
+#[cfg(not(windows))]
+pub fn is_caps_lock_active() -> bool {
+    false
+}
+
+/// Invert letter case if Caps Lock is active on the operating system.
+/// If Shift is held while Caps Lock is active, letters become lowercase.
+pub fn adjust_for_caps_lock(text: &str, shift: bool) -> String {
+    if !is_caps_lock_active() {
+        return text.to_string();
+    }
+    text.chars()
+        .map(|c| {
+            if c.is_ascii_lowercase() {
+                c.to_ascii_uppercase()
+            } else if c.is_ascii_uppercase() && shift {
+                c.to_ascii_lowercase()
+            } else {
+                c
+            }
+        })
+        .collect()
 }

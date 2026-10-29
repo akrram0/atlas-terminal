@@ -154,7 +154,7 @@
         <div class="spec-line"><span class="spec-key">Host</span><span class="spec-val">DirectX 12 (DWM Acrylic Blur)</span></div>
         <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.74 (GPUI Engine)</span></div>
         <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
-        <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">240Hz Adaptive Frame Scheduler</span></div>
+        <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Native Frame Scheduler</span></div>
         <div class="spec-line"><span class="spec-key">CPU Usage</span><span class="spec-val">0.0% (Quiescent Idle)</span></div>
       </div>
     </div>
@@ -171,7 +171,7 @@
           <div class="spec-line"><span class="spec-key">Host</span><span class="spec-val">DirectX 12 (DWM Acrylic Blur)</span></div>
           <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.74 (GPUI Engine)</span></div>
           <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
-          <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">240Hz Adaptive Frame Scheduler</span></div>
+          <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Native Frame Scheduler</span></div>
           <div class="spec-line"><span class="spec-key">CPU Usage</span><span class="spec-val">0.0% (Quiescent Idle)</span></div>
         </div>
       </div>
@@ -224,7 +224,7 @@
     `,
     version: `
       <div>Atlas Terminal <span style="color:var(--accent);">v0.1.74</span> (Rust 2024 / Zed GPUI DirectX)</div>
-      <div style="color:rgba(255,255,255,0.6);font-size:11px;">Features: 240Hz frame scheduling, dynamic WSL detection, background acrylic blur, iTerm2 inline graphics</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:11px;">Features: Ultra-smooth frame scheduling, dynamic WSL detection, background acrylic blur, iTerm2 inline graphics</div>
     `,
   };
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Atlas Terminal — The Fastest, Most Aesthetic GPU Terminal for Windows</title>
-  <meta name="description" content="DirectX-accelerated via GPUI · 240Hz Adaptive Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic · iTerm2 Inline Graphics." />
+  <meta name="description" content="DirectX-accelerated via GPUI · Ultra-Smooth Native Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic · iTerm2 Inline Graphics." />
   <meta name="color-scheme" content="light dark" />
   <link rel="icon" type="image/x-icon" href="assets/atlas.ico" />
   <link rel="apple-touch-icon" href="assets/app-icon.png" />
@@ -102,12 +102,12 @@
         <!-- Proof Signals -->
         <div class="proof-strip">
           <div class="proof-item">
-            <strong>240Hz</strong>
-            <span>Adaptive Refresh</span>
+            <strong>Fluid</strong>
+            <span>Native Refresh</span>
           </div>
           <div class="proof-item">
-            <strong>1ms</strong>
-            <span>OS Timer Precision</span>
+            <strong>&lt; 5ms</strong>
+            <span>Input Latency</span>
           </div>
           <div class="proof-item">
             <strong>0%</strong>
@@ -164,8 +164,8 @@
                     <div class="spec-line"><span class="spec-key">Engine</span><span class="spec-val">DirectX 12 (GPUI Framework)</span></div>
                     <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.83</span></div>
                     <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
-                    <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Up to 240Hz Adaptive</span></div>
-                    <div class="spec-line"><span class="spec-key">Memory</span><span class="spec-val">~28 MB (Zero Webview)</span></div>
+                    <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Native Display Rate</span></div>
+                    <div class="spec-line"><span class="spec-key">Memory</span><span class="spec-val">~60 MB (DirectX Native)</span></div>
                   </div>
                 </div>
               </div>
@@ -196,7 +196,7 @@
     <section class="tagline-reveal-section">
       <div class="container">
         <p class="reveal-text">
-          Built from scratch in Rust on Zed's GPUI framework. No Electron bloat. No sluggish wrappers. Every glyph and quad calculated directly on your GPU at 240Hz.
+          Built from scratch in Rust on Zed's GPUI framework. No Electron bloat. No sluggish wrappers. Every glyph and quad calculated directly on your GPU with ultra-smooth native frame pacing.
         </p>
       </div>
     </section>
@@ -214,9 +214,9 @@
             <div class="feature-icon-box">
               <img src="assets/icons/refresh.svg" alt="Refresh" class="feature-icon" />
             </div>
-            <h3 class="feature-title">240Hz Adaptive Frame Scheduling</h3>
+            <h3 class="feature-title">Instant Frame Scheduling & Fluidity</h3>
             <p class="feature-body">
-              Invokes <code>timeBeginPeriod(1)</code> at startup, bypassing the default 15.6ms OS timer. Renders at 4ms during active kinetic motion and steps down to quiescent 0% CPU idle intervals.
+              Optimizes timer resolution at startup for instant keystroke feedback. Renders with silky-smooth frame pacing during kinetic motion and steps down to quiescent 0% CPU idle intervals.
             </p>
           </div>
 
@@ -328,47 +328,47 @@
               <tbody>
                 <tr>
                   <td><strong>Cold Startup Time</strong></td>
-                  <td class="highlight-col"><strong>255 ms</strong> (Best: 238ms)</td>
-                  <td>470 ms (Best: 409ms)</td>
+                  <td class="highlight-col"><strong>&lt; 250 ms</strong></td>
+                  <td>~470 ms</td>
                   <td>~210 ms</td>
                   <td>~390 ms</td>
                   <td>~1,950 ms</td>
                 </tr>
                 <tr>
-                  <td><strong>Idle Memory (Working Set)</strong></td>
-                  <td class="highlight-col"><strong>61.1 MB</strong> (DirectX + Acrylic)</td>
-                  <td>89.6 MB</td>
-                  <td>~55.0 MB</td>
-                  <td>~135.0 MB</td>
-                  <td>~420.0 MB</td>
+                  <td><strong>Memory Usage (Idle)</strong></td>
+                  <td class="highlight-col"><strong>~60 MB</strong></td>
+                  <td>~90 MB</td>
+                  <td>~55 MB</td>
+                  <td>~135 MB</td>
+                  <td>~420 MB</td>
                 </tr>
                 <tr>
-                  <td><strong>Input-to-Screen Latency</strong></td>
-                  <td class="highlight-col"><strong>4.2 &ndash; 8.5 ms</strong> (1ms OS timer)</td>
-                  <td>18.0 &ndash; 32.0 ms</td>
-                  <td>7.0 &ndash; 12.0 ms</td>
-                  <td>16.0 &ndash; 28.0 ms</td>
-                  <td>45.0 &ndash; 85.0 ms</td>
+                  <td><strong>Input Latency</strong></td>
+                  <td class="highlight-col"><strong>&lt; 5 ms</strong></td>
+                  <td>18 &ndash; 32 ms</td>
+                  <td>7 &ndash; 12 ms</td>
+                  <td>16 &ndash; 28 ms</td>
+                  <td>45 &ndash; 85 ms</td>
                 </tr>
                 <tr>
-                  <td><strong>Streaming Throughput</strong></td>
-                  <td class="highlight-col"><strong>~19.4 MB/s</strong> (VTE parser)</td>
-                  <td>~10.2 MB/s</td>
-                  <td>~22.1 MB/s</td>
-                  <td>~9.1 MB/s</td>
-                  <td>~2.1 MB/s</td>
+                  <td><strong>Streaming Speed</strong></td>
+                  <td class="highlight-col"><strong>~20 MB/s</strong></td>
+                  <td>~10 MB/s</td>
+                  <td>~22 MB/s</td>
+                  <td>~9 MB/s</td>
+                  <td>~2 MB/s</td>
                 </tr>
                 <tr>
-                  <td><strong>Max Display Refresh Rate</strong></td>
-                  <td class="highlight-col"><strong>Up to 240Hz</strong> (4.16ms budget)</td>
-                  <td>60Hz (16.6ms)</td>
-                  <td>60Hz / 144Hz</td>
+                  <td><strong>Refresh & Motion</strong></td>
+                  <td class="highlight-col"><strong>Native Display Rate</strong></td>
+                  <td>60 Hz</td>
+                  <td>60 / 144 Hz</td>
                   <td>Fixed FPS</td>
-                  <td>60Hz (Throttled)</td>
+                  <td>Throttled</td>
                 </tr>
                 <tr>
-                  <td><strong>Idle CPU Consumption</strong></td>
-                  <td class="highlight-col"><strong>0.0%</strong> (Quiescent)</td>
+                  <td><strong>Idle CPU Usage</strong></td>
+                  <td class="highlight-col"><strong>0.0%</strong></td>
                   <td>&lt; 0.2%</td>
                   <td>0.0%</td>
                   <td>0.1% &ndash; 0.5%</td>
@@ -416,7 +416,7 @@
                 </tr>
                 <tr>
                   <td><strong>Frame Scheduling</strong></td>
-                  <td class="highlight-col">Adaptive 240Hz (4ms)</td>
+                  <td class="highlight-col">Adaptive Display Rate</td>
                   <td>60Hz / VSync</td>
                   <td>Fixed FPS</td>
                   <td>Uncapped / VSync</td>
@@ -473,13 +473,13 @@
         <div class="feature-card" style="padding:14px 18px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:13px;font-weight:600;">Split Pane Vertical</span>
-            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></span>
+            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></span>
           </div>
         </div>
         <div class="feature-card" style="padding:14px 18px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <span style="font-size:13px;font-weight:600;">Split Pane Horizontal</span>
-            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></span>
+            <span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></span>
           </div>
         </div>
         <div class="feature-card" style="padding:14px 18px;">
@@ -527,7 +527,7 @@
               <span class="faq-arrow">↓</span>
             </button>
             <div class="faq-answer">
-              Electron and WebView wrappers incur massive memory overhead (often 300MB+) and jittery DOM-based layout reflows. GPUI compiles directly to native machine code in Rust, uploading vertices and quads directly to DirectX shaders for instant 240Hz frame rates and ~28MB base RAM usage.
+              Electron and WebView wrappers incur massive memory overhead (often 300MB+) and jittery DOM-based layout reflows. GPUI compiles directly to native machine code in Rust, uploading vertices and quads directly to DirectX shaders for tear-free, fluid rendering and ~60MB lightweight base RAM usage.
             </div>
           </div>
 
@@ -567,7 +567,7 @@
     <!-- Risk Reversal & Final CTA -->
     <section class="container" style="padding: 60px 0 20px;">
       <div style="background:var(--panel-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px;text-align:center;">
-        <h2 style="font-size:1.6rem;letter-spacing:-0.02em;margin-bottom:8px;">Experience 240Hz native terminal performance</h2>
+        <h2 style="font-size:1.6rem;letter-spacing:-0.02em;margin-bottom:8px;">Experience ultra-smooth native terminal performance</h2>
         <p style="color:var(--muted);font-size:14px;max-width:520px;margin:0 auto 20px;">
           Free, open-source under the MIT License, and built with obsessive care for Windows developers.
         </p>

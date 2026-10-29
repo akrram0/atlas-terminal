@@ -79,7 +79,7 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 | **Command Palette & Search** | `Ctrl+K` / `Ctrl+Shift+P` | **Open Palette** | Open Command Palette with multi-word search |
 | | `Ctrl+F` | **Find in Terminal** | Floating search pill with live buffer match highlighting |
 | | `Enter` / `Shift+Enter` | **Next / Prev Match** | Cycle through search matches in active buffer |
-| **Tabs** | `Ctrl+Shift+T` / `Ctrl+Shift+N` | **New Tab** | Open a new tab with the default shell profile |
+| **Tabs** | `Ctrl+Shift+N` | **New Tab** | Open a new tab with the default shell profile |
 | | `Ctrl+Shift+W` | **Close Tab / Pane** | Close active pane (or tab if single pane) |
 | | `Ctrl+Tab` / `Ctrl+PageDown` | **Next Tab** | Cycle focus to the next tab |
 | | `Ctrl+Shift+Tab` / `Ctrl+PageUp` | **Previous Tab** | Cycle focus to the previous tab |
@@ -117,7 +117,7 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 
 Organize multiple concurrent tasks, builds, and long-running services in a single window:
 
-- **New Tabs**: Press `Ctrl+Shift+T` or click the `+` button in the top bar. New tabs inherit the directory or default profile configured in settings.
+- **New Tabs**: Press `Ctrl+Shift+N` or click the `+` button in the top bar. New tabs inherit the directory or default profile configured in settings.
 - **Split Panes**:
   - `Ctrl+Shift+E` splits vertically into side-by-side columns.
   - `Ctrl+Shift+D` splits horizontally into rows.

@@ -143,6 +143,7 @@ pub struct AtlasView {
     pub(crate) available_update: Option<ReleaseInfo>,
     pub(crate) update_panel_open: bool,
     pub(crate) update_panel_closing: bool,
+    pub(crate) update_toast: Option<(String, bool, std::time::Instant)>,
     pub(crate) update_download_state: UpdateDownloadState,
     pub(crate) update_cancel_token: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub(crate) app_settings: AppSettingsFile,
@@ -296,6 +297,7 @@ impl AtlasView {
             available_update: None,
             update_panel_open: false,
             update_panel_closing: false,
+            update_toast: None,
             update_download_state: UpdateDownloadState::Idle,
             update_cancel_token: None,
             app_settings: app_settings.clone(),
@@ -1882,6 +1884,10 @@ impl Render for AtlasView {
                 cx,
             ));
             root = root.child(self.confirm_close_dialog(&theme, cx));
+        }
+
+        if let Some((ref msg, is_ok, _)) = self.update_toast {
+            root = root.child(self.render_update_toast(msg, is_ok, &theme, cx));
         }
 
         if self.search_open {

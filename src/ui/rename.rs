@@ -61,7 +61,7 @@ impl AtlasView {
             _ => {
                 if !ks.modifiers.control && !ks.modifiers.alt {
                     // Space arrives without `key_char` (gpui quirk).
-                    let typed: String = if ks.key == "space" {
+                    let raw_typed: String = if ks.key == "space" {
                         " ".to_string()
                     } else {
                         ks.key_char
@@ -71,6 +71,7 @@ impl AtlasView {
                             })
                             .unwrap_or_default()
                     };
+                    let typed = crate::keymap::adjust_for_caps_lock(&raw_typed, ks.modifiers.shift);
                     if !typed.is_empty() {
                         self.rename_value.push_str(&typed);
                         cx.notify();

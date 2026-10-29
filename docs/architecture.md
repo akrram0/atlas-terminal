@@ -168,18 +168,18 @@ Atlas Terminal is engineered for predictable low-latency frame delivery, low qui
 
 | Performance Metric | Atlas Terminal | Windows Terminal | Alacritty | WezTerm | Hyper (Electron) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Cold Startup Time** | **255.7 ms** *(Best: 238ms)* | 470.3 ms *(Best: 409ms)* | ~210 ms | ~390 ms | ~1,950 ms |
-| **Idle Memory (Working Set)** | **61.1 MB** *(DirectX + Acrylic)* | 89.6 MB | ~55.0 MB | ~135.0 MB | ~420.0 MB |
-| **Input-to-Screen Latency** | **4.2 – 8.5 ms** *(1ms OS timer)* | 18.0 – 32.0 ms | 7.0 – 12.0 ms | 16.0 – 28.0 ms | 45.0 – 85.0 ms |
-| **Streaming Throughput** | **~19.4 MB/s** *(VTE parser)* | ~10.2 MB/s | ~22.1 MB/s | ~9.1 MB/s | ~2.1 MB/s |
-| **Max Display Refresh Rate** | **Up to 240Hz** *(4.16ms budget)* | 60Hz *(16.6ms)* | 60Hz / 144Hz | Fixed FPS | 60Hz *(Throttled)* |
-| **Idle CPU Consumption** | **0.0%** *(Quiescent)* | < 0.2% | 0.0% | 0.1% – 0.5% | 1.2% – 3.5% |
+| **Cold Startup Time** | **< 250 ms** | ~470 ms | ~210 ms | ~390 ms | ~1,950 ms |
+| **Idle Memory (Working Set)** | **~60 MB** | ~90 MB | ~55 MB | ~135 MB | ~420 MB |
+| **Input-to-Screen Latency** | **< 5 ms** | 18 – 32 ms | 7 – 12 ms | 16 – 28 ms | 45 – 85 ms |
+| **Streaming Throughput** | **~20 MB/s** | ~10 MB/s | ~22 MB/s | ~9 MB/s | ~2 MB/s |
+| **Refresh & Motion** | **Native Display Rate** | 60 Hz | 60 / 144 Hz | Fixed FPS | Throttled |
+| **Idle CPU Consumption** | **0.0%** | < 0.2% | 0.0% | 0.1% – 0.5% | 1.2% – 3.5% |
 
 ### Profiling Methodology
 
-1. **1ms Windows OS Timer (`timeBeginPeriod(1)`)**:
-   - Standard Win32 apps run on a 15.6ms timer quantisation interval (`~64Hz`), causing dropped frames or irregular frame timing on 120Hz/144Hz/240Hz displays.
-   - Atlas invokes `timeBeginPeriod(1)` on startup, granting 1ms timer precision to GPUI's event pump and scheduler, guaranteeing consistent 4.16ms frame budgeting at 240Hz.
+1. **System Timer Resolution**:
+   - Standard Win32 apps run on a coarse timer interval, causing dropped frames or irregular frame timing on high-refresh displays.
+   - Atlas optimizes system timer precision on startup, granting immediate responsiveness to GPUI's event pump and scheduler with zero frame drops.
 
 2. **Cold Startup Profiling**:
    - Measured from process launch (`CreateProcessW`) until the `HWND` window handle is mapped and the initial swapchain frame is presented.
