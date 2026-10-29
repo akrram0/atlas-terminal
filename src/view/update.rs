@@ -93,6 +93,77 @@ impl AtlasView {
         let zoomed = crate::rounded_corners::is_zoomed();
         let toast_top = if zoomed { px(58.0) } else { px(50.0) };
 
+        let mut pill = div()
+            .id(ElementId::named_usize("update-toast-pill", 0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(10.0))
+            .px(px(16.0))
+            .py(px(8.0))
+            .rounded_full()
+            .bg(theme.elevated_bg)
+            .border_1()
+            .border_color(theme.elevated_border)
+            .shadow_lg()
+            .cursor_pointer()
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.update_toast = None;
+                cx.notify();
+            }))
+            .child(
+                icons::icon(icon_path)
+                    .size(px(14.0))
+                    .text_color(icon_color),
+            )
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(text_color)
+                    .child(message.to_string()),
+            );
+
+        if self.available_update.is_some() {
+            let btn_label = match &self.update_download_state {
+                UpdateDownloadState::Downloading { percent, .. } => {
+                    format!("{:.0}%", percent)
+                }
+                UpdateDownloadState::Verifying { .. } => "Verifying…".to_string(),
+                UpdateDownloadState::ReadyToRestart { .. } => "Restart & Apply".to_string(),
+                _ => "Update".to_string(),
+            };
+            pill = pill.child(
+                div()
+                    .id(ElementId::named_usize("toast-update-btn", 0))
+                    .px(px(9.0))
+                    .py(px(2.0))
+                    .rounded_full()
+                    .bg(theme.accent)
+                    .text_color(theme.elevated_bg)
+                    .text_size(px(12.0))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        if matches!(view.update_download_state, UpdateDownloadState::ReadyToRestart { .. }) {
+                            view.apply_update_and_restart(cx);
+                        } else if matches!(view.update_download_state, UpdateDownloadState::Idle) {
+                            view.start_download_update(cx);
+                        }
+                    }))
+                    .child(btn_label),
+            );
+        }
+
+        pill = pill.child(
+            div()
+                .pl(px(4.0))
+                .text_color(theme.faint_fg)
+                .hover(|s| s.text_color(theme.fg))
+                .child(icons::icon(icons::CLOSE).size(px(11.0))),
+        );
+
         div()
             .id(ElementId::named_usize("update-toast-container", 0))
             .absolute()
@@ -103,76 +174,7 @@ impl AtlasView {
             .flex_row()
             .justify_center()
             .items_center()
-            .child(
-                div()
-                    .id(ElementId::named_usize("update-toast-pill", 0))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(10.0))
-                    .px(px(16.0))
-                    .py(px(8.0))
-                    .rounded_full()
-                    .bg(theme.elevated_bg)
-                    .border_1()
-                    .border_color(theme.elevated_border)
-                    .shadow_lg()
-                    .cursor_pointer()
-                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        view.update_toast = None;
-                        cx.notify();
-                    }))
-                    .child(
-                        icons::icon(icon_path)
-                            .size(px(14.0))
-                            .text_color(icon_color),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(text_color)
-                            .child(message.to_string()),
-                    )
-                    .when_some(self.available_update.as_ref(), |el, _info| {
-                        let btn_label = match &self.update_download_state {
-                            UpdateDownloadState::Downloading { percent, .. } => {
-                                format!("{:.0}%", percent)
-                            }
-                            UpdateDownloadState::Verifying { .. } => "Verifying…".to_string(),
-                            UpdateDownloadState::ReadyToRestart { .. } => "Restart & Apply".to_string(),
-                            _ => "Update".to_string(),
-                        };
-                        el.child(
-                            div()
-                                .id(ElementId::named_usize("toast-update-btn", 0))
-                                .px(px(9.0))
-                                .py(px(2.0))
-                                .rounded_full()
-                                .bg(theme.accent)
-                                .text_color(theme.elevated_bg)
-                                .text_size(px(12.0))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .cursor_pointer()
-                                .hover(|s| s.opacity(0.85))
-                                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                                    if matches!(view.update_download_state, UpdateDownloadState::ReadyToRestart { .. }) {
-                                        view.apply_update_and_restart(cx);
-                                    } else if matches!(view.update_download_state, UpdateDownloadState::Idle) {
-                                        view.start_download_update(cx);
-                                    }
-                                }))
-                                .child(btn_label),
-                        )
-                    })
-                    .child(
-                        div()
-                            .pl(px(4.0))
-                            .text_color(theme.faint_fg)
-                            .hover(|s| s.text_color(theme.fg))
-                            .child(icons::icon(icons::CLOSE).size(px(11.0))),
-                    ),
-            )
+            .child(pill)
             .into_any_element()
     }
 

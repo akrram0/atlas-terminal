@@ -343,8 +343,6 @@ impl Element for TerminalElement {
             )
         };
 
-        let total_rows = rows.len();
-
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             for (row_index, row) in rows.iter().enumerate() {
                 let y0 = top + cell_height * row_index as f32 + self.subpixel_y;

@@ -1671,7 +1671,7 @@ impl Render for AtlasView {
                             return;
                         }
                         if !event.modifiers.shift {
-                            if let Some(tab) = view.tabs.get(view.active) {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
                                 if let Some(pane) = tab.panes.get_mut(pane_down) {
                                     if Self::is_mouse_reporting(pane) {
                                         pane.cursor_pos = Some(pane.cursor_target);
