@@ -1671,9 +1671,13 @@ impl Render for AtlasView {
                             return;
                         }
                         if !event.modifiers.shift {
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                if let Some(pane) = tab.panes.get_mut(pane_down) {
-                                    if Self::is_mouse_reporting(pane) {
+                            let is_reporting = view.tabs.get(view.active)
+                                .and_then(|tab| tab.panes.get(pane_down))
+                                .map_or(false, Self::is_mouse_reporting);
+                            if is_reporting {
+                                let coords = view.grid_coords_from_mouse(event.position, pane_down);
+                                if let Some(tab) = view.tabs.get_mut(view.active) {
+                                    if let Some(pane) = tab.panes.get_mut(pane_down) {
                                         pane.cursor_pos = Some(pane.cursor_target);
                                         let delta_y = match event.delta {
                                             gpui::ScrollDelta::Lines(delta) => delta.y,
@@ -1683,7 +1687,7 @@ impl Render for AtlasView {
                                             }
                                         };
                                         if delta_y != 0.0 {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
+                                            if let Some((col, row)) = coords {
                                                 let btn = if delta_y > 0.0 { 64 } else { 65 };
                                                 let mut cb = btn;
                                                 if event.modifiers.alt { cb += 8; }
