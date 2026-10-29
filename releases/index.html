@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Releases & Downloads — Atlas Terminal</title>
+  <meta name="description" content="Download official binary releases and view changelogs for Atlas Terminal." />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="icon" type="image/x-icon" href="../assets/atlas.ico" />
+  <link rel="apple-touch-icon" href="../assets/app-icon.png" />
+  
+  <script>
+    (function() {
+      const stored = localStorage.getItem("color-scheme");
+      if (stored === "dark" || stored === "light") {
+        document.documentElement.setAttribute("data-theme", stored);
+        document.querySelector('meta[name="color-scheme"]').content = stored;
+      }
+    })();
+  </script>
+  
+  <link rel="stylesheet" href="../styles.css" />
+</head>
+<body>
+  <!-- Ambient Spotlight Torch Cursor Illumination -->
+  <div class="ambient-spotlight" id="ambient-spotlight" aria-hidden="true"></div>
+
+  <!-- Floating Navigation Bar -->
+  <header class="site-header">
+    <div class="container nav-container">
+      <nav class="nav-bar" aria-label="Main Navigation">
+        <a href="../index.html" class="nav-brand">
+          <img src="../assets/app-icon.png" alt="Atlas Logo" class="nav-brand-icon" />
+          <span>Atlas Terminal</span>
+        </a>
+        <div class="nav-links">
+          <a href="../index.html#features" class="nav-link">features</a>
+          <a href="../index.html#benchmark" class="nav-link">benchmark</a>
+          <a href="../docs/index.html" class="nav-link">docs</a>
+          <a href="index.html" class="nav-link active">releases</a>
+        </div>
+        <div class="nav-actions">
+          <button class="theme-toggle-btn" aria-label="Toggle color theme"></button>
+          <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer" class="github-pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="section-header" style="margin-top: 16px;">
+      <h1 class="section-title">Official Releases & Checksums</h1>
+      <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
+    </div>
+
+    <!-- Latest Release: v0.1.83 -->
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.83</span>
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
+            <span class="status-dot"></span> Latest Stable
+          </span>
+        </div>
+        <div class="release-date">Published 2026-10-29</div>
+      </div>
+
+      <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
+        Maximized fullscreen topbar insetting fix, expanded eye-comfort UI scale across tabs, icons, and settings navigation, plus smart commit-hash delta update matching on Preview channel.
+      </p>
+
+      <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
+        <li><strong>Fullscreen Topbar Insetting</strong>: Resolved titlebar clipping on maximized Windows 11 screens by adjusting <code>WM_NCCALCSIZE</code> client insets to eliminate window border overhang.</li>
+        <li><strong>Comfortable UI Scale</strong>: Expanded topbar height to 40px with 30px tabs, 15.5px vector icons, 44px caption buttons, and a 210px settings drawer for effortless eye comfort.</li>
+        <li><strong>Smart Cloud Delta Updater</strong>: Embedded commit hash validation prevents false-positive update alerts and loops when running preview rolling releases.</li>
+        <li><strong>MSAA Procedural Vector Prompt Arcs</strong>: Continuous cubic Bézier prompt corners that scale dynamically with zoom level without baseline clipping.</li>
+      </ul>
+
+      <!-- Asset Downloads Grid -->
+      <div class="asset-download-grid">
+        <!-- Windows Setup Installer -->
+        <div class="asset-card">
+          <div class="asset-name">AtlasTerminal-Setup-0.1.83.exe</div>
+          <div class="asset-meta">Standard Windows Installer • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.83/AtlasTerminal-Setup-0.1.83.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Installer</span>
+            </a>
+          </div>
+          <div class="hash-row" data-copy="verified" title="Click to copy SHA-256">
+            <span>SHA-256</span>
+            <code>Available on GitHub</code>
+          </div>
+        </div>
+
+        <!-- Standalone Portable ZIP -->
+        <div class="asset-card">
+          <div class="asset-name">atlas-terminal-windows-x64.zip</div>
+          <div class="asset-meta">Standalone Portable Archive • Extract & Run</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.83/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Portable ZIP</span>
+            </a>
+          </div>
+          <div class="hash-row" data-copy="verified" title="Click to copy SHA-256">
+            <span>SHA-256</span>
+            <code>Available on GitHub</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Previous Releases Timeline -->
+    <h2 style="font-size:1.25rem;font-weight:600;margin:32px 0 16px;letter-spacing:-0.01em;">Release Archive</h2>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.73</span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Rendering precision and packaging release for OpenCode acrylic cohesion and package manager discovery.
+      </p>
+    </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.72</span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Major release featuring OpenCode &amp; TUI background cohesion (zero-halo acrylic rendering), automatic pnpm/npm executable discovery, and in-terminal OpenCode updates.
+      </p>
+    </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.70</span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Top-bar vector icon redesign and initial macOS Inset Grouped Settings window rebuild with visual theme gallery cards.
+      </p>
+    </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.67</span>
+        </div>
+        <div class="release-date">Published 2026-10-27</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        OpenCode package manager path detection precedence and alternate screen solid theme background fixes.
+      </p>
+    </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.55</span>
+        </div>
+        <div class="release-date">Published 2026-10-23</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Full-bleed maximized window acrylic blur to screen edges, improved translucent tab name readability, and enhanced color contrast.
+      </p>
+    </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.49</span>
+        </div>
+        <div class="release-date">Published 2026-10-23</div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;">
+        Git Bash path resolution fixes, enhanced window frost kinematics, and OpenCode prompt corner alignment.
+      </p>
+    </div>
+
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="container">
+    <div class="site-footer">
+      <div class="footer-left">
+        <img src="../assets/app-icon.png" alt="Atlas" style="width:16px;height:16px;border-radius:4px;" />
+        <span>Atlas Terminal Releases</span>
+      </div>
+      <div class="footer-links">
+        <a href="../index.html">home</a>
+        <a href="../docs/index.html">docs</a>
+        <a href="https://github.com/akrram0/atlas-terminal" target="_blank" rel="noopener noreferrer">source</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../app.js"></script>
+</body>
+</html>
