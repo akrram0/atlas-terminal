@@ -248,7 +248,7 @@ pub fn parse_version(v: &str) -> Option<(u32, u32, u32)> {
         let minor: u32 = parts[1].parse().ok()?;
         let patch: u32 = parts
             .get(2)
-            .and_then(|p| p.split('-').next()?.parse().ok())
+            .and_then(|p| p.split('-').next()?.split('+').next()?.parse().ok())
             .unwrap_or(0);
         Some((major, minor, patch))
     } else {
@@ -677,6 +677,7 @@ mod winhttp {
 #[cfg(windows)]
 pub fn check_for_updates(
     current_version: &str,
+    current_commit: &str,
     etag: Option<&str>,
     channel: UpdateChannel,
 ) -> UpdateCheckResult {
@@ -889,7 +890,7 @@ pub fn check_for_updates(
     }
 
     let json_str = String::from_utf8_lossy(&body);
-    match parse_github_release(&json_str, current_version, resp_etag, rate_limit_reset, channel) {
+    match parse_github_release(&json_str, current_version, current_commit, resp_etag, rate_limit_reset, channel) {
         UpdateCheckResult::UpdateAvailable(info) => {
             UpdateCheckResult::UpdateAvailable(enrich_with_manifest(info, current_version))
         }
@@ -925,7 +926,26 @@ fn enrich_with_manifest(mut info: ReleaseInfo, current_version: &str) -> Release
         .trim()
         .trim_start_matches('v')
         .trim_start_matches('V');
-    if manifest_version != info.version.trim_start_matches('v') {
+    let info_version = info
+        .version
+        .trim()
+        .trim_start_matches('v')
+        .trim_start_matches('V');
+    let m_base = manifest_version
+        .split('-')
+        .next()
+        .unwrap_or(manifest_version)
+        .split('+')
+        .next()
+        .unwrap_or(manifest_version);
+    let i_base = info_version
+        .split('-')
+        .next()
+        .unwrap_or(info_version)
+        .split('+')
+        .next()
+        .unwrap_or(info_version);
+    if manifest_version != info_version && m_base != i_base && parse_version(manifest_version) != parse_version(&info.version) {
         return info;
     }
     // Never trust an incomplete or off-site manifest to drive a download.
@@ -969,6 +989,7 @@ fn enrich_with_manifest(mut info: ReleaseInfo, current_version: &str) -> Release
 #[cfg(not(windows))]
 pub fn check_for_updates(
     _current_version: &str,
+    _current_commit: &str,
     _etag: Option<&str>,
     _channel: UpdateChannel,
 ) -> UpdateCheckResult {
@@ -1912,9 +1933,10 @@ fn launch_installer_and_exit(installer_path: &Path) -> Result<(), String> {
 // GitHub Release JSON Parser
 // =====================================================================
 
-fn parse_github_release(
+pub(crate) fn parse_github_release(
     json_str: &str,
     current_version: &str,
+    current_commit: &str,
     etag: Option<String>,
     reset_epoch: Option<u64>,
     channel: UpdateChannel,
@@ -2039,19 +2061,49 @@ fn parse_github_release(
         }
     }
 
-    if channel == UpdateChannel::Preview {
-        if let Some(ref commit) = release.target_commitish {
-            let short_sha = if commit.len() > 7 { &commit[..7] } else { commit };
-            if !detected_version.contains(short_sha) {
-                detected_version = format!("{detected_version}-preview+{short_sha}");
-            }
-        }
+    // Normalize detected base version if semver format is found
+    if let Some((maj, min, pat)) = parse_version(&detected_version) {
+        detected_version = format!("{maj}.{min}.{pat}");
     }
 
-    let is_update = if channel == UpdateChannel::Preview {
-        !detected_version.is_empty() && detected_version != current_version
+    let target_sha = release
+        .target_commitish
+        .as_deref()
+        .map(|c| if c.len() > 7 { &c[..7] } else { c })
+        .unwrap_or("")
+        .trim();
+
+    let display_version = if channel == UpdateChannel::Preview {
+        if !target_sha.is_empty() && !detected_version.contains(target_sha) {
+            format!("{detected_version}-preview+{target_sha}")
+        } else if !detected_version.contains("preview") {
+            format!("{detected_version}-preview")
+        } else {
+            detected_version.clone()
+        }
     } else {
-        is_newer_version(&detected_version, current_version)
+        detected_version.clone()
+    };
+
+    let is_update = match channel {
+        UpdateChannel::Stable => is_newer_version(&detected_version, current_version),
+        UpdateChannel::Preview => {
+            let remote_semver = parse_version(&detected_version);
+            let current_semver = parse_version(current_version);
+            match (remote_semver, current_semver) {
+                (Some(r), Some(c)) if r > c => true,
+                (Some(r), Some(c)) if r < c => false,
+                (Some(_), Some(_)) => {
+                    let local_sha = current_commit.trim();
+                    if !target_sha.is_empty() && !local_sha.is_empty() {
+                        !target_sha.eq_ignore_ascii_case(local_sha)
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            }
+        }
     };
 
     if is_update {
@@ -2065,7 +2117,7 @@ fn parse_github_release(
             };
         }
         UpdateCheckResult::UpdateAvailable(ReleaseInfo {
-            version: detected_version,
+            version: display_version,
             title,
             notes,
             html_url,
@@ -2266,5 +2318,158 @@ mod tests {
             .unwrap();
 
         assert_eq!(restored, data.to_vec());
+    }
+
+    #[test]
+    fn test_parse_github_release_preview_same_commit_up_to_date() {
+        let json = r#"{
+            "tag_name": "preview",
+            "target_commitish": "bdcbc817a24228daccba13e6ce3bdb87a0dee944",
+            "name": "Atlas Terminal (Rolling Cloud Preview)",
+            "body": "Automated rolling cloud build",
+            "assets": [
+                {
+                    "name": "AtlasTerminal-Setup-0.1.81.exe",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/AtlasTerminal-Setup-0.1.81.exe",
+                    "size": 8000000
+                },
+                {
+                    "name": "atlas-update.json",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/atlas-update.json",
+                    "size": 1000
+                }
+            ]
+        }"#;
+
+        // When local version is 0.1.81 and commit is bdcbc81, it MUST be UpToDate (fixes false-positive loop)
+        let res = parse_github_release(json, "0.1.81", "bdcbc81", None, None, UpdateChannel::Preview);
+        assert!(matches!(res, UpdateCheckResult::UpToDate { .. }));
+
+        // Case-insensitive commit match also MUST be UpToDate
+        let res_ci = parse_github_release(json, "0.1.81", "BDCBC81", None, None, UpdateChannel::Preview);
+        assert!(matches!(res_ci, UpdateCheckResult::UpToDate { .. }));
+    }
+
+    #[test]
+    fn test_parse_github_release_preview_different_commit_update_available() {
+        let json = r#"{
+            "tag_name": "preview",
+            "target_commitish": "bdcbc817a24228daccba13e6ce3bdb87a0dee944",
+            "name": "Atlas Terminal (Rolling Cloud Preview)",
+            "body": "Automated rolling cloud build",
+            "assets": [
+                {
+                    "name": "AtlasTerminal-Setup-0.1.81.exe",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/AtlasTerminal-Setup-0.1.81.exe",
+                    "size": 8000000
+                },
+                {
+                    "name": "atlas-update.json",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/atlas-update.json",
+                    "size": 1000
+                }
+            ]
+        }"#;
+
+        // When local version is 0.1.81 but commit is older (e.g. a5d4a8f), update is available!
+        let res = parse_github_release(json, "0.1.81", "a5d4a8f", None, None, UpdateChannel::Preview);
+        match res {
+            UpdateCheckResult::UpdateAvailable(info) => {
+                assert_eq!(info.version, "0.1.81-preview+bdcbc81");
+            }
+            other => panic!("expected UpdateAvailable, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_github_release_preview_empty_commit_falls_back_to_uptodate() {
+        let json = r#"{
+            "tag_name": "preview",
+            "target_commitish": "bdcbc817a24228daccba13e6ce3bdb87a0dee944",
+            "name": "Atlas Terminal (Rolling Cloud Preview)",
+            "body": "Automated rolling cloud build",
+            "assets": [
+                {
+                    "name": "AtlasTerminal-Setup-0.1.81.exe",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/AtlasTerminal-Setup-0.1.81.exe",
+                    "size": 8000000
+                },
+                {
+                    "name": "atlas-update.json",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/atlas-update.json",
+                    "size": 1000
+                }
+            ]
+        }"#;
+
+        // When semver matches and local commit is unknown (""), do NOT report update
+        let res = parse_github_release(json, "0.1.81", "", None, None, UpdateChannel::Preview);
+        assert!(matches!(res, UpdateCheckResult::UpToDate { .. }));
+    }
+
+    #[test]
+    fn test_parse_github_release_preview_higher_semver_update_available() {
+        let json = r#"{
+            "tag_name": "preview",
+            "target_commitish": "bdcbc817a24228daccba13e6ce3bdb87a0dee944",
+            "name": "Atlas Terminal (Rolling Cloud Preview)",
+            "body": "Automated rolling cloud build",
+            "assets": [
+                {
+                    "name": "AtlasTerminal-Setup-0.1.82.exe",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/AtlasTerminal-Setup-0.1.82.exe",
+                    "size": 8000000
+                },
+                {
+                    "name": "atlas-update.json",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/preview/atlas-update.json",
+                    "size": 1000
+                }
+            ]
+        }"#;
+
+        // Even with empty commit or same commit, if remote semver is higher (0.1.82 > 0.1.81), update is available!
+        let res = parse_github_release(json, "0.1.81", "bdcbc81", None, None, UpdateChannel::Preview);
+        match res {
+            UpdateCheckResult::UpdateAvailable(info) => {
+                assert_eq!(info.version, "0.1.82-preview+bdcbc81");
+            }
+            other => panic!("expected UpdateAvailable, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_github_release_stable_channel() {
+        let json = r#"{
+            "tag_name": "v0.1.82",
+            "target_commitish": "main",
+            "name": "Atlas Terminal v0.1.82",
+            "body": "Release notes",
+            "assets": [
+                {
+                    "name": "AtlasTerminal-Setup-0.1.82.exe",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/v0.1.82/AtlasTerminal-Setup-0.1.82.exe",
+                    "size": 8000000
+                },
+                {
+                    "name": "atlas-update.json",
+                    "browser_download_url": "https://github.com/akrram0/atlas-terminal/releases/download/v0.1.82/atlas-update.json",
+                    "size": 1000
+                }
+            ]
+        }"#;
+
+        // 0.1.82 > 0.1.81 -> UpdateAvailable
+        let res = parse_github_release(json, "0.1.81", "any", None, None, UpdateChannel::Stable);
+        match res {
+            UpdateCheckResult::UpdateAvailable(info) => {
+                assert_eq!(info.version, "0.1.82");
+            }
+            other => panic!("expected UpdateAvailable, got {:?}", other),
+        }
+
+        // 0.1.82 == 0.1.82 -> UpToDate
+        let res_same = parse_github_release(json, "0.1.82", "any", None, None, UpdateChannel::Stable);
+        assert!(matches!(res_same, UpdateCheckResult::UpToDate { .. }));
     }
 }

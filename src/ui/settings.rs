@@ -782,9 +782,15 @@ impl AtlasView {
             &self.updater_settings.channel,
             theme,
             |channel, view, cx| {
-                view.updater_settings.channel = channel;
-                view.sync_and_save_settings();
-                cx.notify();
+                if view.updater_settings.channel != channel {
+                    view.updater_settings.channel = channel;
+                    view.updater_settings.etag = None;
+                    view.available_update = None;
+                    view.update_panel_open = false;
+                    view.manual_status_message = None;
+                    view.sync_and_save_settings();
+                    view.trigger_update_check(true, cx);
+                }
             },
             cx,
         );

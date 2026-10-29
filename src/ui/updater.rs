@@ -415,7 +415,7 @@ impl AtlasView {
                                 .text_size(px(13.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(theme.fg)
-                                .child(format!("v{}", update.version)),
+                                .child(format!("v{}", update.version.trim_start_matches('v').trim_start_matches('V'))),
                         )
                         .child(
                             div()

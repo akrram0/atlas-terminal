@@ -18,6 +18,26 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/atlas.rc");
     println!("cargo:rerun-if-changed=assets/atlas.ico");
 
+    let commit = std::env::var("GITHUB_SHA")
+        .ok()
+        .and_then(|s| if s.len() >= 7 { Some(s[..7].to_string()) } else { None })
+        .or_else(|| {
+            Command::new("git")
+                .args(["rev-parse", "--short", "HEAD"])
+                .output()
+                .ok()
+                .and_then(|o| if o.status.success() {
+                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if !s.is_empty() { Some(s) } else { None }
+                } else { None })
+        })
+        .unwrap_or_default();
+    println!("cargo:rustc-env=ATLAS_BUILD_COMMIT={commit}");
+
+    if Path::new(".git/HEAD").exists() {
+        println!("cargo:rerun-if-changed=.git/HEAD");
+    }
+
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }

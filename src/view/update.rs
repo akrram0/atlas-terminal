@@ -80,6 +80,7 @@ impl AtlasView {
         cx.notify();
 
         let current_version = env!("CARGO_PKG_VERSION").to_string();
+        let current_commit = option_env!("ATLAS_BUILD_COMMIT").unwrap_or("").to_string();
         let etag = if is_manual {
             None
         } else {
@@ -89,7 +90,7 @@ impl AtlasView {
 
         cx.spawn(async move |this, cx| {
             let result = smol::unblock(move || {
-                updater::check_for_updates(&current_version, etag.as_deref(), channel)
+                updater::check_for_updates(&current_version, &current_commit, etag.as_deref(), channel)
             })
             .await;
 
@@ -164,6 +165,10 @@ impl AtlasView {
                 if let Some(e) = etag {
                     self.updater_settings.etag = Some(e);
                 }
+                self.available_update = None;
+                self.update_panel_open = false;
+                self.update_panel_closing = false;
+                self.update_download_state = UpdateDownloadState::Idle;
                 if is_manual {
                     self.manual_status_message = Some("You're up to date".to_string());
                 }
@@ -339,19 +344,23 @@ impl AtlasView {
     }
 
     pub(crate) fn apply_update_and_restart(&mut self, cx: &mut Context<Self>) {
-        if let UpdateDownloadState::ReadyToRestart { ref prepared, .. } = self.update_download_state {
-            if let Err(e) = updater::apply_update_and_restart(prepared) {
-                let ver = self
-                    .available_update
-                    .as_ref()
-                    .map(|u| u.version.clone())
-                    .unwrap_or_default();
-                self.update_download_state = UpdateDownloadState::Failed {
-                    version: ver,
-                    error: e,
-                };
-                cx.notify();
-            }
+        let (prepared, ver) = if let UpdateDownloadState::ReadyToRestart { ref prepared, ref version } = self.update_download_state {
+            (prepared.clone(), version.clone())
+        } else {
+            return;
+        };
+
+        self.updater_settings.etag = None;
+        self.available_update = None;
+        self.update_panel_open = false;
+        self.sync_and_save_settings();
+
+        if let Err(e) = updater::apply_update_and_restart(&prepared) {
+            self.update_download_state = UpdateDownloadState::Failed {
+                version: ver,
+                error: e,
+            };
+            cx.notify();
         }
     }
 }
