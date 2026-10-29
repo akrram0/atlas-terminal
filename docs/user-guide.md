@@ -80,6 +80,7 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 | | `Ctrl+F` | **Find in Terminal** | Floating search pill with live buffer match highlighting |
 | | `Enter` / `Shift+Enter` | **Next / Prev Match** | Cycle through search matches in active buffer |
 | **Tabs** | `Ctrl+Shift+N` | **New Tab** | Open a new tab with the default shell profile |
+| | `Ctrl+B` | **Toggle Sidebar** | Toggle vertical sidebar / tab bar layout |
 | | `Ctrl+Shift+W` | **Close Tab / Pane** | Close active pane (or tab if single pane) |
 | | `Ctrl+Tab` / `Ctrl+PageDown` | **Next Tab** | Cycle focus to the next tab |
 | | `Ctrl+Shift+Tab` / `Ctrl+PageUp` | **Previous Tab** | Cycle focus to the previous tab |
@@ -87,8 +88,8 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 | | `Ctrl+9` | **Last Tab** | Jump directly to the last tab |
 | **Split Panes** | `Ctrl+Shift+E` | **Split Vertical** | Divide active pane into side-by-side columns |
 | | `Ctrl+Shift+D` | **Split Horizontal** | Divide active pane into top-and-bottom rows |
-| | `Ctrl+Shift+]` / `Alt+Right` | **Focus Next Pane** | Move keyboard focus to the adjacent pane |
-| | `Ctrl+Shift+[` / `Alt+Left` | **Focus Prev Pane** | Move keyboard focus to the previous pane |
+| | `Alt+Right` | **Focus Next Pane** | Move keyboard focus to the adjacent pane |
+| | `Alt+Left` | **Focus Prev Pane** | Move keyboard focus to the previous pane |
 | | `Ctrl+Shift+M` | **Toggle Maximize** | Temporarily maximize active pane (toggle) |
 | **Scrolling** | `Shift+PageUp` | **Page Up** | Smooth kinetic scroll up 15 lines |
 | | `Shift+PageDown` | **Page Down** | Smooth kinetic scroll down 15 lines |
@@ -103,7 +104,7 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 | | `Shift + Mouse Drag` | **Bypass Mouse** | Force text selection in mouse-aware TUI apps |
 | **Zoom & Sizing** | `Ctrl+=` / `Ctrl++` | **Zoom In** | Increase font size by 1px |
 | | `Ctrl+-` | **Zoom Out** | Decrease font size by 1px |
-| | `Ctrl+0` | **Reset Zoom** | Reset font size to default (12px) |
+| | `Ctrl+0` | **Reset Zoom** | Reset font size to default (13px) |
 | **Links & Code Jumps** | `Ctrl + Click` | **Open Link / Jump to Code** | Open URL in browser, or jump to `file:line:col` in editor |
 | | `Ctrl+Shift+O` | **Link Picker** | Pre-filter Command Palette with visible URLs |
 | **Window & Shell** | `F11` | **Fullscreen** | Toggle borderless fullscreen |
@@ -121,7 +122,7 @@ Organize multiple concurrent tasks, builds, and long-running services in a singl
 - **Split Panes**:
   - `Ctrl+Shift+E` splits vertically into side-by-side columns.
   - `Ctrl+Shift+D` splits horizontally into rows.
-  - Press `Ctrl+Shift+]` / `Ctrl+Shift+[` or `Alt+Arrows` to navigate between active panes.
+  - Press `Alt+Arrows` (e.g. `Alt+Right` / `Alt+Left`) to navigate between active panes.
 - **Maximize Active Pane**: Press `Ctrl+Shift+M` to temporarily expand the active pane to fill the entire window canvas. Press `Ctrl+Shift+M` again to restore the split layout without interrupting running processes.
 - **Close Pane vs Tab**: `Ctrl+Shift+W` closes the active focused pane. When only one pane remains, `Ctrl+Shift+W` closes the tab. If only one tab remains, closing it gracefully closes the window.
 

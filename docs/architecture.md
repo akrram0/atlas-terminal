@@ -83,15 +83,13 @@ Unlike Sixel or Kitty graphics protocols that require complex terminal modes, At
 
 ---
 
-## 5. Kinetic Cursor Physics
+## 5. Kinetic Cursor Motion
 
-The terminal cursor in Atlas Terminal is mathematically modeled as a damped spring:
+The terminal cursor in Atlas Terminal features smooth, organic motion:
 
-$$\Delta x = (x_{\text{target}} - x_{\text{current}}) \times (1 - e^{-28 \Delta t})$$
-
-- Glides smoothly when typing or moving across lines within a 15-column / 10-row proximity window.
-- Snaps instantly across large jumps (e.g., screen clears or page jumps) to eliminate visual disorientation.
-- Features continuous organic breathing alpha when idle (`0.25 + 0.75 * (sin(phase) * 0.5 + 0.5)`), locking to 100% solid opacity during active typing.
+- **Smooth Interpolation**: Glides cleanly between adjacent positions during typing and arrow-key navigation.
+- **Instant Large Jumps**: Snaps immediately on large jumps (such as screen clears, scrolling, or page jumps) to eliminate visual disorientation.
+- **Breathing Effect**: Features a subtle breathing opacity cycle when resting, locking to solid opacity during active typing.
 
 ---
 
@@ -104,45 +102,21 @@ Modern developer shell prompts (e.g., Starship, Oh-My-Posh, Powerlevel10k, and W
 ╰─> cargo run
 ```
 
-### The Root Cause: Why Prompts Look "Painted" or Break on Zoom Out
+### Eliminating Prompt Gaps and Stair-Stepping
 
-In traditional or naive terminal implementations, rendering these characters suffers from three fundamental architectural flaws:
+In traditional terminal implementations, rendering these characters often leads to noticeable artifacts:
 
-1. **Font Baseline Drift vs. Cell Geometric Center**:
-   - Monospace font engines (DirectWrite, FreeType) position rounded corners (`╭`, `╰` / `U+256D..=U+2570`) according to font baseline metrics and hinting grids.
-   - Straight horizontal lines (`─` / `U+2500`), however, are often drawn procedurally or centered at the cell geometric midpoint (`cy = cell_height / 2.0`).
-   - When the user zooms out (e.g., 80%, 75%) or resizes fonts, fractional rounding causes the font baseline to drift away from the geometric center of the cell. The corner glyph peaks 1 to 2 pixels above the line or sags below it, creating an ugly detached "bent hook" or gap.
+1. **Font Baseline Drift**: Monospace fonts position corner glyphs on text baseline grids while lines sit at geometric cell centers, causing lines and corners to detach when zooming out.
+2. **Stair-Stepped Corners**: Terminals that approximate curves with small square rectangles produce jagged, saw-tooth edges.
+3. **Rigid Pixel Weights**: Fixed stroke widths look too thick when zoomed out and too thin when zoomed in.
 
-2. **The "Painted / Stair-Stepped" Quad Artifact**:
-   - Some terminals attempt custom arcs by stamping a series of discrete, axis-aligned square quads along a curve.
-   - Because axis-aligned quads cannot rotate with the circle's tangent vector, at 45-degree angles their corners produce sharp saw-tooth pixel steps. This makes the curve appear as if it was drawn with a low-resolution pixel paintbrush.
+### The Atlas Solution
 
-3. **Rigid Pixel Stroke Weights**:
-   - Hardcoding stroke widths (e.g., fixed 2px or 3px) breaks at non-standard DPI scales or zoom levels. When zoomed out, lines appear disproportionately thick and crowd cell contents; when zoomed in, they appear hairline thin.
+Atlas Terminal implements a dedicated procedural vector engine in [`src/terminal/procedural.rs`](file:///c:/Users/Neweye/Desktop/Workspace/atlas-terminal/src/terminal/procedural.rs) that draws box characters directly on the GPU:
 
-### The Atlas Solution: Inspired by Windows Terminal's AtlasEngine
-
-To permanently eliminate gaps, baseline drift, and pixel stair-stepping, Atlas Terminal implements a dedicated procedural vector engine in [`src/terminal/procedural.rs`](file:///c:/Users/Neweye/Desktop/Workspace/atlas-terminal/src/terminal/procedural.rs) that bypasses font rasterization entirely for all box-drawing and corner characters (`U+2500..=U+257F`):
-
-#### 1. Dynamic Stroke Scaling
-Adapting the proven formula from Windows Terminal's `BuiltinGlyphs.cpp`:
-
-$$\text{light} = \max\left(1.0, \text{round}\left(\frac{\text{cell\_width}}{6.0}\right)\right)$$
-$$\text{heavy} = \max\left(\text{light} + 1.0, \text{light} \times 2.0\right)$$
-
-This guarantees that stroke thickness remains optically proportional to font size and zoom factor across all displays and DPI settings.
-
-#### 2. Exact $C^1$ and $G^1$ Tangent Alignment
-Straight box lines and rounded corners meet at exact cell midpoints:
-- `sy = (cell_origin.y + cell_height / 2.0).floor() + 0.5`
-- `sx = (cell_origin.x + cell_width / 2.0).floor() + 0.5`
-
-Because straight lines and corner curves share these exact coordinate anchors, there is zero gap or overlap across cell boundaries.
-
-#### 3. Hardware MSAA Cubic Bézier Vector Paths
-Rather than stamping discrete quads, rounded corners (`╭`, `╮`, `╯`, `╰`) are constructed as cubic Bézier curves using the optimal circle constant $\kappa = \frac{4(\sqrt{2}-1)}{3} \approx 0.55228475$:
-
-```rust
+- **Dynamic Stroke Scaling**: Line thickness scales proportionally with font size and zoom level so borders always look natural.
+- **Seamless Alignment**: Straight lines and rounded corners share exact coordinate midpoints, eliminating 1px gaps and overlapping artifacts.
+- **Smooth Vector Curves**: Rounded corners (`╭`, `╮`, `╯`, `╰`) are drawn as anti-aliased vector paths with hardware multisampling for clean, curved lines.
 let k = 0.55228475;
 let rx = sx - left;
 let ry = bottom - sy;
@@ -172,7 +146,7 @@ Atlas Terminal is engineered for predictable low-latency frame delivery, low qui
 | **Idle Memory (Working Set)** | **~60 MB** | ~90 MB | ~55 MB | ~135 MB | ~420 MB |
 | **Input-to-Screen Latency** | **< 5 ms** | 18 – 32 ms | 7 – 12 ms | 16 – 28 ms | 45 – 85 ms |
 | **Streaming Throughput** | **~20 MB/s** | ~10 MB/s | ~22 MB/s | ~9 MB/s | ~2 MB/s |
-| **Refresh & Motion** | **Native Display Rate** | 60 Hz | 60 / 144 Hz | Fixed FPS | Throttled |
+| **Animation & Motion** | **Ultra Smooth** | Standard | Standard | Variable | Throttled |
 | **Idle CPU Consumption** | **0.0%** | < 0.2% | 0.0% | 0.1% – 0.5% | 1.2% – 3.5% |
 
 ### Profiling Methodology

@@ -54,7 +54,7 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_SCROLL_TO_BOTTOM => "Scroll to Bottom of Buffer",
         ACTION_OPEN_URL_PICKER => "Open URL from Buffer",
         ACTION_PALETTE => "Command Palette",
-        ACTION_FULLSCREEN => "Toggle Fullscreen / Maximize",
+        ACTION_FULLSCREEN => "Toggle Fullscreen",
         ACTION_CLEAR_SCROLLBACK => "Clear Scrollback Buffer",
         ACTION_FOCUS_NEXT_PANE => "Focus Next Split Pane",
         ACTION_FOCUS_PREV_PANE => "Focus Previous Split Pane",
@@ -329,7 +329,11 @@ impl Default for AppSettingsFile {
 pub fn load_app_settings() -> AppSettingsFile {
     let settings_path = crate::user_data_dir().join("settings.json");
     if let Ok(content) = std::fs::read_to_string(&settings_path) {
-        if let Ok(s) = serde_json::from_str::<AppSettingsFile>(&content) {
+        if let Ok(mut s) = serde_json::from_str::<AppSettingsFile>(&content) {
+            let defaults = default_shortcuts();
+            for (action, chord) in defaults {
+                s.shortcuts.entry(action).or_insert(chord);
+            }
             return s;
         }
     }

@@ -993,6 +993,23 @@ impl AtlasView {
             .child(
                 card()
                     .child(section_header("SOFTWARE UPDATES"))
+                    .child(setting_row(
+                        "Installed Version",
+                        Some("Currently running Atlas Terminal build"),
+                        div()
+                            .h(px(28.0))
+                            .px(px(10.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(6.0))
+                            .bg(Rgba { a: 0.12, ..theme.accent })
+                            .text_size(px(12.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.accent)
+                            .child(format!("v{}", env!("CARGO_PKG_VERSION"))),
+                        false,
+                    ))
                     .child(setting_row("Update Channel", Some("Official milestone releases or early rolling cloud builds"), channel_ctrl, false))
                     .child(setting_row("Automatic Checks", Some("Background release inspection on focus"), auto_check_ctrl, false))
                     .child(setting_row("Check Frequency", Some("Interval between update scans"), interval_ctrl, false))

@@ -128,7 +128,7 @@ powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1
 | **Memory Usage (Idle)** | **~60 MB** | ~90 MB | ~55 MB | ~135 MB | ~420 MB |
 | **Input Latency** | **< 5 ms** | 18 – 32 ms | 7 – 12 ms | 16 – 28 ms | 45 – 85 ms |
 | **Streaming Speed** | **~20 MB/s** | ~10 MB/s | ~22 MB/s | ~9 MB/s | ~2 MB/s |
-| **Refresh & Motion** | **Native Display Rate** | 60 Hz | 60 / 144 Hz | Fixed FPS | Throttled |
+| **Animation & Motion** | **Ultra Smooth** | Standard | Standard | Variable | Throttled |
 | **Idle CPU Usage** | **0.0%** | < 0.2% | 0.0% | 0.1% – 0.5% | 1.2% – 3.5% |
 
 ---
@@ -139,6 +139,7 @@ powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1
 | :--- | :--- |
 | `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette |
 | `Ctrl+F` | Find in Terminal (Search & Match Navigation) |
+| `Ctrl+B` | Toggle Sidebar / Tab Bar |
 | `Ctrl+Shift+N` | New Tab (Default Shell) |
 | `Ctrl+Shift+W` | Close Active Pane / Tab |
 | `Ctrl+Shift+E` | Split Pane Vertically (Columns) |

@@ -111,44 +111,10 @@ pub(crate) fn init_user_data() {
     let _ = std::fs::create_dir_all(&sessions_dir);
 
     if !settings_file.exists() {
-        let default_settings = r#"{
-  "theme": "tokyo_night",
-  "theme_mode": "dark",
-  "font_family": "Cascadia Code",
-  "font_size": 13.0,
-  "line_height": 1.2,
-  "corner_radius": 14.0,
-  "opacity": 0.15,
-  "cursor_shape": "block",
-  "cursor_blink": true,
-  "shortcuts": {
-    "new_tab": "ctrl+shift+n",
-    "close_tab": "ctrl+shift+w",
-    "split_horizontal": "ctrl+shift+d",
-    "split_vertical": "ctrl+shift+e",
-    "next_tab": "ctrl+tab",
-    "prev_tab": "ctrl+shift+tab",
-    "copy": "ctrl+shift+c",
-    "paste": "ctrl+shift+v",
-    "find": "ctrl+f",
-    "open_settings": "ctrl+,",
-    "zoom_in": "ctrl+=",
-    "zoom_out": "ctrl+-"
-  },
-  "default_shell": "PowerShell",
-  "start_directory": "home",
-  "scrollback_lines": 10000,
-  "confirm_close_process": true,
-  "copy_on_select": false,
-  "startup_mode": "restore_session",
-  "default_editor": "auto",
-  "notify_on_complete": true,
-  "notify_threshold_secs": 10,
-  "auto_check_updates": true,
-  "update_check_interval_mins": 60
-}
-"#;
-        let _ = std::fs::write(&settings_file, default_settings);
+        let defaults = crate::config::AppSettingsFile::default();
+        if let Ok(json) = serde_json::to_string_pretty(&defaults) {
+            let _ = std::fs::write(&settings_file, json);
+        }
     }
 }
 

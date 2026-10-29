@@ -53,6 +53,7 @@ pub enum Command {
     OpenLatestUrl,
     FindInTerminal,
     ToggleSidebar,
+    Fullscreen,
 }
 
 /// Action to execute from the palette (a built-in command or opening a detected URL).
@@ -81,8 +82,8 @@ pub const COMMANDS: [(Command, &str, &str, &str); 33] = [
         "Toggle maximize pane",
         "Ctrl Shift M",
     ),
-    (Command::ClosePane, icons::CLOSE, "Close pane", "Ctrl Shift W"),
-    (Command::CloseTab, icons::CLOSE, "Close tab", "Ctrl Shift W"),
+    (Command::Fullscreen, icons::WINDOW_MAXIMIZE, "Toggle fullscreen", "F11"),
+    (Command::CloseTab, icons::CLOSE, "Close pane or tab", "Ctrl Shift W"),
     (Command::NextTab, icons::CHEVRON_RIGHT, "Next tab", "Ctrl Tab"),
     (
         Command::PrevTab,
@@ -161,6 +162,7 @@ impl AtlasView {
             Command::FocusNextPane => Some(ACTION_FOCUS_NEXT_PANE),
             Command::FocusPrevPane => Some(ACTION_FOCUS_PREV_PANE),
             Command::MaximizePane => Some(ACTION_TOGGLE_MAXIMIZE),
+            Command::Fullscreen => Some(ACTION_FULLSCREEN),
             Command::ClosePane | Command::CloseTab => Some(ACTION_CLOSE_TAB),
             Command::NextTab => Some(ACTION_NEXT_TAB),
             Command::PrevTab => Some(ACTION_PREV_TAB),
@@ -478,6 +480,10 @@ impl AtlasView {
             }
             Command::ToggleSidebar => {
                 self.toggle_sidebar(cx);
+            }
+            Command::Fullscreen => {
+                crate::rounded_corners::window_button(1);
+                cx.notify();
             }
         }
     }
