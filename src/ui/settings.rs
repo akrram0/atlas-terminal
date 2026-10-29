@@ -19,7 +19,7 @@ use crate::config::{
     ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL, ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN,
     ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_TO_TOP, ACTION_SCROLL_TO_BOTTOM,
-    ACTION_OPEN_URL_PICKER, ACTION_TOGGLE_THEME, ACTION_TOGGLE_MAXIMIZE,
+    ACTION_OPEN_URL_PICKER, ACTION_TOGGLE_THEME, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR,
 };
 use crate::icons;
 use crate::theme::Theme;
@@ -483,6 +483,23 @@ impl AtlasView {
             cx,
         );
 
+        let tab_layout_options = vec![
+            ("top".to_string(), "Top Bar".to_string()),
+            ("sidebar".to_string(), "Sidebar".to_string()),
+        ];
+        let tab_layout_ctrl = segmented_control(
+            "tab-layout-ctrl",
+            tab_layout_options,
+            &self.app_settings.tab_bar_position,
+            theme,
+            |pos, view, cx| {
+                view.app_settings.tab_bar_position = pos;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         let cursor_options = vec![
             (None, "Block".to_string()),
             (Some(CursorShape::Beam), "Bar".to_string()),
@@ -535,6 +552,16 @@ impl AtlasView {
                 card()
                     .child(section_header("BACKGROUND & BLUR"))
                     .child(setting_row("Blur Background", Some("Fluent acrylic translucency (adjust % in settings.json)"), blur_switch, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("NAVIGATION & TABS"))
+                    .child(setting_row(
+                        "Tab Bar Layout",
+                        Some("Choose between top horizontal bar or left vertical sidebar"),
+                        tab_layout_ctrl,
+                        true,
+                    )),
             )
             .child(
                 card()
@@ -1125,6 +1152,7 @@ impl AtlasView {
             ACTION_CLOSE_TAB,
             ACTION_NEXT_TAB,
             ACTION_PREV_TAB,
+            ACTION_TOGGLE_SIDEBAR,
             ACTION_OPEN_SETTINGS,
             ACTION_PALETTE,
             ACTION_FULLSCREEN,

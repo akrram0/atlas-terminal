@@ -52,6 +52,7 @@ pub enum Command {
     CheckUpdates,
     OpenLatestUrl,
     FindInTerminal,
+    ToggleSidebar,
 }
 
 /// Action to execute from the palette (a built-in command or opening a detected URL).
@@ -62,7 +63,8 @@ pub enum PaletteAction {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 32] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 33] = [
+    (Command::ToggleSidebar, icons::SIDEBAR_LEFT, "Toggle Sidebar / Tab Bar", "Ctrl B"),
     (Command::FindInTerminal, icons::SEARCH, "Find in terminal...", "Ctrl F"),
     (Command::NewTab, icons::PLUS, "New tab (PowerShell)", "Ctrl Shift N"),
     (Command::NewTabWsl, icons::LINUX, "New WSL tab", ""),
@@ -151,6 +153,7 @@ impl AtlasView {
     pub fn shortcut_for_palette_command(&self, cmd: Command) -> String {
         use crate::config::*;
         let action = match cmd {
+            Command::ToggleSidebar => Some(ACTION_TOGGLE_SIDEBAR),
             Command::FindInTerminal => Some(ACTION_FIND),
             Command::NewTab => Some(ACTION_NEW_TAB),
             Command::SplitPane => Some(ACTION_SPLIT_VERTICAL),
@@ -472,6 +475,9 @@ impl AtlasView {
             }
             Command::FindInTerminal => {
                 self.open_search(window, cx);
+            }
+            Command::ToggleSidebar => {
+                self.toggle_sidebar(cx);
             }
         }
     }

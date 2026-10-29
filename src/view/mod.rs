@@ -3,6 +3,7 @@
 pub mod actions;
 pub mod input;
 pub mod scroll;
+pub mod sidebar;
 pub mod update;
 
 use std::cell::RefCell;
@@ -162,6 +163,8 @@ pub struct AtlasView {
     pub(crate) settings_scroll_pos: f32,
     pub(crate) settings_scroll_target: f32,
     pub(crate) hovered_link: Option<(usize, crate::url::DetectedUrl)>,
+    pub(crate) sidebar_open: bool,
+    pub(crate) sidebar_expansion: f32,
 }
 
 
@@ -316,6 +319,8 @@ impl AtlasView {
             settings_scroll_pos: 0.0,
             settings_scroll_target: 0.0,
             hovered_link: None,
+            sidebar_open: true,
+            sidebar_expansion: 1.0,
         };
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(opacity);
@@ -564,6 +569,22 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
+                    // 8. Vertical sidebar kinetic expansion/collapse
+                    let target_sidebar = if view.sidebar_open { 1.0f32 } else { 0.0f32 };
+                    let sidebar_diff = target_sidebar - view.sidebar_expansion;
+                    if sidebar_diff.abs() > 0.005 {
+                        active_motion = true;
+                        let factor = (1.0 - (-18.0 * dt).exp()).clamp(0.0, 1.0);
+                        view.sidebar_expansion = if sidebar_diff.abs() < 0.01 {
+                            target_sidebar
+                        } else {
+                            view.sidebar_expansion + sidebar_diff * factor
+                        };
+                        needs_paint = true;
+                    } else if view.sidebar_expansion != target_sidebar {
+                        view.sidebar_expansion = target_sidebar;
+                        needs_paint = true;
+                    }
 
                     if needs_paint {
                         cx.notify();
@@ -863,8 +884,85 @@ impl Render for AtlasView {
             .child(divider)
             .child(chevron_btn);
 
-        bar = bar.child(capsule);
-        bar = bar.child(div().w(px(6.0)));
+        let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";
+        if is_sidebar_mode {
+            let is_sidebar_active = self.sidebar_open && self.sidebar_expansion > 0.3;
+            let sidebar_btn = div()
+                .id(ElementId::named_usize("sidebar-toggle-btn", 0))
+                .w(px(30.0))
+                .h(px(32.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.0))
+                .bg(if is_sidebar_active { Rgba { a: 0.12, ..tb.accent } } else { rgba(0x00000000) })
+                .hover(move |s| s.bg(tb.card_hover))
+                .active(|s| s.opacity(0.75))
+                .cursor_pointer()
+                .child(
+                    icons::icon(icons::SIDEBAR_LEFT)
+                        .size(px(16.0))
+                        .text_color(if is_sidebar_active { tb.accent } else { tb.chrome_fg_active }),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    view.toggle_sidebar(cx);
+                }));
+
+            bar = bar.child(sidebar_btn);
+            bar = bar.child(div().w(px(2.0)));
+            bar = bar.child(capsule);
+            bar = bar.child(div().w(px(6.0)));
+
+            if let Some(tab) = self.tabs.get(self.active) {
+                let pane = tab.panes.get(tab.active_pane);
+                let label = match pane {
+                    Some(pane) => tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane)),
+                    None => "Terminal".to_string(),
+                };
+                let win_title = if label == "Terminal" || label.is_empty() {
+                    "Atlas Terminal".to_string()
+                } else {
+                    format!("{label} — Atlas Terminal")
+                };
+                crate::rounded_corners::set_window_title(&win_title);
+            }
+
+            if self.sidebar_expansion < 0.6 {
+                let active_tab_title = if self.settings_open {
+                    "Settings".to_string()
+                } else if let Some(tab) = self.tabs.get(self.active) {
+                    if let Some(pane) = tab.panes.get(tab.active_pane) {
+                        tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
+                    } else {
+                        "Terminal".to_string()
+                    }
+                } else {
+                    "Terminal".to_string()
+                };
+
+                bar = bar.child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.0))
+                        .px(px(8.0))
+                        .h(px(28.0))
+                        .rounded(px(6.0))
+                        .bg(tb.card_hover)
+                        .child(
+                            div()
+                                .text_size(px(12.5))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(tb.chrome_fg_active)
+                                .truncate()
+                                .child(active_tab_title),
+                        ),
+                );
+            }
+        } else {
+            bar = bar.child(capsule);
+            bar = bar.child(div().w(px(6.0)));
 
         // Horizontal tabs: active tab is a clean rounded rect (elevated bg + subtle border)
         // carrying the running process's own mark; inactive tabs are quiet with folder icon.
@@ -1122,6 +1220,7 @@ impl Render for AtlasView {
                 );
 
             bar = bar.child(settings_pill);
+        }
         }
 
         bar = bar.child(caption_spacer(0));
@@ -1818,6 +1917,26 @@ impl Render for AtlasView {
             ))
             .child(body);
 
+        let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";
+        let content_row: AnyElement = if is_sidebar_mode {
+            let mut row = div()
+                .flex()
+                .flex_row()
+                .flex_1()
+                .w(relative(1.0))
+                .min_w(px(0.0))
+                .min_h(px(0.0))
+                .overflow_hidden();
+
+            if self.sidebar_expansion > 0.005 {
+                row = row.child(self.render_sidebar(&theme, is_translucent, cx));
+            }
+            row = row.child(sheet);
+            row.into_any_element()
+        } else {
+            sheet.into_any_element()
+        };
+
         let container = div()
             .id(ElementId::named_usize("terminal-container", 0))
             .relative()
@@ -1831,7 +1950,7 @@ impl Render for AtlasView {
             .bg(container_bg)
             .overflow_hidden()
             .child(bar)
-            .child(sheet);
+            .child(content_row);
 
         let mut root = div()
             .relative()

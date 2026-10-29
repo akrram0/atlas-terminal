@@ -30,6 +30,7 @@ pub const ACTION_OPEN_URL_PICKER: &str = "open_url_picker";
 pub const ACTION_TOGGLE_THEME: &str = "toggle_theme";
 pub const ACTION_TOGGLE_MAXIMIZE: &str = "toggle_maximize";
 pub const ACTION_FIND: &str = "find";
+pub const ACTION_TOGGLE_SIDEBAR: &str = "toggle_sidebar";
 
 pub fn action_display_name(action: &str) -> &'static str {
     match action {
@@ -59,6 +60,7 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_FOCUS_PREV_PANE => "Focus Previous Split Pane",
         ACTION_TOGGLE_THEME => "Toggle Dark / Light Theme",
         ACTION_TOGGLE_MAXIMIZE => "Toggle Pane Zoom / Maximize",
+        ACTION_TOGGLE_SIDEBAR => "Toggle Sidebar / Tab Bar",
         _ => "Custom Action",
     }
 }
@@ -91,6 +93,7 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_TOGGLE_THEME.to_string(), "ctrl+shift+t".to_string());
     m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "ctrl+shift+m".to_string());
     m.insert(ACTION_FIND.to_string(), "ctrl+f".to_string());
+    m.insert(ACTION_TOGGLE_SIDEBAR.to_string(), "ctrl+b".to_string());
     m
 }
 
@@ -177,6 +180,8 @@ pub struct AppSettingsFile {
     pub cursor_shape: String,
     #[serde(default = "default_cursor_blink")]
     pub cursor_blink: bool,
+    #[serde(default = "default_tab_bar_position")]
+    pub tab_bar_position: String,
 
     #[serde(default = "default_shortcuts")]
     pub shortcuts: HashMap<String, String>,
@@ -246,6 +251,9 @@ fn default_cursor_shape() -> String {
 fn default_cursor_blink() -> bool {
     true
 }
+fn default_tab_bar_position() -> String {
+    "top".to_string()
+}
 fn default_shell() -> String {
     "PowerShell".to_string()
 }
@@ -296,6 +304,7 @@ impl Default for AppSettingsFile {
             blur_enabled: default_blur(),
             cursor_shape: default_cursor_shape(),
             cursor_blink: default_cursor_blink(),
+            tab_bar_position: default_tab_bar_position(),
             shortcuts: default_shortcuts(),
             default_shell: default_shell(),
             start_directory: default_start_dir(),

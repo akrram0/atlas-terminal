@@ -12,7 +12,7 @@ use crate::config::{
     ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_OPEN_URL_PICKER,
     ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_TO_BOTTOM, ACTION_SCROLL_TO_TOP, ACTION_SELECT_ALL, ACTION_SPLIT_HORIZONTAL,
-    ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_THEME, ACTION_ZOOM_IN,
+    ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR, ACTION_TOGGLE_THEME, ACTION_ZOOM_IN,
     ACTION_ZOOM_OUT, ACTION_ZOOM_RESET,
 };
 use crate::keymap;
@@ -371,6 +371,10 @@ impl AtlasView {
                 }
                 if chord == self.get_shortcut(ACTION_FIND) || chord == "ctrl+f" {
                     self.open_search(window, cx);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_TOGGLE_SIDEBAR) || chord == "ctrl+b" {
+                    self.toggle_sidebar(cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_NEW_TAB) {

@@ -81,6 +81,7 @@ icon_assets![
     (CMD, "cmd"),
     (GIT, "git"),
     (LINK, "link"),
+    (SIDEBAR_LEFT, "sidebar-left"),
 ];
 
 /// Render an embedded vector icon element.

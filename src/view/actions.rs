@@ -535,6 +535,26 @@ impl AtlasView {
         cx.notify();
     }
 
+    pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_open = !self.sidebar_open;
+        cx.notify();
+    }
+
+    pub(crate) fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.settings_open = !self.settings_open;
+        if self.settings_open {
+            self.settings_tab_open = true;
+            self.settings_tab = crate::config::SettingsTab::General;
+            self.settings_scroll_pos = 0.0;
+            self.settings_scroll_target = 0.0;
+            self.settings_scroll_handle.set_offset(gpui::Point::default());
+            window.focus(&self.settings_focus);
+        } else {
+            window.focus(&self.focus);
+        }
+        cx.notify();
+    }
+
     /// Fade the profile (new-tab) menu out, then unmount it.
     pub(crate) fn dismiss_profile(&mut self, cx: &mut Context<Self>) {
         if self.profile_closing {
