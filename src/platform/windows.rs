@@ -182,6 +182,17 @@ unsafe extern "system" {
     fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
     fn SetWindowTextW(hwnd: Hwnd, lp_string: *const u16) -> i32;
     fn GetForegroundWindow() -> Hwnd;
+    fn GetSystemMetrics(n_index: i32) -> i32;
+}
+
+const SM_CXFRAME: i32 = 32;
+const SM_CYFRAME: i32 = 33;
+const SM_CXPADDEDBORDER: i32 = 92;
+
+#[repr(C)]
+struct NcCalcSizeParams {
+    rgrc: [Rect; 3],
+    lppos: *mut core::ffi::c_void,
 }
 
 #[link(name = "kernel32")]
@@ -591,11 +602,39 @@ unsafe extern "system" fn window_proc(
             result
         }
         WM_NCCALCSIZE => {
-            // The maximized rect is pinned to the work area by
-            // WM_GETMINMAXINFO, so the client can cover the whole window at
-            // every size. Leaving `rgrc[0]` untouched gives the acrylic a
-            // full-bleed surface; the old maximized frame inset left a
-            // non-blurred ring at the screen edges.
+            if unsafe { IsZoomed(hwnd) } != 0 {
+                // When maximized, Windows outdents a WS_THICKFRAME window by the resize frame
+                // (SM_CYFRAME + SM_CXPADDEDBORDER, usually 8px) into negative coordinates.
+                // Insetting rgrc[0] by this frame prevents the top bar and controls from being clipped offscreen.
+                let frame_y = unsafe {
+                    GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
+                };
+                let frame_x = unsafe {
+                    GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
+                };
+                if wparam != 0 {
+                    let params = lparam as *mut NcCalcSizeParams;
+                    if !params.is_null() {
+                        unsafe {
+                            (*params).rgrc[0].top += frame_y;
+                            (*params).rgrc[0].left += frame_x;
+                            (*params).rgrc[0].right -= frame_x;
+                            (*params).rgrc[0].bottom -= frame_y;
+                        }
+                    }
+                } else {
+                    let rect = lparam as *mut Rect;
+                    if !rect.is_null() {
+                        unsafe {
+                            (*rect).top += frame_y;
+                            (*rect).left += frame_x;
+                            (*rect).right -= frame_x;
+                            (*rect).bottom -= frame_y;
+                        }
+                    }
+                }
+                return 0;
+            }
             0
         }
         WM_NCHITTEST => {
@@ -610,10 +649,18 @@ unsafe extern "system" fn window_proc(
                         return hit;
                     }
                 }
-                // The client covers the whole window at every size (see
-                // WM_NCCALCSIZE), so no frame offset is needed here.
-                let client_x = (x - rect.left) as f32;
-                let client_y = (y - rect.top) as f32;
+                let (frame_x, frame_y) = if zoomed {
+                    unsafe {
+                        (
+                            GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
+                            GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
+                        )
+                    }
+                } else {
+                    (0, 0)
+                };
+                let client_x = (x - (rect.left + frame_x)) as f32;
+                let client_y = (y - (rect.top + frame_y)) as f32;
                 if caption_hit(hwnd, client_x, client_y) {
                     return HTCAPTION;
                 }

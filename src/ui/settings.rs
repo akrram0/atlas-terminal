@@ -126,10 +126,10 @@ impl AtlasView {
 
         let section_header = |label: &'static str| -> AnyElement {
             div()
-                .px(px(14.0))
+                .px(px(16.0))
                 .pt(px(14.0))
                 .pb(px(6.0))
-                .text_size(px(11.0))
+                .text_size(px(11.5))
                 .font_weight(FontWeight::BOLD)
                 .text_color(sc_section)
                 .child(label)
@@ -142,9 +142,9 @@ impl AtlasView {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .px(px(14.0))
-                .py(px(11.0))
-                .gap(px(12.0));
+                .px(px(16.0))
+                .py(px(12.0))
+                .gap(px(14.0));
             if !is_last {
                 row = row.border_b_1().border_color(theme.hairline);
             }
@@ -152,17 +152,17 @@ impl AtlasView {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(1.5))
+                    .gap(px(2.0))
                     .child(
                         div()
-                            .text_size(px(12.5))
+                            .text_size(px(13.5))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(sc_label)
                             .child(label),
                     )
                     .children(desc.map(|d| {
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(11.5))
                             .text_color(sc_desc)
                             .child(d)
                     })),
@@ -171,7 +171,7 @@ impl AtlasView {
             .into_any_element()
         };
 
-        // --- Left Sidebar (160px) ---
+        // --- Left Sidebar (210px) ---
         let nav_items = [
             (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance", icons::SLIDERS),
@@ -180,29 +180,30 @@ impl AtlasView {
 
         let mut sidebar = div()
             .id(ElementId::named_usize("settings-sidebar-scroll", 0))
-            .w(px(160.0))
+            .w(px(210.0))
             .flex_shrink_0()
             .h(relative(1.0))
             .min_h(px(0.0))
             .overflow_y_scroll()
             .flex()
             .flex_col()
+            .gap(px(4.0))
             .border_r_1()
             .border_color(theme.hairline)
-            .p(px(10.0))
+            .p(px(14.0))
             .child(
                 div()
                     .flex()
                     .flex_row()
                     .items_center()
                     .gap(px(8.0))
-                    .px(px(8.0))
-                    .py(px(8.0))
-                    .mb(px(8.0))
-                    .child(icons::icon(icons::SETTINGS).size(px(16.0)).text_color(theme.accent))
+                    .px(px(10.0))
+                    .py(px(10.0))
+                    .mb(px(10.0))
+                    .child(icons::icon(icons::SETTINGS).size(px(18.0)).text_color(theme.accent))
                     .child(
                         div()
-                            .text_size(px(13.5))
+                            .text_size(px(15.0))
                             .font_weight(FontWeight::BOLD)
                             .text_color(sc_title)
                             .child("Preferences"),
@@ -225,20 +226,20 @@ impl AtlasView {
             sidebar = sidebar.child(
                 div()
                     .id(ElementId::named_usize("settings-nav-item", nav_idx))
-                    .h(px(32.0))
-                    .px(px(10.0))
+                    .h(px(38.0))
+                    .px(px(12.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(6.0))
+                    .gap(px(10.0))
+                    .rounded(px(7.0))
                     .bg(item_bg)
                     .text_color(item_fg)
                     .hover(move |s| s.bg(hover_bg))
-                    .child(icons::icon(icon).size(px(14.0)).text_color(item_fg))
+                    .child(icons::icon(icon).size(px(16.5)).text_color(item_fg))
                     .child(
                         div()
-                            .text_size(px(12.5))
+                            .text_size(px(14.0))
                             .font_weight(if is_active {
                                 FontWeight::SEMIBOLD
                             } else {
@@ -1239,10 +1240,10 @@ impl AtlasView {
             .flex_row()
             .items_center()
             .justify_between()
-            .mb(px(16.0))
+            .mb(px(18.0))
             .child(
                 div()
-                    .text_size(px(18.0))
+                    .text_size(px(19.0))
                     .font_weight(FontWeight::BOLD)
                     .text_color(sc_title)
                     .child(match self.settings_tab {
@@ -1254,8 +1255,8 @@ impl AtlasView {
             .child(
                 div()
                     .id(ElementId::named_usize("settings-top-back-btn", 0))
-                    .h(px(28.0))
-                    .px(px(10.0))
+                    .h(px(32.0))
+                    .px(px(12.0))
                     .flex()
                     .flex_row()
                     .items_center()
@@ -1266,10 +1267,10 @@ impl AtlasView {
                     .bg(sc_back_bg)
                     .hover(move |s| s.bg(theme.card_hover))
                     .text_color(sc_back_fg)
-                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(13.0)))
+                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(px(12.5))
                             .font_weight(FontWeight::MEDIUM)
                             .child("Back to Terminal (Esc)"),
                     )
@@ -1289,12 +1290,12 @@ impl AtlasView {
             .min_h(px(0.0))
             .overflow_y_scroll()
             .track_scroll(&self.settings_scroll_handle)
-            .p(px(16.0))
+            .p(px(22.0))
             .pb(px(80.0))
             .child(
                 div()
                     .w(relative(1.0))
-                    .max_w(px(700.0))
+                    .max_w(px(760.0))
                     .min_w(px(0.0))
                     .child(content_header)
                     .child(content_body),
