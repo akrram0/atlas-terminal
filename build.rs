@@ -20,15 +20,21 @@ fn main() {
 
     let commit = std::env::var("GITHUB_SHA")
         .ok()
-        .and_then(|s| if s.len() >= 7 { Some(s[..7].to_string()) } else { None })
+        .and_then(|s| if s.len() >= 7 { Some(s[..7].to_ascii_lowercase()) } else { None })
         .or_else(|| {
             Command::new("git")
-                .args(["rev-parse", "--short", "HEAD"])
+                .args(["rev-parse", "--short=7", "HEAD"])
                 .output()
                 .ok()
                 .and_then(|o| if o.status.success() {
-                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                    if !s.is_empty() { Some(s) } else { None }
+                    let s = String::from_utf8_lossy(&o.stdout).trim().to_ascii_lowercase();
+                    if s.len() >= 7 {
+                        Some(s[..7].to_string())
+                    } else if !s.is_empty() {
+                        Some(s)
+                    } else {
+                        None
+                    }
                 } else { None })
         })
         .unwrap_or_default();

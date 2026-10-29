@@ -32,6 +32,8 @@ design-system/
 # AI, Agent & Handoff artifacts
 .agent/
 .claude/
+.opencode/
+.impeccable/
 .cursor/
 .cursorrules
 .windsurf/

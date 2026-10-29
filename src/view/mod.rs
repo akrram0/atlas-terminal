@@ -755,8 +755,8 @@ impl Render for AtlasView {
             .items_center()
             .gap(px(6.0))
             .w(relative(1.0))
-            .h(px(40.0))
-            .pl(px(10.0))
+            .h(px(42.0))
+            .pl(px(12.0))
             .bg(chrome_bg)
             .border_b_1()
             .border_color(tb.hairline);
@@ -784,8 +784,8 @@ impl Render for AtlasView {
 
         let plus_btn = div()
             .id(ElementId::named_usize("capsule-plus", 0))
-            .w(px(28.0))
-            .h(px(30.0))
+            .w(px(30.0))
+            .h(px(32.0))
             .flex()
             .items_center()
             .justify_center()
@@ -798,7 +798,7 @@ impl Render for AtlasView {
             }))
             .child(
                 icons::icon(icons::PLUS)
-                    .size(px(14.5))
+                    .size(px(15.5))
                     .text_color(plus_ink),
             )
             .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
@@ -808,13 +808,13 @@ impl Render for AtlasView {
 
         let divider = div()
             .w(px(1.0))
-            .h(px(14.0))
+            .h(px(16.0))
             .bg(tb.elevated_border);
 
         let chevron_btn = div()
             .id(ElementId::named_usize("capsule-chevron", 0))
-            .w(px(24.0))
-            .h(px(30.0))
+            .w(px(26.0))
+            .h(px(32.0))
             .flex()
             .items_center()
             .justify_center()
@@ -828,7 +828,7 @@ impl Render for AtlasView {
             }))
             .child(
                 icons::icon(icons::CHEVRON_DOWN)
-                    .size(px(12.5))
+                    .size(px(13.5))
                     .text_color(chevron_ink),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -838,7 +838,7 @@ impl Render for AtlasView {
 
         let capsule = div()
             .id(ElementId::named_usize("topbar-launch-capsule", 0))
-            .h(px(30.0))
+            .h(px(32.0))
             .flex()
             .flex_row()
             .items_center()
@@ -901,25 +901,25 @@ impl Render for AtlasView {
 
             let (max_w, min_w, px_pad, opacity) = if tab.closing {
                 let scale = (1.0 - EASE_OUT.eval(tab.close_progress)).max(0.0);
-                (220.0 * scale, 0.0, 10.0 * scale, scale)
+                (240.0 * scale, 0.0, 12.0 * scale, scale)
             } else {
-                (220.0, 40.0, 10.0, 1.0)
+                (240.0, 48.0, 12.0, 1.0)
             };
 
             let mut pill = div()
                 .id(ElementId::named_usize("tab-pill", ix))
-                .h(px(30.0))
+                .h(px(32.0))
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
+                .gap(px(9.0))
                 .px(px(px_pad))
                 .max_w(px(max_w))
                 .min_w(px(min_w))
                 .opacity(opacity)
                 .overflow_hidden()
                 .flex_shrink()
-                .rounded(px(6.0))
+                .rounded(px(7.0))
                 .bg(pill_bg)
                 .border_1()
                 .border_color(pill_border)
@@ -957,11 +957,11 @@ impl Render for AtlasView {
                 .child(
                     div()
                         .text_color(pill_icon)
-                        .child(icons::icon(icon).size(px(15.5)).text_color(pill_icon)),
+                        .child(icons::icon(icon).size(px(16.5)).text_color(pill_icon)),
                 )
                 .child(
                     div()
-                        .text_size(px(13.0))
+                        .text_size(px(13.5))
                         .font_weight(if active {
                             FontWeight::MEDIUM
                         } else {
@@ -976,18 +976,18 @@ impl Render for AtlasView {
                 pill = pill.child(
                     div()
                         .id(ElementId::named_usize("tab-close", ix))
-                        .w(px(18.0))
-                        .h(px(18.0))
+                        .w(px(20.0))
+                        .h(px(20.0))
                         .flex_none()
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(4.0))
+                        .rounded(px(5.0))
                         .hover(move |style| style.bg(tb.card_hover))
                         .active(move |style| style.opacity(0.75))
                         .child(
                             icons::icon(icons::CLOSE)
-                                .size(px(11.5))
+                                .size(px(12.0))
                                 .text_color(tb.faint_fg),
                         )
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
@@ -1030,17 +1030,17 @@ impl Render for AtlasView {
 
             let mut settings_pill = div()
                 .id(ElementId::named_usize("tab-pill-settings", 0))
-                .h(px(30.0))
+                .h(px(32.0))
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
-                .px(px(10.0))
-                .max_w(px(220.0))
-                .min_w(px(70.0))
+                .gap(px(9.0))
+                .px(px(12.0))
+                .max_w(px(240.0))
+                .min_w(px(80.0))
                 .overflow_hidden()
                 .flex_shrink()
-                .rounded(px(6.0))
+                .rounded(px(7.0))
                 .bg(pill_bg)
                 .border_1()
                 .border_color(pill_border)
@@ -1070,11 +1070,11 @@ impl Render for AtlasView {
                 .child(
                     div()
                         .text_color(pill_icon)
-                        .child(icons::icon(icons::SETTINGS).size(px(15.5)).text_color(pill_icon)),
+                        .child(icons::icon(icons::SETTINGS).size(px(16.5)).text_color(pill_icon)),
                 )
                 .child(
                     div()
-                        .text_size(px(13.0))
+                        .text_size(px(13.5))
                         .font_weight(if active {
                             FontWeight::MEDIUM
                         } else {
@@ -1086,18 +1086,18 @@ impl Render for AtlasView {
                 .child(
                     div()
                         .id(ElementId::named_usize("tab-close-settings", 0))
-                        .w(px(18.0))
-                        .h(px(18.0))
+                        .w(px(20.0))
+                        .h(px(20.0))
                         .flex_none()
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(4.0))
+                        .rounded(px(5.0))
                         .hover(move |style| style.bg(tb.card_hover))
                         .active(move |style| style.opacity(0.75))
                         .child(
                             icons::icon(icons::CLOSE)
-                                .size(px(11.5))
+                                .size(px(12.0))
                                 .text_color(tb.faint_fg),
                         )
                         .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -1221,7 +1221,7 @@ impl Render for AtlasView {
             };
             let btn = div()
                 .id(ElementId::named_usize("window-control", index))
-                .w(px(44.0))
+                .w(px(46.0))
                 .h(relative(1.0))
                 .flex()
                 .items_center()
@@ -1234,7 +1234,7 @@ impl Render for AtlasView {
                 }))
                 .child(
                     icons::icon(icon_path)
-                        .size(px(14.0))
+                        .size(px(14.5))
                         .text_color(ink),
                 )
                 .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {

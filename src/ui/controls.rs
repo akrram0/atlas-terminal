@@ -34,39 +34,39 @@ pub fn stepper(
         .flex()
         .flex_row()
         .items_center()
-        .gap(px(4.0))
+        .gap(px(5.0))
         .child(
             div()
                 .id(ElementId::named_usize("stepper-dec", id))
-                .w(px(26.0))
-                .h(px(26.0))
+                .w(px(32.0))
+                .h(px(32.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.0))
+                .rounded(px(6.0))
                 .bg(btn_bg)
                 .border_1()
                 .border_color(border_c)
                 .hover(move |s| s.bg(hover_bg))
                 .active(move |s| s.bg(active_press_bg).opacity(0.82))
-                .child(icons::icon(icons::MINUS).size(px(10.0)).text_color(fg))
+                .child(icons::icon(icons::MINUS).size(px(12.5)).text_color(fg))
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                     on_dec(view, cx);
                 })),
         )
         .child(
             div()
-                .min_w(px(60.0))
-                .h(px(26.0))
-                .px(px(6.0))
+                .min_w(px(72.0))
+                .h(px(32.0))
+                .px(px(10.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.0))
+                .rounded(px(6.0))
                 .bg(btn_bg)
                 .border_1()
                 .border_color(border_c)
-                .text_size(px(12.0))
+                .text_size(px(13.5))
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(fg)
                 .child(val_text),
@@ -74,18 +74,18 @@ pub fn stepper(
         .child(
             div()
                 .id(ElementId::named_usize("stepper-inc", id))
-                .w(px(26.0))
-                .h(px(26.0))
+                .w(px(32.0))
+                .h(px(32.0))
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(5.0))
+                .rounded(px(6.0))
                 .bg(btn_bg)
                 .border_1()
                 .border_color(border_c)
                 .hover(move |s| s.bg(hover_bg))
                 .active(move |s| s.bg(active_press_bg).opacity(0.82))
-                .child(icons::icon(icons::PLUS).size(px(10.0)).text_color(fg))
+                .child(icons::icon(icons::PLUS).size(px(12.5)).text_color(fg))
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                     on_inc(view, cx);
                 })),
@@ -103,7 +103,7 @@ pub fn toggle_pill(
 ) -> AnyElement {
     let dark = is_dark(theme);
 
-    // Track styles (38×22 capsule)
+    // Track styles (44×26 capsule)
     let track_bg = if enabled {
         theme.accent
     } else if dark {
@@ -129,7 +129,7 @@ pub fn toggle_pill(
         rgba(0x00000026)
     };
 
-    // Thumb styles (15×15 white circular knob)
+    // Thumb styles (20×20 white circular knob)
     let thumb_bg = if enabled {
         rgb(0xFFFFFF)
     } else if dark {
@@ -145,8 +145,8 @@ pub fn toggle_pill(
 
     let mut track = div()
         .id(ElementId::named_usize("settings-toggle", id))
-        .w(px(38.0))
-        .h(px(22.0))
+        .w(px(44.0))
+        .h(px(26.0))
         .p(px(2.5))
         .flex()
         .items_center()
@@ -166,8 +166,8 @@ pub fn toggle_pill(
 
     track = track.child(
         div()
-            .w(px(15.0))
-            .h(px(15.0))
+            .w(px(20.0))
+            .h(px(20.0))
             .rounded_full()
             .border_1()
             .border_color(thumb_border)
@@ -227,16 +227,16 @@ pub fn pill_button(
 
     let button = div()
         .id(ElementId::named_usize("settings-pill", id))
-        .h(px(26.0))
-        .px(px(10.0))
+        .h(px(32.0))
+        .px(px(14.0))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(6.0))
+        .rounded(px(7.0))
         .border_1()
         .border_color(border_color)
         .bg(bg)
-        .text_size(px(12.0))
+        .text_size(px(13.5))
         .font_weight(if active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
         .text_color(fg)
         .hover(move |style| style.bg(if active { bg } else { hover_bg }))
@@ -266,9 +266,9 @@ pub fn segmented_control<T: Clone + PartialEq + 'static>(
         .flex()
         .flex_row()
         .items_center()
-        .p(px(2.5))
-        .gap(px(2.0))
-        .rounded(px(7.0))
+        .p(px(3.0))
+        .gap(px(3.0))
+        .rounded(px(8.0))
         .bg(container_bg)
         .border_1()
         .border_color(container_border);
@@ -299,16 +299,16 @@ pub fn segmented_control<T: Clone + PartialEq + 'static>(
 
         let item = div()
             .id(ElementId::named_usize(name, idx))
-            .h(px(24.0))
-            .px(px(10.0))
+            .h(px(30.0))
+            .px(px(14.0))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(5.0))
+            .rounded(px(6.0))
             .bg(sel_bg)
             .border_1()
             .border_color(sel_border)
-            .text_size(px(12.0))
+            .text_size(px(13.0))
             .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
             .text_color(sel_fg)
             .cursor_pointer()

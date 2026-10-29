@@ -2066,16 +2066,27 @@ pub(crate) fn parse_github_release(
         detected_version = format!("{maj}.{min}.{pat}");
     }
 
-    let target_sha = release
+    let target_sha_raw = release
         .target_commitish
         .as_deref()
         .map(|c| if c.len() > 7 { &c[..7] } else { c })
         .unwrap_or("")
         .trim();
 
+    let mut resolved_sha = target_sha_raw.to_ascii_lowercase();
+    if (resolved_sha == "main" || resolved_sha.len() < 7) && !notes.is_empty() {
+        if let Some(pos) = notes.find("from commit ") {
+            let after = &notes[pos + "from commit ".len()..];
+            let candidate: String = after.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+            if candidate.len() >= 7 {
+                resolved_sha = candidate[..7].to_ascii_lowercase();
+            }
+        }
+    }
+
     let display_version = if channel == UpdateChannel::Preview {
-        if !target_sha.is_empty() && !detected_version.contains(target_sha) {
-            format!("{detected_version}-preview+{target_sha}")
+        if !resolved_sha.is_empty() && !detected_version.contains(&resolved_sha) {
+            format!("{detected_version}-preview+{resolved_sha}")
         } else if !detected_version.contains("preview") {
             format!("{detected_version}-preview")
         } else {
@@ -2094,9 +2105,11 @@ pub(crate) fn parse_github_release(
                 (Some(r), Some(c)) if r > c => true,
                 (Some(r), Some(c)) if r < c => false,
                 (Some(_), Some(_)) => {
-                    let local_sha = current_commit.trim();
-                    if !target_sha.is_empty() && !local_sha.is_empty() {
-                        !target_sha.eq_ignore_ascii_case(local_sha)
+                    let local_sha = current_commit.trim().to_ascii_lowercase();
+                    if !resolved_sha.is_empty() && !local_sha.is_empty() {
+                        let is_same = resolved_sha.starts_with(&local_sha)
+                            || local_sha.starts_with(&resolved_sha);
+                        !is_same
                     } else {
                         false
                     }

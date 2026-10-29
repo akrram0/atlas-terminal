@@ -21,14 +21,14 @@ impl AtlasView {
         let mut panel = div()
             .id(ElementId::named_usize("update-panel", 0))
             .absolute()
-            .top(px(40.0))
-            .right(px(14.0))
-            .w(px(330.0))
+            .top(px(46.0))
+            .right(px(16.0))
+            .w(px(390.0))
             .flex()
             .flex_col()
-            .gap(px(10.0))
-            .p(px(14.0))
-            .rounded(px(10.0))
+            .gap(px(12.0))
+            .p(px(18.0))
+            .rounded(px(12.0))
             .bg(theme.elevated_bg)
             .border_1()
             .border_color(theme.elevated_border)
@@ -44,15 +44,15 @@ impl AtlasView {
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(8.0))
+                    .gap(px(10.0))
                     .child(
                         icons::icon(icons::ATLAS_MARK)
-                            .size(px(14.0))
+                            .size(px(16.0))
                             .text_color(theme.accent),
                     )
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(14.5))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(theme.chrome_fg_active)
                             .child("Software Update"),
@@ -61,15 +61,15 @@ impl AtlasView {
             .child(
                 div()
                     .id(ElementId::named_usize("update-close-btn", 0))
-                    .w(px(22.0))
-                    .h(px(22.0))
+                    .w(px(26.0))
+                    .h(px(26.0))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(5.0))
+                    .rounded(px(6.0))
                     .text_color(theme.faint_fg)
                     .hover(move |s| s.bg(item_hover).text_color(theme.chrome_fg_active))
-                    .child(icons::icon(icons::CLOSE).size(px(11.0)).text_color(theme.faint_fg))
+                    .child(icons::icon(icons::CLOSE).size(px(12.5)).text_color(theme.faint_fg))
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                         view.dismiss_update_panel(cx);
                     })),
@@ -432,41 +432,41 @@ impl AtlasView {
                         let kind = if update.is_incremental() { "Delta" } else { "Full" };
                         ver_row = ver_row.child(
                             div()
-                                .px(px(6.0))
-                                .py(px(1.5))
-                                .rounded(px(4.0))
+                                .px(px(8.0))
+                                .py(px(2.5))
+                                .rounded(px(5.0))
                                 .bg(theme.panel_bg)
                                 .border_1()
                                 .border_color(theme.hairline)
-                                .text_size(px(10.5))
+                                .text_size(px(12.0))
                                 .text_color(theme.chrome_fg)
                                 .child(format!("{kind} · {}", format_bytes(bytes))),
                         );
                     }
 
                     let title_line = div()
-                        .text_size(px(12.0))
+                        .text_size(px(13.5))
                         .text_color(theme.chrome_fg)
                         .child(update.title.clone());
 
                     let mut body = div()
                         .flex()
                         .flex_col()
-                        .gap(px(6.0))
+                        .gap(px(8.0))
                         .child(ver_row)
                         .child(title_line);
 
                     if !update.notes.trim().is_empty() {
                         body = body.child(
                             div()
-                                .max_h(px(90.0))
+                                .max_h(px(110.0))
                                 .overflow_hidden()
-                                .p(px(8.0))
-                                .rounded(px(6.0))
+                                .p(px(10.0))
+                                .rounded(px(7.0))
                                 .bg(theme.panel_bg)
                                 .border_1()
                                 .border_color(theme.hairline)
-                                .text_size(px(11.0))
+                                .text_size(px(12.5))
                                 .text_color(theme.chrome_fg)
                                 .child(update.notes.trim().to_string()),
                         );
@@ -479,18 +479,18 @@ impl AtlasView {
                         .flex_row()
                         .items_center()
                         .justify_between()
-                        .pt(px(4.0))
+                        .pt(px(6.0))
                         .child(
                             div()
                                 .id(ElementId::named_usize("update-skip-action", 0))
-                                .h(px(26.0))
-                                .px(px(8.0))
+                                .h(px(32.0))
+                                .px(px(12.0))
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .rounded(px(5.0))
+                                .rounded(px(6.0))
                                 .hover(move |s| s.bg(item_hover))
-                                .text_size(px(11.5))
+                                .text_size(px(13.0))
                                 .text_color(theme.faint_fg)
                                 .child("Skip")
                                 .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
@@ -502,18 +502,18 @@ impl AtlasView {
                                 .flex()
                                 .flex_row()
                                 .items_center()
-                                .gap(px(6.0))
+                                .gap(px(8.0))
                                 .child(
                                     div()
                                         .id(ElementId::named_usize("update-notes-link", 0))
-                                        .h(px(26.0))
-                                        .px(px(8.0))
+                                        .h(px(32.0))
+                                        .px(px(12.0))
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .rounded(px(5.0))
+                                        .rounded(px(6.0))
                                         .hover(move |s| s.bg(item_hover))
-                                        .text_size(px(11.5))
+                                        .text_size(px(13.0))
                                         .text_color(theme.chrome_fg)
                                         .child("Notes")
                                         .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
@@ -523,22 +523,22 @@ impl AtlasView {
                                 .child(
                                     div()
                                         .id(ElementId::named_usize("update-install-action", 0))
-                                        .h(px(26.0))
-                                        .px(px(12.0))
+                                        .h(px(32.0))
+                                        .px(px(16.0))
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .rounded(px(5.0))
+                                        .rounded(px(6.0))
                                         .bg(theme.accent)
                                         .hover(move |s| s.opacity(0.88))
-                                        .text_size(px(12.0))
-                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_size(px(13.0))
+                                        .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(rgb(0xFFFFFF))
                                         .child(if update.is_incremental() {
-                                            "Download Delta"
-                                        } else {
-                                            "Download & Update"
-                                        })
+                                             "Download Delta"
+                                         } else {
+                                             "Download & Update"
+                                         })
                                         .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                                             view.start_download_update(cx);
                                         })),

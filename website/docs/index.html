@@ -89,26 +89,24 @@
 
         <!-- Article: Installation -->
         <article class="docs-article" id="installation">
-          <div class="section-tag">[ 01 // getting started ]</div>
           <h1>Installation & Setup</h1>
           <p>Atlas Terminal is distributed as both an automated Windows installer and a standalone portable archive.</p>
 
-          <h3>Method 1: Windows Installer (.exe)</h3>
+          <h2>Method 1: Windows Installer (.exe)</h2>
           <p>The standard installer integrates Atlas into your Windows Start Menu, configures desktop shortcuts, and registers background delta auto-updates.</p>
           <pre><code># Download the latest installer from GitHub Releases:
 https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
-          <h3>Method 2: Windows Package Manager (winget)</h3>
+          <h2>Method 2: Windows Package Manager (winget)</h2>
           <p>You can install and update Atlas Terminal via the official winget manifest:</p>
           <pre><code>winget install akrram0.atlas-terminal</code></pre>
 
-          <h3>Method 3: Portable Zero-Install Archive</h3>
+          <h2>Method 3: Portable Zero-Install Archive</h2>
           <p>Extract <code>atlas-terminal-windows-x64.zip</code> into any folder (e.g. <code>C:\Tools\Atlas</code>) and run <code>atlas-terminal.exe</code> directly. Your configuration is stored in <code>~/.config/atlas/settings.json</code> (or right next to the executable if <code>portable.txt</code> is present).</p>
         </article>
 
         <!-- Article: Keyboard Shortcuts -->
         <article class="docs-article" id="shortcuts">
-          <div class="section-tag">[ 02 // shortcuts ]</div>
           <h2>Keyboard Shortcuts Reference</h2>
           <p>Every pane, tab, search action, and setting is reachable via home-row hotkeys:</p>
 
@@ -182,7 +180,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: Developer Superpowers -->
         <article class="docs-article" id="dev-superpowers">
-          <div class="section-tag">[ 03 // developer-powerhouse ]</div>
           <h2>Developer Superpowers</h2>
           <p>
             Atlas Terminal is built specifically for software engineers with integrated workflows that eliminate context switching:
@@ -213,7 +210,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: Split Panes & Tabs -->
         <article class="docs-article" id="split-panes">
-          <div class="section-tag">[ 04 // workflows ]</div>
           <h2>Tabs & Split Panes</h2>
           <p>
             Atlas supports nested horizontal and vertical split layouts. Each pane maintains its own independent PTY process, working directory, and mouse capture state.
@@ -225,7 +221,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: Fastfetch Setup -->
         <article class="docs-article" id="fastfetch-setup">
-          <div class="section-tag">[ 04 // graphics ]</div>
           <h2>Fastfetch Inline Images Setup</h2>
           <p>
             Atlas Terminal features native support for the <strong>iTerm2 OSC 1337 image protocol</strong> without requiring Sixel or WebViews. Fastfetch can render your high-resolution distro or custom avatar graphic directly beside system specs.
@@ -262,7 +257,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: Mouse & Hyperlinks -->
         <article class="docs-article" id="mouse-reporting">
-          <div class="section-tag">[ 05 // input ]</div>
           <h2>Modern Mouse Reporting & Hyperlinks</h2>
           <p>
             Atlas Terminal features full SGR mouse tracking (<code>?1000h</code> / <code>?1006h</code>) support. Interactive TUI applications such as Lazygit, OpenCode, Neovim, and Midnight Commander respond seamlessly to mouse clicks, dragging, and wheel scrolling.
@@ -276,7 +270,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: WSL Profiles -->
         <article class="docs-article" id="wsl-profiles">
-          <div class="section-tag">[ 06 // linux ]</div>
           <h2>WSL Linux Profiles & Terminal Forwarding</h2>
           <p>
             Atlas Terminal automatically inspects your Windows Subsystem for Linux installation and creates shell profiles for every registered distribution (Ubuntu, Debian, Arch, Fedora, openSUSE, Alpine).
@@ -288,7 +281,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: Themes & Configuration -->
         <article class="docs-article" id="themes-config">
-          <div class="section-tag">[ 07 // configuration ]</div>
           <h2>Themes, Settings & Configuration</h2>
           <p>
             Atlas Terminal features a native macOS Inset Grouped Settings window (<kbd>Ctrl</kbd> + <kbd>,</kbd>) with visual theme cards, segmented controls, and direct links to configuration files.
@@ -306,7 +298,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: Architecture -->
         <article class="docs-article" id="engine-design">
-          <div class="section-tag">[ 08 // architecture ]</div>
           <h2>DirectX GPUI Rendering Engine</h2>
           <p>
             Atlas Terminal is built in Rust using Zed's GPUI framework. Unlike legacy Win32 consoles or Electron wrappers, Atlas treats the terminal screen as a hardware-rendered DirectX scene:
@@ -320,7 +311,6 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
         <!-- Article: Kinetic Cursor & Scroll Physics -->
         <article class="docs-article" id="cursor-kinematics">
-          <div class="section-tag">[ 09 // physics ]</div>
           <h2>Kinetic Cursor & Scroll Physics</h2>
           <p>
             Rather than jumping instantaneously across characters or snapping line-by-line, Atlas Terminal simulates kinetic motion using critically damped spring equations:
@@ -338,7 +328,6 @@ dy = (target_y - current_y) * (1.0 - (-28.0 * dt).exp());</code></pre>
 
         <!-- Article: Rounded Quad Geometry -->
         <article class="docs-article" id="anti-leak-geometry">
-          <div class="section-tag">[ 10 // rendering ]</div>
           <h2>Rounded Quad Geometry & Anti-Leak Rules</h2>
           <p>
             Windows DWM Acrylic windows have rounded borders (14px outer radius / 13px inner radius). To prevent solid background cells from clipping or poking through the rounded corners, Atlas Terminal enforces strict geometry math in its Rust paint pipeline:
@@ -355,7 +344,6 @@ corner_radii: Corners {
 
         <!-- Article: Procedural Vector Box Drawing & Prompt Precision -->
         <article class="docs-article" id="vector-box-drawing">
-          <div class="section-tag">[ 11 // vector ]</div>
           <h2>Procedural Vector Box Drawing & Prompt Precision</h2>
           <p>
             Modern developer shell prompts (including Starship, Oh-My-Posh, Powerlevel10k, and WSL Arch/Ubuntu default configurations) construct multi-line prompt frames and arrows using Unicode box-drawing characters:
@@ -390,7 +378,6 @@ heavy = max(light + 1.0, light * 2.0);</code></pre>
 
         <!-- Article: Performance Benchmarks & Methodology -->
         <article class="docs-article" id="benchmarks">
-          <div class="section-tag">[ 12 // benchmarks ]</div>
           <h2>Performance Benchmarks &amp; Profiling Methodology</h2>
           <p>
             Atlas Terminal is benchmarked against leading Windows terminals using reproducible, empirical performance testing. All metrics below were recorded on a standard Windows 11 Pro 64-bit developer system (AMD Ryzen 5 / Intel Core processor, NVMe SSD).

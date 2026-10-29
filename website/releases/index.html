@@ -54,42 +54,41 @@
 
   <main class="container">
     <div class="section-header" style="margin-top: 16px;">
-      <div class="section-tag">[ 01 // downloads ]</div>
       <h1 class="section-title">Official Releases & Checksums</h1>
       <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
     </div>
 
-    <!-- Latest Release: v0.1.74 -->
+    <!-- Latest Release: v0.1.83 -->
     <div class="release-card">
       <div class="release-header">
         <div class="release-title">
-          <span>v0.1.74</span>
+          <span>v0.1.83</span>
           <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
             <span class="status-dot"></span> Latest Stable
           </span>
         </div>
-        <div class="release-date">Published 2026-10-27</div>
+        <div class="release-date">Published 2026-10-29</div>
       </div>
 
       <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
-        Architectural rewrite of box-drawing rendering matching Windows Terminal's AtlasEngine: dynamic zoom-aware stroke scaling, GPU anti-aliased vector paths for rounded corners, and seamless tangent continuity at any zoom level.
+        Maximized fullscreen topbar insetting fix, expanded eye-comfort UI scale across tabs, icons, and settings navigation, plus smart commit-hash delta update matching on Preview channel.
       </p>
 
       <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
-        <li><strong>Windows Terminal AtlasEngine Builtin Architecture</strong>: Re-unified all box-drawing and rounded corners into a single procedural pipeline. Eliminates font baseline mismatch, sagging corners, and broken tangents when zooming out.</li>
-        <li><strong>Dynamic Zoom-Aware Stroke Weight</strong>: Stroke widths dynamically scale with cell width (<code>std::max(1.0f, roundf(cw / 6.0f))</code>). When zoomed out, lines and corners scale down to crisp 1px strokes; when zoomed in, they scale up proportionally without blocky stair-stepping.</li>
-        <li><strong>GPU Anti-Aliased Vector Arcs</strong>: Rounded corners (<code>╭</code>, <code>╮</code>, <code>╯</code>, <code>╰</code> / <code>U+256D..=U+2570</code>) are rendered via cubic Bezier vector paths with hardware MSAA on DirectX 12. Stems align precisely to the cell centerline tangents (<code>sy = cy + 0.5</code>, <code>sx = cx + 0.5</code>) and end flush at the cell boundary with zero gaps.</li>
-        <li><strong>Rock-Solid Prompt Continuity</strong>: Starship, Oh-My-Posh, and Arch prompt lines (<code>╭─ archlinux ~</code> and <code>╰─></code>) remain perfectly tangent and connected at every zoom level from 8pt to 36pt.</li>
+        <li><strong>Fullscreen Topbar Insetting</strong>: Resolved titlebar clipping on maximized Windows 11 screens by adjusting <code>WM_NCCALCSIZE</code> client insets to eliminate window border overhang.</li>
+        <li><strong>Comfortable UI Scale</strong>: Expanded topbar height to 40px with 30px tabs, 15.5px vector icons, 44px caption buttons, and a 210px settings drawer for effortless eye comfort.</li>
+        <li><strong>Smart Cloud Delta Updater</strong>: Embedded commit hash validation prevents false-positive update alerts and loops when running preview rolling releases.</li>
+        <li><strong>MSAA Procedural Vector Prompt Arcs</strong>: Continuous cubic Bézier prompt corners that scale dynamically with zoom level without baseline clipping.</li>
       </ul>
 
       <!-- Asset Downloads Grid -->
       <div class="asset-download-grid">
         <!-- Windows Setup Installer -->
         <div class="asset-card">
-          <div class="asset-name">AtlasTerminal-Setup-0.1.74.exe</div>
+          <div class="asset-name">AtlasTerminal-Setup-0.1.83.exe</div>
           <div class="asset-meta">Standard Windows Installer • x64</div>
           <div style="margin-bottom:12px;">
-            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.74/AtlasTerminal-Setup-0.1.74.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.83/AtlasTerminal-Setup-0.1.83.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
@@ -109,7 +108,7 @@
           <div class="asset-name">atlas-terminal-windows-x64.zip</div>
           <div class="asset-meta">Standalone Portable Archive • Extract & Run</div>
           <div style="margin-bottom:12px;">
-            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.74/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.83/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
@@ -127,7 +126,7 @@
     </div>
 
     <!-- Previous Releases Timeline -->
-    <div class="section-tag" style="margin-top:32px;">[ 02 // archive ]</div>
+    <h2 style="font-size:1.25rem;font-weight:600;margin:32px 0 16px;letter-spacing:-0.01em;">Release Archive</h2>
 
     <div class="release-card">
       <div class="release-header">
@@ -176,6 +175,11 @@
         OpenCode package manager path detection precedence and alternate screen solid theme background fixes.
       </p>
     </div>
+
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.1.55</span>
         </div>
         <div class="release-date">Published 2026-10-23</div>
       </div>

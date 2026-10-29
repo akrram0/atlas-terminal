@@ -66,9 +66,10 @@ const LR_DEFAULTSIZE: u32 = 0x0040;
 const DWMWA_NCRENDERING_POLICY: u32 = 2;
 const DWMWA_USE_IMMERSIVE_DARK_MODE: u32 = 20;
 const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
-/// Border colour attribute (Windows 11 22000+). `DWMWA_COLOR_NONE` removes
-/// the 1px DWM outline so the acrylic can run all the way to the edge.
+/// Border colour attribute (Windows 11 22000+). DWMWA_COLOR_DEFAULT restores
+/// the clean system hairline border so acrylic does not bleed or blur at the corners.
 const DWMWA_BORDER_COLOR: u32 = 34;
+const DWMWA_COLOR_DEFAULT: u32 = 0xFFFF_FFFF;
 const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
 // Windows 11 22H2+ system backdrop (the supported replacement for the
 // undocumented accent acrylic on build 22621 and newer).
@@ -76,6 +77,7 @@ const DWMWA_SYSTEMBACKDROP_TYPE: u32 = 38;
 const DWMSBT_NONE: i32 = 1;
 const DWMSBT_TRANSIENTWINDOW: i32 = 3;
 const DWMNCRP_ENABLED: i32 = 2;
+const DWMWCP_DEFAULT: i32 = 0;
 const DWMWCP_ROUND: i32 = 2;
 
 #[repr(C)]
@@ -464,14 +466,15 @@ static LAST_WINDOW_TITLE: std::sync::Mutex<Option<String>> = std::sync::Mutex::n
 /// Set the native OS window title (shown in Taskbar thumbnail preview, Alt+Tab, and Task Manager).
 pub fn set_window_title(title: &str) {
     let mut last = LAST_WINDOW_TITLE.lock().unwrap_or_else(|e| e.into_inner());
+    let raw = MAIN_HWND.load(Ordering::Relaxed);
+    if raw == 0 {
+        *last = Some(title.to_string());
+        return;
+    }
     if last.as_deref() == Some(title) {
         return;
     }
     *last = Some(title.to_string());
-    let raw = MAIN_HWND.load(Ordering::Relaxed);
-    if raw == 0 {
-        return;
-    }
     let mut wide: Vec<u16> = title.encode_utf16().collect();
     wide.push(0);
     unsafe {
@@ -559,47 +562,12 @@ unsafe extern "system" fn window_proc(
 ) -> Lresult {
     match msg {
         WM_GETMINMAXINFO => {
-            // A frameless WS_THICKFRAME window is normally maximized to the
-            // work area *plus* the resize frame, outdented past the screen.
-            // Pinning the maximized rect to the work area lets the client
-            // cover the whole window (see WM_NCCALCSIZE), so the acrylic
-            // backdrop reaches the screen edges instead of leaving an
-            // unblurred frame ring around a maximized window.
             let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
-            let result = if prev == 0 {
+            if prev == 0 {
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
             } else {
                 unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
-            };
-            let info = lparam as *mut MinMaxInfo;
-            let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
-            if !info.is_null() && !monitor.is_null() {
-                let mut mi = MonitorInfo {
-                    cb_size: core::mem::size_of::<MonitorInfo>() as u32,
-                    rc_monitor: Rect::default(),
-                    rc_work: Rect::default(),
-                    dw_flags: 0,
-                };
-                if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
-                    unsafe {
-                        (*info).pt_max_position.x = mi.rc_work.left - mi.rc_monitor.left;
-                        (*info).pt_max_position.y = mi.rc_work.top - mi.rc_monitor.top;
-                        (*info).pt_max_size.x = mi.rc_work.right - mi.rc_work.left;
-                        (*info).pt_max_size.y = mi.rc_work.bottom - mi.rc_work.top;
-                        // DefWindowProc normally fills the tracking limits;
-                        // keep a sane fallback if a custom wndproc did not.
-                        if (*info).pt_max_track_size.x <= 0 {
-                            (*info).pt_max_track_size.x =
-                                mi.rc_monitor.right - mi.rc_monitor.left;
-                        }
-                        if (*info).pt_max_track_size.y <= 0 {
-                            (*info).pt_max_track_size.y =
-                                mi.rc_monitor.bottom - mi.rc_monitor.top;
-                        }
-                    }
-                }
             }
-            result
         }
         WM_NCCALCSIZE => {
             if unsafe { IsZoomed(hwnd) } != 0 {
@@ -809,8 +777,13 @@ pub fn apply() {
                     SetWindowLongW(hwnd, GWL_STYLE, styled);
 
                     // 2b. Set initial native window title for taskbar preview, Alt+Tab, and Task Manager.
-                    let title: Vec<u16> = "Atlas Terminal\0".encode_utf16().collect();
-                    SetWindowTextW(hwnd, title.as_ptr());
+                    let initial_title = {
+                        let last = LAST_WINDOW_TITLE.lock().unwrap_or_else(|e| e.into_inner());
+                        last.clone().unwrap_or_else(|| "Atlas Terminal".to_string())
+                    };
+                    let mut wide: Vec<u16> = initial_title.encode_utf16().collect();
+                    wide.push(0);
+                    SetWindowTextW(hwnd, wide.as_ptr());
 
                     // 3. Force the frame change: reruns WM_NCCALCSIZE
                     //    through the subclass and makes DWM re-evaluate the
@@ -878,9 +851,9 @@ pub fn apply() {
                         &preference as *const i32 as *const core::ffi::c_void,
                         core::mem::size_of::<i32>() as u32,
                     );
-                    // Remove the 1px DWM outline: at full size it reads as a
-                    // sharp, unblurred rim around the acrylic.
-                    let border: u32 = DWMWA_COLOR_NONE;
+                    // Use default system border to cleanly frame rounded corners and
+                    // prevent acrylic blur leakage or fuzzy smudges at the corners.
+                    let border: u32 = DWMWA_COLOR_DEFAULT;
                     let _ = DwmSetWindowAttribute(
                         hwnd,
                         DWMWA_BORDER_COLOR,

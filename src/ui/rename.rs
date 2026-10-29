@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, Context, ElementId, IntoElement,
+    Animation, AnimationExt, AnyElement, Context, ElementId, FontWeight, IntoElement,
     KeyDownEvent, Keystroke, Window, div, px,
 };
 
@@ -82,8 +82,8 @@ impl AtlasView {
 
     pub fn rename_dialog(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let mut field = div()
-            .h(px(34.0))
-            .px(px(12.0))
+            .h(px(40.0))
+            .px(px(14.0))
             .flex()
             .flex_row()
             .items_center()
@@ -92,11 +92,11 @@ impl AtlasView {
             .bg(theme.card_hover)
             .border_1()
             .border_color(theme.elevated_border)
-            .text_size(px(13.0))
+            .text_size(px(14.5))
             .text_color(theme.chrome_fg_active)
             .child(self.rename_value.clone());
         if self.cursor_on {
-            field = field.child(div().w(px(1.5)).h(px(17.0)).rounded_full().bg(theme.accent));
+            field = field.child(div().w(px(2.0)).h(px(20.0)).rounded_full().bg(theme.accent));
         }
 
         div()
@@ -110,11 +110,11 @@ impl AtlasView {
             .child(
                 div()
                     .id(ElementId::named_usize("rename-panel", 0))
-                    .w(px(430.0))
+                    .w(px(480.0))
                     .flex()
                     .flex_col()
-                    .gap(px(12.0))
-                    .p(px(16.0))
+                    .gap(px(14.0))
+                    .p(px(20.0))
                     .rounded(px(12.0))
                     .bg(theme.elevated_bg)
                     .border_1()
@@ -127,14 +127,15 @@ impl AtlasView {
                     }))
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(15.0))
+                            .font_weight(FontWeight::SEMIBOLD)
                             .text_color(theme.chrome_fg_active)
                             .child("Rename tab"),
                     )
                     .child(field)
                     .child(
                         div()
-                            .text_size(px(10.5))
+                            .text_size(px(12.0))
                             .text_color(theme.faint_fg)
                             .child("Enter to apply · Esc to cancel · empty restores the shell name"),
                     ),

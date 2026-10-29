@@ -126,10 +126,10 @@ impl AtlasView {
 
         let section_header = |label: &'static str| -> AnyElement {
             div()
-                .px(px(16.0))
-                .pt(px(14.0))
-                .pb(px(6.0))
-                .text_size(px(11.5))
+                .px(px(20.0))
+                .pt(px(18.0))
+                .pb(px(10.0))
+                .text_size(px(13.0))
                 .font_weight(FontWeight::BOLD)
                 .text_color(sc_section)
                 .child(label)
@@ -142,9 +142,9 @@ impl AtlasView {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .px(px(16.0))
-                .py(px(12.0))
-                .gap(px(14.0));
+                .px(px(20.0))
+                .py(px(16.0))
+                .gap(px(18.0));
             if !is_last {
                 row = row.border_b_1().border_color(theme.hairline);
             }
@@ -152,17 +152,17 @@ impl AtlasView {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(2.0))
+                    .gap(px(3.0))
                     .child(
                         div()
-                            .text_size(px(13.5))
+                            .text_size(px(14.5))
                             .font_weight(FontWeight::MEDIUM)
                             .text_color(sc_label)
                             .child(label),
                     )
                     .children(desc.map(|d| {
                         div()
-                            .text_size(px(11.5))
+                            .text_size(px(12.5))
                             .text_color(sc_desc)
                             .child(d)
                     })),
@@ -171,7 +171,7 @@ impl AtlasView {
             .into_any_element()
         };
 
-        // --- Left Sidebar (210px) ---
+        // --- Left Sidebar (220px) ---
         let nav_items = [
             (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance", icons::SLIDERS),
@@ -180,30 +180,30 @@ impl AtlasView {
 
         let mut sidebar = div()
             .id(ElementId::named_usize("settings-sidebar-scroll", 0))
-            .w(px(210.0))
+            .w(px(220.0))
             .flex_shrink_0()
             .h(relative(1.0))
             .min_h(px(0.0))
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(4.0))
+            .gap(px(6.0))
             .border_r_1()
             .border_color(theme.hairline)
-            .p(px(14.0))
+            .p(px(16.0))
             .child(
                 div()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(8.0))
-                    .px(px(10.0))
-                    .py(px(10.0))
-                    .mb(px(10.0))
-                    .child(icons::icon(icons::SETTINGS).size(px(18.0)).text_color(theme.accent))
+                    .gap(px(10.0))
+                    .px(px(12.0))
+                    .py(px(12.0))
+                    .mb(px(12.0))
+                    .child(icons::icon(icons::SETTINGS).size(px(19.0)).text_color(theme.accent))
                     .child(
                         div()
-                            .text_size(px(15.0))
+                            .text_size(px(16.0))
                             .font_weight(FontWeight::BOLD)
                             .text_color(sc_title)
                             .child("Preferences"),
@@ -226,17 +226,17 @@ impl AtlasView {
             sidebar = sidebar.child(
                 div()
                     .id(ElementId::named_usize("settings-nav-item", nav_idx))
-                    .h(px(38.0))
-                    .px(px(12.0))
+                    .h(px(40.0))
+                    .px(px(14.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(10.0))
-                    .rounded(px(7.0))
+                    .gap(px(12.0))
+                    .rounded(px(8.0))
                     .bg(item_bg)
                     .text_color(item_fg)
                     .hover(move |s| s.bg(hover_bg))
-                    .child(icons::icon(icon).size(px(16.5)).text_color(item_fg))
+                    .child(icons::icon(icon).size(px(17.5)).text_color(item_fg))
                     .child(
                         div()
                             .text_size(px(14.0))
@@ -306,22 +306,22 @@ impl AtlasView {
 
             let theme_card = div()
                 .id(ElementId::named_usize("theme-card", idx))
-                .w(px(150.0))
+                .w(px(180.0))
                 .flex()
                 .flex_col()
-                .rounded(px(8.0))
+                .rounded(px(10.0))
                 .border_1()
                 .border_color(card_border)
                 .bg(card_bg)
-                .p(px(6.0))
+                .p(px(8.0))
                 .cursor_pointer()
                 .hover(move |s| s.bg(theme.card_hover))
                 .child(
                     // Mini Window Mockup
                     div()
-                        .h(px(52.0))
+                        .h(px(72.0))
                         .w(relative(1.0))
-                        .rounded(px(5.0))
+                        .rounded(px(6.0))
                         .bg(preview_theme.bg)
                         .border_1()
                         .border_color(preview_theme.elevated_border)
@@ -331,22 +331,22 @@ impl AtlasView {
                         .child(
                             // Window Header
                             div()
-                                .h(px(11.0))
-                                .px(px(4.0))
+                                .h(px(14.0))
+                                .px(px(6.0))
                                 .bg(preview_theme.panel_bg)
                                 .flex()
                                 .flex_row()
                                 .items_center()
-                                .gap(px(3.0))
-                                .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgb(0xFF5F56)))
-                                .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgb(0xFFBD2E)))
-                                .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgb(0x27C93F))),
+                                .gap(px(4.0))
+                                .child(div().w(px(4.5)).h(px(4.5)).rounded_full().bg(rgb(0xFF5F56)))
+                                .child(div().w(px(4.5)).h(px(4.5)).rounded_full().bg(rgb(0xFFBD2E)))
+                                .child(div().w(px(4.5)).h(px(4.5)).rounded_full().bg(rgb(0x27C93F))),
                         )
                         .child(
                             // Terminal Body Preview
                             div()
                                 .flex_1()
-                                .p(px(4.0))
+                                .p(px(6.0))
                                 .flex()
                                 .flex_col()
                                 .justify_between()
@@ -355,52 +355,52 @@ impl AtlasView {
                                         .flex()
                                         .flex_row()
                                         .items_center()
-                                        .gap(px(2.0))
+                                        .gap(px(3.0))
                                         .child(
                                             div()
-                                                .text_size(px(8.0))
+                                                .text_size(px(10.5))
                                                 .font_weight(FontWeight::BOLD)
                                                 .text_color(preview_theme.accent)
                                                 .child("~ $"),
                                         )
                                         .child(
                                             div()
-                                                .w(px(2.5))
-                                                .h(px(7.0))
+                                                .w(px(3.5))
+                                                .h(px(9.0))
                                                 .bg(preview_theme.cursor),
                                         ),
                                 )
                                 .child(
-                                    // 4 Swatch Dots
+                                    // 3 Swatch Dots
                                     div()
                                         .flex()
                                         .flex_row()
                                         .justify_end()
-                                        .gap(px(3.0))
-                                        .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(preview_theme.accent))
-                                        .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(preview_theme.fg))
-                                        .child(div().w(px(5.0)).h(px(5.0)).rounded_full().bg(preview_theme.chrome_fg)),
+                                        .gap(px(4.0))
+                                        .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(preview_theme.accent))
+                                        .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(preview_theme.fg))
+                                        .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(preview_theme.chrome_fg)),
                                 ),
                         ),
                 )
                 .child(
                     // Label & Indicator
                     div()
-                        .pt(px(6.0))
-                        .px(px(2.0))
+                        .pt(px(8.0))
+                        .px(px(4.0))
                         .flex()
                         .flex_row()
                         .items_center()
                         .justify_between()
                         .child(
                             div()
-                                .text_size(px(11.5))
+                                .text_size(px(13.5))
                                 .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
                                 .text_color(if is_sel { sc_title } else { sc_label })
                                 .child(preset.name),
                         )
                         .children(if is_sel {
-                            Some(icons::icon(icons::CHECK).size(px(12.0)).text_color(theme.accent))
+                            Some(icons::icon(icons::CHECK).size(px(14.0)).text_color(theme.accent))
                         } else {
                             None
                         }),
@@ -596,12 +596,12 @@ impl AtlasView {
 
             let card_el = div()
                 .id(ElementId::named_usize("shell-card", idx))
-                .w(px(145.0))
+                .w(px(165.0))
                 .flex()
                 .flex_col()
-                .gap(px(4.0))
-                .p(px(10.0))
-                .rounded(px(8.0))
+                .gap(px(6.0))
+                .p(px(12.0))
+                .rounded(px(10.0))
                 .border_1()
                 .border_color(card_border)
                 .bg(card_bg)
@@ -614,23 +614,23 @@ impl AtlasView {
                         .flex_row()
                         .items_center()
                         .justify_between()
-                        .child(icons::icon(s_icon).size(px(16.0)).text_color(if is_sel { theme.accent } else { sc_label }))
+                        .child(icons::icon(s_icon).size(px(19.0)).text_color(if is_sel { theme.accent } else { sc_label }))
                         .children(if is_sel {
-                            Some(icons::icon(icons::CHECK).size(px(12.0)).text_color(theme.accent))
+                            Some(icons::icon(icons::CHECK).size(px(14.0)).text_color(theme.accent))
                         } else {
                             None
                         }),
                 )
                 .child(
                     div()
-                        .text_size(px(12.0))
+                        .text_size(px(14.0))
                         .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
                         .text_color(if is_sel { sc_title } else { sc_label })
                         .child(s_title),
                 )
                 .child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(12.0))
                         .text_color(sc_desc)
                         .child(s_desc),
                 )
@@ -791,6 +791,7 @@ impl AtlasView {
                     view.manual_status_message = None;
                     view.sync_and_save_settings();
                     view.trigger_update_check(true, cx);
+                    cx.notify();
                 }
             },
             cx,
@@ -1006,18 +1007,18 @@ impl AtlasView {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .px(px(14.0))
-                .py(px(9.0))
+                .px(px(18.0))
+                .py(px(14.0))
                 .border_b_1()
                 .border_color(theme.hairline);
 
             let mut left_col = div()
                 .flex()
                 .flex_col()
-                .gap(px(1.5))
+                .gap(px(2.0))
                 .child(
                     div()
-                        .text_size(px(12.5))
+                        .text_size(px(14.5))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(sc_label)
                         .child(action_display_name(action)),
@@ -1026,7 +1027,7 @@ impl AtlasView {
             if let Some(other) = conflict {
                 left_col = left_col.child(
                     div()
-                        .text_size(px(10.5))
+                        .text_size(px(11.5))
                         .text_color(rgb(0xE6A700))
                         .child(format!("Conflict with {other}")),
                 );
@@ -1073,13 +1074,13 @@ impl AtlasView {
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(6.0));
+                .gap(px(8.0));
 
             if is_custom && !is_recording {
                 right_col = right_col.child(
                     div()
                         .id(ElementId::named_usize("reset-shortcut", idx))
-                        .text_size(px(11.0))
+                        .text_size(px(12.5))
                         .text_color(sc_desc)
                         .cursor_pointer()
                         .hover(move |s| s.text_color(sc_label))
@@ -1095,16 +1096,16 @@ impl AtlasView {
             right_col = right_col.child(
                 div()
                     .id(ElementId::named_usize("keycap-btn", idx))
-                    .h(px(24.0))
-                    .px(px(8.0))
+                    .h(px(30.0))
+                    .px(px(12.0))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .rounded(px(5.0))
+                    .rounded(px(6.0))
                     .bg(keycap_bg)
                     .border_1()
                     .border_color(keycap_border)
-                    .text_size(px(11.5))
+                    .text_size(px(13.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(keycap_fg)
                     .cursor_pointer()
@@ -1240,10 +1241,10 @@ impl AtlasView {
             .flex_row()
             .items_center()
             .justify_between()
-            .mb(px(18.0))
+            .mb(px(22.0))
             .child(
                 div()
-                    .text_size(px(19.0))
+                    .text_size(px(22.0))
                     .font_weight(FontWeight::BOLD)
                     .text_color(sc_title)
                     .child(match self.settings_tab {
@@ -1255,22 +1256,22 @@ impl AtlasView {
             .child(
                 div()
                     .id(ElementId::named_usize("settings-top-back-btn", 0))
-                    .h(px(32.0))
-                    .px(px(12.0))
+                    .h(px(36.0))
+                    .px(px(16.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(6.0))
-                    .rounded(px(6.0))
+                    .gap(px(8.0))
+                    .rounded(px(8.0))
                     .border_1()
                     .border_color(sc_back_border)
                     .bg(sc_back_bg)
                     .hover(move |s| s.bg(theme.card_hover))
                     .text_color(sc_back_fg)
-                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
+                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(16.0)))
                     .child(
                         div()
-                            .text_size(px(12.5))
+                            .text_size(px(13.5))
                             .font_weight(FontWeight::MEDIUM)
                             .child("Back to Terminal (Esc)"),
                     )
@@ -1290,12 +1291,12 @@ impl AtlasView {
             .min_h(px(0.0))
             .overflow_y_scroll()
             .track_scroll(&self.settings_scroll_handle)
-            .p(px(22.0))
-            .pb(px(80.0))
+            .p(px(32.0))
+            .pb(px(88.0))
             .child(
                 div()
                     .w(relative(1.0))
-                    .max_w(px(760.0))
+                    .max_w(px(880.0))
                     .min_w(px(0.0))
                     .child(content_header)
                     .child(content_body),

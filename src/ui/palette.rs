@@ -439,13 +439,13 @@ impl AtlasView {
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(2.0))
+            .gap(px(3.0))
             .flex_1()
-            .text_size(px(13.0));
+            .text_size(px(14.5));
         if self.palette_query.is_empty() {
             if self.cursor_on {
                 text_row = text_row.child(
-                    div().w(px(1.5)).h(px(17.0)).rounded_full().bg(theme.accent),
+                    div().w(px(2.0)).h(px(19.0)).rounded_full().bg(theme.accent),
                 );
             }
             text_row = text_row.child(div().text_color(theme.faint_fg).child("Type a command…"));
@@ -457,7 +457,7 @@ impl AtlasView {
             );
             if self.cursor_on {
                 text_row = text_row.child(
-                    div().w(px(1.5)).h(px(17.0)).rounded_full().bg(theme.accent),
+                    div().w(px(2.0)).h(px(19.0)).rounded_full().bg(theme.accent),
                 );
             }
         }
@@ -466,34 +466,34 @@ impl AtlasView {
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(10.0))
-            .h(px(46.0))
-            .px(px(16.0))
+            .gap(px(12.0))
+            .h(px(52.0))
+            .px(px(18.0))
             .text_color(theme.chrome_fg)
-            .child(icons::icon(icons::SEARCH).size(px(14.0)).text_color(theme.chrome_fg))
+            .child(icons::icon(icons::SEARCH).size(px(16.5)).text_color(theme.chrome_fg))
             .child(text_row);
 
         let mut list = div().flex().flex_col().p(px(6.0)).relative();
         if matches.is_empty() {
             list = list.child(
                 div()
-                    .px(px(12.0))
-                    .py(px(10.0))
-                    .text_size(px(12.0))
+                    .px(px(14.0))
+                    .py(px(12.0))
+                    .text_size(px(13.0))
                     .text_color(theme.faint_fg)
                     .child("No matching commands"),
             );
         } else {
             // Floating sliding selection pill (Raycast/Spotlight smooth glide)
-            let pill_top = 6.0 + self.palette_anim_index * 36.0;
+            let pill_top = 6.0 + self.palette_anim_index * 42.0;
             list = list.child(
                 div()
                     .absolute()
                     .left(px(6.0))
                     .right(px(6.0))
                     .top(px(pill_top))
-                    .h(px(36.0))
-                    .rounded(px(7.0))
+                    .h(px(42.0))
+                    .rounded(px(8.0))
                     .bg(theme.card_active),
             );
 
@@ -501,26 +501,26 @@ impl AtlasView {
                 let hover = theme.card_hover;
                 let row = div()
                     .id(ElementId::named_usize("palette-command", index))
-                    .h(px(36.0))
-                    .px(px(12.0))
+                    .h(px(42.0))
+                    .px(px(14.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(10.0))
-                    .rounded(px(7.0))
+                    .gap(px(12.0))
+                    .rounded(px(8.0))
                     .text_color(theme.chrome_fg)
                     .hover(move |style| style.bg(hover))
-                    .child(icons::icon(icon).size(px(13.0)).text_color(theme.chrome_fg))
+                    .child(icons::icon(icon).size(px(16.0)).text_color(theme.chrome_fg))
                     .child(
                         div()
                             .flex_1()
-                            .text_size(px(12.5))
+                            .text_size(px(14.0))
                             .text_color(theme.chrome_fg_active)
                             .child(label),
                     )
                     .child(
                         div()
-                            .text_size(px(10.5))
+                            .text_size(px(12.0))
                             .text_color(theme.faint_fg)
                             .child(shortcut),
                     )
@@ -533,7 +533,7 @@ impl AtlasView {
 
         div()
             .absolute()
-            .top(px(54.0))
+            .top(px(60.0))
             .left(px(0.0))
             .right(px(0.0))
             .flex()
@@ -542,7 +542,7 @@ impl AtlasView {
             .child(
                 div()
                     .id(ElementId::named_usize("palette-panel", 0))
-                    .w(px(560.0))
+                    .w(px(600.0))
                     .flex()
                     .flex_col()
                     .rounded(px(12.0))
