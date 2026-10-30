@@ -478,26 +478,25 @@ impl Element for TerminalElement {
                 };
 
                 if let Some((sel_c0, sel_c1)) = sel_span {
-                        if sel_c1 >= sel_c0 {
-                            let sel_bg = Rgba {
-                                r: theme.accent.r,
-                                g: theme.accent.g,
-                                b: theme.accent.b,
-                                a: 0.38,
-                            };
-                            let rx0 = x(sel_c0);
-                            let rx1 = x(sel_c1 + 1).min(left + cell_width * cols as f32);
-                            let ry1 = y1;
+                    if sel_c1 >= sel_c0 {
+                        let sel_bg = Rgba {
+                            r: theme.accent.r,
+                            g: theme.accent.g,
+                            b: theme.accent.b,
+                            a: 0.38,
+                        };
+                        let rx0 = x(sel_c0);
+                        let rx1 = x(sel_c1 + 1).min(left + cell_width * cols as f32);
+                        let ry1 = y1;
 
-                            let quad = fill(
-                                Bounds::from_corners(
-                                    point(px(rx0), px(y0)),
-                                    point(px(rx1), px(ry1)),
-                                ),
-                                sel_bg,
-                            );
-                            window.paint_quad(quad);
-                        }
+                        let quad = fill(
+                            Bounds::from_corners(
+                                point(px(rx0), px(y0)),
+                                point(px(rx1), px(ry1)),
+                            ),
+                            sel_bg,
+                        );
+                        window.paint_quad(quad);
                     }
                 }
             }
