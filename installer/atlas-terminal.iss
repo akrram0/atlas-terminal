@@ -3,7 +3,7 @@
 ; =====================================================================
 
 #ifndef MyAppVersion
-#define MyAppVersion "0.1.84"
+#define MyAppVersion "0.1.85"
 #endif
 
 #define MyAppName "Atlas Terminal"
