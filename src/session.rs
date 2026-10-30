@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::index::Point;
 use alacritty_terminal::term::{Config, Term, TermMode};
 use alacritty_terminal::vte::ansi::Processor;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtyPair, PtySize};
@@ -175,6 +176,8 @@ pub struct Session {
     scrollback_limit: usize,
     /// Last painted grid layout: (left, top, cell_width, cell_height).
     pub grid_bounds: Option<(f32, f32, f32, f32)>,
+    /// Active user drag selection bounds: (start_point, current_point, is_block)
+    pub mouse_selection: Option<(Point, Point, bool)>,
     /// Active inline images anchored to the terminal scrollback grid.
     pub placed_images: Vec<PlacedImage>,
     next_image_id: usize,
@@ -213,11 +216,9 @@ impl Session {
         if matches!(profile, Profile::OpenCode) {
             let probes = [
                 std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.cmd")),
+                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.exe")),
                 std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("pnpm").join("opencode.cmd")),
-                std::env::var_os("APPDATA")
-                    .map(|a| PathBuf::from(a).join("npm").join("opencode.cmd")),
+                    .map(|l| PathBuf::from(l).join("pnpm").join("opencode.exe")),
                 std::env::var_os("LOCALAPPDATA")
                     .map(|l| PathBuf::from(l).join("Programs").join("OpenCode").join("opencode.exe")),
                 std::env::var_os("USERPROFILE")
@@ -228,6 +229,12 @@ impl Session {
                     .map(|l| PathBuf::from(l).join("Microsoft").join("WinGet").join("Links").join("opencode.exe")),
                 std::env::var_os("USERPROFILE")
                     .map(|u| PathBuf::from(u).join("scoop").join("shims").join("opencode.exe")),
+                std::env::var_os("LOCALAPPDATA")
+                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.cmd")),
+                std::env::var_os("LOCALAPPDATA")
+                    .map(|l| PathBuf::from(l).join("pnpm").join("opencode.cmd")),
+                std::env::var_os("APPDATA")
+                    .map(|a| PathBuf::from(a).join("npm").join("opencode.cmd")),
             ];
             for cand in probes.into_iter().flatten() {
                 if cand.is_file() {
@@ -440,6 +447,7 @@ impl Session {
                 pid,
                 scrollback_limit: scrollback_lines,
                 grid_bounds: None,
+                mouse_selection: None,
                 placed_images: Vec::new(),
                 next_image_id: 1,
                 osc_scanner: Osc1337Scanner::new(),
@@ -586,6 +594,11 @@ impl Session {
             // On failure the stale pty size stays recorded so the next
             // call retries instead of assuming success.
         }
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.term.selection = None;
+        self.mouse_selection = None;
     }
 
     pub fn kill(&mut self) {

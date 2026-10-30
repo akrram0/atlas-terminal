@@ -12,7 +12,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use alacritty_terminal::grid::Scroll;
-use alacritty_terminal::index::{Point, Side};
+use alacritty_terminal::index::{Column, Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
@@ -1552,8 +1552,10 @@ impl Render for AtlasView {
                                         };
                                         view.mouse_down_point = Some(pt);
                                         view.mouse_down_sel_type = sel_type;
-                                        p.session.borrow_mut().term.selection =
+                                        let mut sess = p.session.borrow_mut();
+                                        sess.term.selection =
                                             Some(Selection::new(sel_type, pt, Side::Left));
+                                        sess.mouse_selection = None;
                                         cx.notify();
                                     }
                                 }
@@ -1761,9 +1763,20 @@ impl Render for AtlasView {
                                         if let Some(start_pt) = view.mouse_down_point {
                                             let sel_type = view.mouse_down_sel_type;
                                             let mut sess = p.session.borrow_mut();
+                                            let cols = sess.cols.max(1);
+                                            let is_block = sel_type == SelectionType::Block;
+                                            if pt != start_pt {
+                                                sess.mouse_selection = Some((start_pt, pt, is_block));
+                                            }
                                             if pt >= start_pt {
                                                 let mut sel = Selection::new(sel_type, start_pt, Side::Left);
-                                                sel.update(pt, Side::Right);
+                                                let cursor_line = sess.term.renderable_content().cursor.point.line;
+                                                let alacritty_pt = if pt.line > cursor_line {
+                                                    Point::new(cursor_line, Column(cols.saturating_sub(1)))
+                                                } else {
+                                                    pt
+                                                };
+                                                sel.update(alacritty_pt, Side::Right);
                                                 sess.term.selection = Some(sel);
                                             } else {
                                                 let mut sel = Selection::new(sel_type, start_pt, Side::Right);

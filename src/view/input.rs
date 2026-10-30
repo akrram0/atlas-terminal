@@ -139,6 +139,7 @@ impl AtlasView {
             let end = Point::new(Line(screen_lines.saturating_sub(1) - offset), Column(cols));
             let mut sel = Selection::new(SelectionType::Simple, start, Side::Left);
             sel.update(end, Side::Right);
+            session.mouse_selection = Some((start, end, false));
             session.term.selection = Some(sel);
             cx.notify();
         }
@@ -239,7 +240,7 @@ impl AtlasView {
         if let Some(text) = copy_text.filter(|t| !t.is_empty()) {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             if let Some(pane) = self.active_pane() {
-                pane.session.borrow_mut().term.selection = None;
+                pane.session.borrow_mut().clear_selection();
             }
             cx.notify();
         } else {
@@ -603,7 +604,7 @@ impl AtlasView {
                     if has_selection {
                         self.copy_selection(cx);
                         if let Some(p) = self.active_pane() {
-                            p.session.borrow_mut().term.selection = None;
+                            p.session.borrow_mut().clear_selection();
                         }
                         cx.notify();
                         return;
@@ -622,8 +623,8 @@ impl AtlasView {
         // Escape: deselect text if active
         if key == "escape" && !modifiers.control && !modifiers.alt && !modifiers.shift {
             if let Some(pane) = self.active_pane() {
-                if pane.session.borrow().term.selection.is_some() {
-                    pane.session.borrow_mut().term.selection = None;
+                if pane.session.borrow().term.selection.is_some() || pane.session.borrow().mouse_selection.is_some() {
+                    pane.session.borrow_mut().clear_selection();
                     cx.notify();
                     return;
                 }
