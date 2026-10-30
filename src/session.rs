@@ -176,8 +176,8 @@ pub struct Session {
     scrollback_limit: usize,
     /// Last painted grid layout: (left, top, cell_width, cell_height).
     pub grid_bounds: Option<(f32, f32, f32, f32)>,
-    /// Active user drag selection bounds: (start_point, current_point, is_block)
-    pub mouse_selection: Option<(Point, Point, bool)>,
+    /// Highest row on the visible screen containing active text or the prompt cursor.
+    pub max_active_row: usize,
     /// Active inline images anchored to the terminal scrollback grid.
     pub placed_images: Vec<PlacedImage>,
     next_image_id: usize,
@@ -447,7 +447,7 @@ impl Session {
                 pid,
                 scrollback_limit: scrollback_lines,
                 grid_bounds: None,
-                mouse_selection: None,
+                max_active_row: 0,
                 placed_images: Vec::new(),
                 next_image_id: 1,
                 osc_scanner: Osc1337Scanner::new(),
@@ -598,7 +598,6 @@ impl Session {
 
     pub fn clear_selection(&mut self) {
         self.term.selection = None;
-        self.mouse_selection = None;
     }
 
     pub fn kill(&mut self) {

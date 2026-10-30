@@ -195,7 +195,7 @@ impl Element for TerminalElement {
         self.session.borrow_mut().grid_bounds = Some((left, top, cell_width, cell_height));
 
         // Snapshot the grid into paint-ready rows (no borrows outlive this block).
-        let (rows, cursor_cell, cursor_shape, selection_range, mouse_selection, offset, placed_images, cur_history, is_alt_screen) = {
+        let (rows, cursor_cell, cursor_shape, selection_range, max_active_row, offset, placed_images, cur_history, is_alt_screen) = {
             let session = self.session.borrow();
             let is_alt_screen = session.term.mode().contains(TermMode::ALT_SCREEN);
             let content = session.term.renderable_content();
@@ -217,7 +217,6 @@ impl Element for TerminalElement {
             );
 
             let selection_range = session.term.selection.as_ref().and_then(|s| s.to_range(&session.term));
-            let mouse_selection = session.mouse_selection;
             let placed_images = session.placed_images.clone();
             let cur_history = session.term.history_size() as i32;
             let mut rows: Vec<Row> = Vec::new();
@@ -332,6 +331,19 @@ impl Element for TerminalElement {
                 });
                 row.text.push_str(&text);
             }
+            let last_content_row = rows.iter().rposition(|r| {
+                !r.text.trim().is_empty() || r.runs.iter().any(|run| run.style.bg != default_bg)
+            });
+            let cursor_row_idx = if cursor_row >= 0 { (cursor_row as usize) + 1 } else { 0 };
+            let active_row_count = match last_content_row {
+                Some(last_idx) => (last_idx + 1).max(cursor_row_idx),
+                None => cursor_row_idx,
+            };
+            let max_active_row = if is_alt_screen || offset > 0 {
+                max_rows
+            } else {
+                active_row_count.min(max_rows)
+            };
             while rows.len() < max_rows {
                 rows.push(Row::default());
             }
@@ -340,13 +352,15 @@ impl Element for TerminalElement {
                 cursor_cell,
                 cursor_shape,
                 selection_range,
-                mouse_selection,
+                max_active_row,
                 offset,
                 placed_images,
                 cur_history,
                 is_alt_screen,
             )
         };
+
+        self.session.borrow_mut().max_active_row = max_active_row;
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
             for (row_index, row) in rows.iter().enumerate() {
@@ -397,44 +411,9 @@ impl Element for TerminalElement {
 
                 // Selection highlight layer: paints seamlessly behind intact text runs
                 // so text shaping and character advances never jitter during drag selection.
-                let sel_span = if let Some((start_raw, end_raw, is_block)) = mouse_selection {
-                    let (start, end) = if start_raw <= end_raw {
-                        (start_raw, end_raw)
-                    } else {
-                        (end_raw, start_raw)
-                    };
-                    let row_line = Line(row_index as i32 - offset);
-                    if is_block {
-                        let (min_col, max_col) = if start.column <= end.column {
-                            (start.column.0, end.column.0)
-                        } else {
-                            (end.column.0, start.column.0)
-                        };
-                        let (min_line, max_line) = if start.line <= end.line {
-                            (start.line.0, end.line.0)
-                        } else {
-                            (end.line.0, start.line.0)
-                        };
-                        if row_line.0 >= min_line && row_line.0 <= max_line {
-                            Some((min_col, max_col.min(cols.saturating_sub(1))))
-                        } else {
-                            None
-                        }
-                    } else {
-                        if row_line < start.line || row_line > end.line {
-                            None
-                        } else if row_line == start.line && row_line == end.line {
-                            let c0 = start.column.0.min(end.column.0);
-                            let c1 = start.column.0.max(end.column.0).min(cols.saturating_sub(1));
-                            Some((c0, c1))
-                        } else if row_line == start.line {
-                            Some((start.column.0.min(cols.saturating_sub(1)), cols.saturating_sub(1)))
-                        } else if row_line == end.line {
-                            Some((0, end.column.0.min(cols.saturating_sub(1))))
-                        } else {
-                            Some((0, cols.saturating_sub(1)))
-                        }
-                    }
+                // Never paint selection highlight on empty void rows below active content.
+                let sel_span = if (!is_alt_screen && offset == 0 && row_index >= max_active_row) || selection_range.is_none() {
+                    None
                 } else if let Some(ref range) = selection_range {
                     let row_line = Line(row_index as i32 - offset);
                     if range.is_block {

@@ -1542,6 +1542,28 @@ impl Render for AtlasView {
                                     }
                                 }
                             }
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                if let Some(p) = tab.panes.get_mut(pane_down) {
+                                    let is_in_void = {
+                                        let s = p.session.borrow();
+                                        let is_alt = s.term.mode().contains(TermMode::ALT_SCREEN);
+                                        let is_scrolled = s.term.renderable_content().display_offset > 0;
+                                        if let Some((_, top, _, cell_h)) = s.grid_bounds {
+                                            let raw = ((f32::from(event.position.y) - top) / cell_h).floor() as isize;
+                                            !is_alt && !is_scrolled && s.max_active_row > 0 && raw >= s.max_active_row as isize
+                                        } else {
+                                            false
+                                        }
+                                    };
+                                    if is_in_void {
+                                        p.session.borrow_mut().clear_selection();
+                                        view.mouse_down_point = None;
+                                        view.mouse_down_pane = None;
+                                        cx.notify();
+                                        return;
+                                    }
+                                }
+                            }
                             if let Some((pt, _side)) = view.point_from_mouse(event.position, pane_down) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_down) {
@@ -1550,12 +1572,16 @@ impl Render for AtlasView {
                                             3.. => SelectionType::Lines,
                                             _ => SelectionType::Simple,
                                         };
+                                        view.mouse_down_pane = Some(pane_down);
                                         view.mouse_down_point = Some(pt);
                                         view.mouse_down_sel_type = sel_type;
                                         let mut sess = p.session.borrow_mut();
-                                        sess.term.selection =
-                                            Some(Selection::new(sel_type, pt, Side::Left));
-                                        sess.mouse_selection = None;
+                                        if sel_type != SelectionType::Simple {
+                                            sess.term.selection =
+                                                Some(Selection::new(sel_type, pt, Side::Left));
+                                        } else {
+                                            sess.clear_selection();
+                                        }
                                         cx.notify();
                                     }
                                 }
@@ -1757,30 +1783,19 @@ impl Render for AtlasView {
                             cx.notify();
                         }
                         if view.mouse_down_pane == Some(pane_move) {
-                            if let Some((pt, _side)) = view.point_from_mouse(event.position, pane_move) {
+                            if let Some((pt, side)) = view.point_from_mouse(event.position, pane_move) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_move) {
                                         if let Some(start_pt) = view.mouse_down_point {
                                             let sel_type = view.mouse_down_sel_type;
                                             let mut sess = p.session.borrow_mut();
-                                            let cols = sess.cols.max(1);
-                                            let is_block = sel_type == SelectionType::Block;
-                                            if pt != start_pt {
-                                                sess.mouse_selection = Some((start_pt, pt, is_block));
-                                            }
                                             if pt >= start_pt {
                                                 let mut sel = Selection::new(sel_type, start_pt, Side::Left);
-                                                let cursor_line = sess.term.renderable_content().cursor.point.line;
-                                                let alacritty_pt = if pt.line > cursor_line {
-                                                    Point::new(cursor_line, Column(cols.saturating_sub(1)))
-                                                } else {
-                                                    pt
-                                                };
-                                                sel.update(alacritty_pt, Side::Right);
+                                                sel.update(pt, side);
                                                 sess.term.selection = Some(sel);
                                             } else {
                                                 let mut sel = Selection::new(sel_type, start_pt, Side::Right);
-                                                sel.update(pt, Side::Left);
+                                                sel.update(pt, side);
                                                 sess.term.selection = Some(sel);
                                             }
                                             cx.notify();

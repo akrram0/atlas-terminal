@@ -135,11 +135,16 @@ impl AtlasView {
             let offset = session.term.renderable_content().display_offset as i32;
             let screen_lines = session.term.screen_lines() as i32;
             let cols = session.cols.saturating_sub(1);
+            let is_alt = session.term.mode().contains(TermMode::ALT_SCREEN);
+            let active_lines = if is_alt || offset > 0 || session.max_active_row == 0 {
+                screen_lines
+            } else {
+                (session.max_active_row as i32).min(screen_lines)
+            };
             let start = Point::new(Line(0 - offset), Column(0));
-            let end = Point::new(Line(screen_lines.saturating_sub(1) - offset), Column(cols));
+            let end = Point::new(Line(active_lines.saturating_sub(1) - offset), Column(cols));
             let mut sel = Selection::new(SelectionType::Simple, start, Side::Left);
             sel.update(end, Side::Right);
-            session.mouse_selection = Some((start, end, false));
             session.term.selection = Some(sel);
             cx.notify();
         }
@@ -195,7 +200,27 @@ impl AtlasView {
         let cols = session.cols.max(1);
         let rows = session.rows.max(1);
 
-        let (col, side) = if mx < left {
+        let is_alt = session.term.mode().contains(TermMode::ALT_SCREEN);
+        let max_active = session.max_active_row;
+        let active_rows = if !is_alt && max_active > 0 {
+            max_active.min(rows)
+        } else {
+            rows
+        };
+
+        let rel_y = my - top;
+        let raw_row = (rel_y / cell_height).floor() as isize;
+        let is_below_content = !is_alt && max_active > 0 && raw_row >= max_active as isize;
+
+        let screen_row = if my < top {
+            0
+        } else {
+            raw_row.clamp(0, (active_rows.saturating_sub(1)) as isize) as i32
+        };
+
+        let (col, side) = if is_below_content {
+            (cols.saturating_sub(1), Side::Right)
+        } else if mx < left {
             (0, Side::Left)
         } else {
             let rel_x = mx - left;
@@ -214,14 +239,6 @@ impl AtlasView {
                 };
                 (c, side)
             }
-        };
-
-        let screen_row = if my < top {
-            0
-        } else {
-            let rel_y = my - top;
-            let raw_row = (rel_y / cell_height).floor() as isize;
-            raw_row.clamp(0, (rows.saturating_sub(1)) as isize) as i32
         };
 
         let offset = session.term.renderable_content().display_offset as i32;
@@ -623,7 +640,7 @@ impl AtlasView {
         // Escape: deselect text if active
         if key == "escape" && !modifiers.control && !modifiers.alt && !modifiers.shift {
             if let Some(pane) = self.active_pane() {
-                if pane.session.borrow().term.selection.is_some() || pane.session.borrow().mouse_selection.is_some() {
+                if pane.session.borrow().term.selection.is_some() {
                     pane.session.borrow_mut().clear_selection();
                     cx.notify();
                     return;
