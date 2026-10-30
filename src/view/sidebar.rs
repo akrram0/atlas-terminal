@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{
     div, px, relative, rgba, ClickEvent, Context, ElementId, FontWeight, IntoElement,
-    MouseButton, MouseDownEvent, Rgba, Window,
+    MouseButton, MouseDownEvent, Rgba,
 };
 use crate::icons;
 use crate::theme::Theme;

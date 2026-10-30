@@ -1007,7 +1007,8 @@ impl AtlasView {
                             .text_size(px(12.5))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(theme.accent)
-                            .child(format!("v{}", env!("CARGO_PKG_VERSION"))),
+                            .child(format!("v{}", env!("CARGO_PKG_VERSION")))
+                            .into_any_element(),
                         false,
                     ))
                     .child(setting_row("Update Channel", Some("Official milestone releases or early rolling cloud builds"), channel_ctrl, false))
