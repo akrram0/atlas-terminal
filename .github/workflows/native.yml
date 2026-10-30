@@ -696,10 +696,30 @@ jobs:
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
+          GODEBUG: http2client=0
         run: |
           $isStable = $env:GITHUB_REF -like 'refs/tags/v*'
           $manifest = Join-Path "$env:GITHUB_WORKSPACE\dist" "atlas-update.json"
           if (-not (Test-Path $manifest)) { throw "atlas-update.json missing from dist; refusing to publish" }
+
+          function Upload-ReleaseAsset([string]$targetTag, [string]$filePath) {
+            $fileName = [System.IO.Path]::GetFileName($filePath)
+            Write-Output "Uploading $fileName to $targetTag..."
+            $success = $false
+            for ($attempt = 1; $attempt -le 4; $attempt++) {
+              gh release upload $targetTag $filePath --clobber
+              if ($LASTEXITCODE -eq 0) {
+                $success = $true
+                Write-Output "Successfully uploaded $fileName"
+                break
+              }
+              Write-Warning "Upload of $fileName failed on attempt $attempt. Retrying in 5 seconds..."
+              Start-Sleep -Seconds 5
+            }
+            if (-not $success) {
+              throw "Failed to upload $fileName to $targetTag after 4 attempts"
+            }
+          }
 
           if ($isStable) {
             # =========================================================
@@ -730,11 +750,11 @@ jobs:
               Where-Object { $_.Name -ne 'atlas-update.json' } |
               ForEach-Object { $_.FullName }
             if ($files) {
-              gh release upload $tag $files --clobber
-              if ($LASTEXITCODE -ne 0) { throw "asset upload failed for $tag (exit $LASTEXITCODE)" }
+              foreach ($f in $files) {
+                Upload-ReleaseAsset $tag $f
+              }
             }
-            gh release upload $tag $manifest --clobber
-            if ($LASTEXITCODE -ne 0) { throw "manifest upload failed for $tag (exit $LASTEXITCODE)" }
+            Upload-ReleaseAsset $tag $manifest
 
             gh release edit $tag --draft=false --latest
             if ($LASTEXITCODE -ne 0) { throw "gh release publish failed for $tag (exit $LASTEXITCODE)" }
@@ -762,11 +782,11 @@ jobs:
               Where-Object { $_.Name -ne 'atlas-update.json' } |
               ForEach-Object { $_.FullName }
             if ($files) {
-              gh release upload $previewTag $files --clobber
-              if ($LASTEXITCODE -ne 0) { throw "asset upload failed for preview (exit $LASTEXITCODE)" }
+              foreach ($f in $files) {
+                Upload-ReleaseAsset $previewTag $f
+              }
             }
-            gh release upload $previewTag $manifest --clobber
-            if ($LASTEXITCODE -ne 0) { throw "manifest upload failed for preview (exit $LASTEXITCODE)" }
+            Upload-ReleaseAsset $previewTag $manifest
 
             Write-Output "Successfully updated ROLLING CLOUD PREVIEW ($previewTag)"
           }
