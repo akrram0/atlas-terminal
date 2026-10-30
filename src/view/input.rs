@@ -184,26 +184,48 @@ impl AtlasView {
         Some((col, row))
     }
 
-    pub fn point_from_mouse(&self, mouse_pos: gpui::Point<Pixels>, pane_ix: usize) -> Option<Point> {
+    pub fn point_from_mouse(&self, mouse_pos: gpui::Point<Pixels>, pane_ix: usize) -> Option<(Point, Side)> {
         let tab = self.tabs.get(self.active)?;
         let pane = tab.panes.get(pane_ix)?;
         let session = pane.session.borrow();
         let (left, top, cell_width, cell_height) = session.grid_bounds?;
         let mx = f32::from(mouse_pos.x);
         let my = f32::from(mouse_pos.y);
-        let col = if mx < left {
-            0
+        let cols = session.cols.max(1);
+        let rows = session.rows.max(1);
+
+        let (col, side) = if mx < left {
+            (0, Side::Left)
         } else {
-            ((mx - left) / cell_width).floor().max(0.0) as usize
+            let rel_x = mx - left;
+            let raw_col = (rel_x / cell_width).floor() as isize;
+            if raw_col >= cols as isize {
+                (cols.saturating_sub(1), Side::Right)
+            } else if raw_col < 0 {
+                (0, Side::Left)
+            } else {
+                let c = raw_col as usize;
+                let in_cell_x = rel_x - (c as f32 * cell_width);
+                let side = if in_cell_x < (cell_width * 0.5) {
+                    Side::Left
+                } else {
+                    Side::Right
+                };
+                (c, side)
+            }
         };
+
         let screen_row = if my < top {
             0
         } else {
-            ((my - top) / cell_height).floor().max(0.0) as i32
+            let rel_y = my - top;
+            let raw_row = (rel_y / cell_height).floor() as isize;
+            raw_row.clamp(0, (rows.saturating_sub(1)) as isize) as i32
         };
+
         let offset = session.term.renderable_content().display_offset as i32;
         let line = Line(screen_row - offset);
-        Some(Point::new(line, Column(col)))
+        Some((Point::new(line, Column(col)), side))
     }
 
     pub fn handle_terminal_right_click(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

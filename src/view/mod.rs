@@ -1507,7 +1507,7 @@ impl Render for AtlasView {
 
                             // Ctrl+Click opens URL at clicked grid point
                             if event.modifiers.control {
-                                if let Some(pt) = view.point_from_mouse(event.position, pane_down) {
+                                if let Some((pt, _)) = view.point_from_mouse(event.position, pane_down) {
                                     if let Some(tab) = view.tabs.get(view.active) {
                                         if let Some(pane) = tab.panes.get(pane_down) {
                                             let term = &pane.session.borrow().term;
@@ -1538,11 +1538,16 @@ impl Render for AtlasView {
                                     }
                                 }
                             }
-                            if let Some(pt) = view.point_from_mouse(event.position, pane_down) {
+                            if let Some((pt, side)) = view.point_from_mouse(event.position, pane_down) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_down) {
+                                        let sel_type = match event.click_count {
+                                            2 => SelectionType::Semantic,
+                                            3.. => SelectionType::Lines,
+                                            _ => SelectionType::Simple,
+                                        };
                                         p.session.borrow_mut().term.selection =
-                                            Some(Selection::new(SelectionType::Simple, pt, Side::Left));
+                                            Some(Selection::new(sel_type, pt, side));
                                         cx.notify();
                                     }
                                 }
@@ -1724,7 +1729,7 @@ impl Render for AtlasView {
                         }
                         if event.modifiers.control {
                             let mut found = None;
-                            if let Some(pt) = view.point_from_mouse(event.position, pane_move) {
+                            if let Some((pt, _)) = view.point_from_mouse(event.position, pane_move) {
                                 if let Some(tab) = view.tabs.get(view.active) {
                                     if let Some(pane) = tab.panes.get(pane_move) {
                                         let term = &pane.session.borrow().term;
@@ -1743,12 +1748,12 @@ impl Render for AtlasView {
                             cx.notify();
                         }
                         if view.mouse_down_pane == Some(pane_move) {
-                            if let Some(pt) = view.point_from_mouse(event.position, pane_move) {
+                            if let Some((pt, side)) = view.point_from_mouse(event.position, pane_move) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_move) {
                                         let mut sess = p.session.borrow_mut();
                                         if let Some(ref mut sel) = sess.term.selection {
-                                            sel.update(pt, Side::Right);
+                                            sel.update(pt, side);
                                             cx.notify();
                                         }
                                     }

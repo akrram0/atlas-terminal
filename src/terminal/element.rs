@@ -419,9 +419,11 @@ impl Element for TerminalElement {
                         if row_line < start.line || row_line > end.line {
                             None
                         } else if row_line == start.line && row_line == end.line {
-                            Some((start.column.0, end.column.0.min(cols.saturating_sub(1))))
+                            let c0 = start.column.0.min(end.column.0);
+                            let c1 = start.column.0.max(end.column.0).min(cols.saturating_sub(1));
+                            Some((c0, c1))
                         } else if row_line == start.line {
-                            Some((start.column.0, cols.saturating_sub(1)))
+                            Some((start.column.0.min(cols.saturating_sub(1)), cols.saturating_sub(1)))
                         } else if row_line == end.line {
                             Some((0, end.column.0.min(cols.saturating_sub(1))))
                         } else {
@@ -437,11 +439,9 @@ impl Element for TerminalElement {
                                 b: theme.accent.b,
                                 a: 0.38,
                             };
-                            let is_left_edge = sel_c0 == 0;
-                            let is_right_edge = sel_c1 + 1 >= cols;
-                            let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(sel_c0) };
-                            let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(sel_c1 + 1) };
-                            let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
+                            let rx0 = x(sel_c0);
+                            let rx1 = x(sel_c1 + 1).min(left + cell_width * cols as f32);
+                            let ry1 = y1;
 
                             let quad = fill(
                                 Bounds::from_corners(
