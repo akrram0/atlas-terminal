@@ -12,6 +12,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use alacritty_terminal::grid::Scroll;
+use alacritty_terminal::index::{Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
@@ -156,6 +157,8 @@ pub struct AtlasView {
     pub(crate) cursor_blink: bool,
     pub(crate) window_was_active: bool,
     pub(crate) mouse_down_pane: Option<usize>,
+    pub(crate) mouse_down_point: Option<Point>,
+    pub(crate) mouse_down_sel_type: SelectionType,
     pub(crate) last_mouse_btn: Option<u8>,
     pub(crate) last_mouse_cell: Option<(usize, usize)>,
     pub(crate) settings_scroll_handle: ScrollHandle,
@@ -312,6 +315,8 @@ impl AtlasView {
             cursor_blink,
             window_was_active: true,
             mouse_down_pane: None,
+            mouse_down_point: None,
+            mouse_down_sel_type: SelectionType::Simple,
             last_mouse_btn: None,
             last_mouse_cell: None,
             settings_scroll_handle: ScrollHandle::new(),
@@ -1537,7 +1542,7 @@ impl Render for AtlasView {
                                     }
                                 }
                             }
-                            if let Some((pt, side)) = view.point_from_mouse(event.position, pane_down) {
+                            if let Some((pt, _side)) = view.point_from_mouse(event.position, pane_down) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_down) {
                                         let sel_type = match event.click_count {
@@ -1545,8 +1550,10 @@ impl Render for AtlasView {
                                             3.. => SelectionType::Lines,
                                             _ => SelectionType::Simple,
                                         };
+                                        view.mouse_down_point = Some(pt);
+                                        view.mouse_down_sel_type = sel_type;
                                         p.session.borrow_mut().term.selection =
-                                            Some(Selection::new(sel_type, pt, side));
+                                            Some(Selection::new(sel_type, pt, Side::Left));
                                         cx.notify();
                                     }
                                 }
@@ -1619,6 +1626,7 @@ impl Render for AtlasView {
                         MouseButton::Left,
                         cx.listener(move |view, event: &MouseUpEvent, window, cx| {
                             view.mouse_down_pane = None;
+                            view.mouse_down_point = None;
                             view.last_mouse_btn = None;
                             view.last_mouse_cell = None;
                             if !event.modifiers.shift {
@@ -1747,12 +1755,21 @@ impl Render for AtlasView {
                             cx.notify();
                         }
                         if view.mouse_down_pane == Some(pane_move) {
-                            if let Some((pt, side)) = view.point_from_mouse(event.position, pane_move) {
+                            if let Some((pt, _side)) = view.point_from_mouse(event.position, pane_move) {
                                 if let Some(tab) = view.tabs.get_mut(view.active) {
                                     if let Some(p) = tab.panes.get_mut(pane_move) {
-                                        let mut sess = p.session.borrow_mut();
-                                        if let Some(ref mut sel) = sess.term.selection {
-                                            sel.update(pt, side);
+                                        if let Some(start_pt) = view.mouse_down_point {
+                                            let sel_type = view.mouse_down_sel_type;
+                                            let mut sess = p.session.borrow_mut();
+                                            if pt >= start_pt {
+                                                let mut sel = Selection::new(sel_type, start_pt, Side::Left);
+                                                sel.update(pt, Side::Right);
+                                                sess.term.selection = Some(sel);
+                                            } else {
+                                                let mut sel = Selection::new(sel_type, start_pt, Side::Right);
+                                                sel.update(pt, Side::Left);
+                                                sess.term.selection = Some(sel);
+                                            }
                                             cx.notify();
                                         }
                                     }

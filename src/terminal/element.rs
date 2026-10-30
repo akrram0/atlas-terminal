@@ -331,6 +331,9 @@ impl Element for TerminalElement {
                 });
                 row.text.push_str(&text);
             }
+            while rows.len() < max_rows {
+                rows.push(Row::default());
+            }
             (
                 rows,
                 cursor_cell,

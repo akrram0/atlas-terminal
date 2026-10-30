@@ -279,18 +279,6 @@ impl Session {
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
                              if ($atlas_old) { & $atlas_old } else { 'PS ' + (Get-Location) + '> ' } \
                          }; \
-                         $opencode_cmd = Join-Path $env:LOCALAPPDATA 'pnpm\\bin\\opencode.cmd'; \
-                         $npm_cmd = Join-Path $env:APPDATA 'npm\\opencode.cmd'; \
-                         function global:opencode { \
-                             [Console]::Write(\"`e]0;OpenCode`a\"); \
-                             try { \
-                                 if (Test-Path `$opencode_cmd) { & `$opencode_cmd @args } \
-                                 elseif (Test-Path `$npm_cmd) { & `$npm_cmd @args } \
-                                 else { & (Get-Command opencode.cmd, opencode.ps1, opencode.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1) @args } \
-                             } finally { \
-                                 [Console]::Write(\"`e]0;PowerShell`a\"); \
-                             } \
-                         }; \
                          function global:update-opencode { \
                              Write-Host 'Checking for OpenCode updates...' -ForegroundColor Cyan; \
                              if (Get-Command pnpm -ErrorAction SilentlyContinue) { \
