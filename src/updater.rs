@@ -713,7 +713,7 @@ pub fn check_for_updates(
 
     let path = match channel {
         UpdateChannel::Stable => "/repos/akrram0/atlas-terminal/releases/latest",
-        UpdateChannel::Preview => "/repos/akrram0/atlas-terminal/releases/latest",
+        UpdateChannel::Preview => "/repos/akrram0/atlas-terminal/releases/tags/preview",
     };
     let request = unsafe {
         WinHttpOpenRequest(

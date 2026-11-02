@@ -133,6 +133,8 @@ jobs:
 
       - name: cargo build (release — final exe)
         shell: pwsh
+        env:
+          ATLAS_BUILD_COMMIT: ${{ github.sha }}
         run: |
           cargo build --release --bin atlas-terminal 2>&1 | Tee-Object -FilePath build-output.log
           $code = $LASTEXITCODE

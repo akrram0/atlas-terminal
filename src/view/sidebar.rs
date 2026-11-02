@@ -21,6 +21,7 @@ impl AtlasView {
         &self,
         theme: &Theme,
         is_translucent: bool,
+        zoomed: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let tb = theme.clone();
@@ -49,14 +50,46 @@ impl AtlasView {
         // 1. COMPACT MODE (Icon Rail — 52px slim dock)
         // =========================================================================
         if is_compact {
-            // New Tab button at top of rail (left-click default profile, right-click menu)
-            let new_tab_btn = div()
-                .h(px(38.0))
+            let sb_header_h = if zoomed { px(50.0) } else { px(42.0) };
+            let sb_header_pt = if zoomed { px(8.0) } else { px(0.0) };
+
+            // Sidebar cycle button at top of rail (Compact -> Expanded -> Hidden)
+            let header = div()
+                .h(sb_header_h)
+                .pt(sb_header_pt)
                 .flex()
                 .items_center()
                 .justify_center()
                 .border_b_1()
                 .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 })
+                .child(
+                    div()
+                        .id(ElementId::named_usize("sidebar-compact-cycle-btn", 0))
+                        .w(px(30.0))
+                        .h(px(30.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .hover(move |s| s.bg(tb.card_hover))
+                        .active(|s| s.opacity(0.75))
+                        .cursor_pointer()
+                        .child(
+                            icons::icon(icons::SIDEBAR_LEFT)
+                                .size(px(16.0))
+                                .text_color(tb.accent),
+                        )
+                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                            view.cycle_sidebar_mode(cx);
+                        })),
+                );
+
+            // New Tab button below cycle header (left-click default profile, right-click menu)
+            let new_tab_btn = div()
+                .h(px(38.0))
+                .flex()
+                .items_center()
+                .justify_center()
                 .child(
                     div()
                         .id(ElementId::named_usize("sidebar-compact-new-tab", 0))
@@ -238,6 +271,9 @@ impl AtlasView {
                 .min_h(px(0.0))
                 .overflow_hidden()
                 .bg(sidebar_bg)
+                .border_r_1()
+                .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.04 })
+                .child(header)
                 .child(new_tab_btn)
                 .child(tab_list)
                 .child(footer);
@@ -315,9 +351,13 @@ impl AtlasView {
             .child(divider)
             .child(chevron_btn);
 
+        let sb_header_h = if zoomed { px(50.0) } else { px(42.0) };
+        let sb_header_pt = if zoomed { px(8.0) } else { px(0.0) };
+
         let header = div()
-            .h(px(38.0))
-            .px(px(12.0))
+            .h(sb_header_h)
+            .pt(sb_header_pt)
+            .px(px(10.0))
             .flex()
             .flex_row()
             .items_center()
@@ -330,7 +370,27 @@ impl AtlasView {
                     .flex_row()
                     .items_center()
                     .gap(px(6.0))
-                    .child(icons::icon(icons::TERMINAL).size(px(13.0)).text_color(tb.faint_fg))
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("sidebar-expanded-cycle-btn", 0))
+                            .w(px(28.0))
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(6.0))
+                            .hover(move |s| s.bg(tb.card_hover))
+                            .active(|s| s.opacity(0.75))
+                            .cursor_pointer()
+                            .child(
+                                icons::icon(icons::SIDEBAR_LEFT)
+                                    .size(px(15.0))
+                                    .text_color(tb.accent),
+                            )
+                            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                                view.cycle_sidebar_mode(cx);
+                            })),
+                    )
                     .child(
                         div()
                             .text_size(px(11.0))
@@ -550,6 +610,8 @@ impl AtlasView {
             .min_h(px(0.0))
             .overflow_hidden()
             .bg(sidebar_bg)
+            .border_r_1()
+            .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.04 })
             .child(header)
             .child(tab_list)
             .child(footer)

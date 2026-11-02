@@ -914,69 +914,118 @@ impl Render for AtlasView {
 
         let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";
         if is_sidebar_mode {
-            let is_sidebar_active = self.sidebar_mode != sidebar::SidebarMode::Hidden;
-            let sidebar_btn = div()
-                .id(ElementId::named_usize("sidebar-toggle-btn", 0))
-                .w(px(30.0))
-                .h(px(30.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .bg(if is_sidebar_active { Rgba { a: 0.12, ..tb.accent } } else { rgba(0x00000000) })
-                .hover(move |s| s.bg(tb.card_hover))
-                .active(|s| s.opacity(0.75))
-                .cursor_pointer()
-                .child(
-                    icons::icon(icons::SIDEBAR_LEFT)
-                        .size(px(16.0))
-                        .text_color(if is_sidebar_active { tb.accent } else { tb.chrome_fg_active }),
-                )
-                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                    view.cycle_sidebar_mode(cx);
-                }));
+            let is_sidebar_visible = self.sidebar_mode != sidebar::SidebarMode::Hidden && self.sidebar_current_width > 1.0;
 
-            bar = bar.child(sidebar_btn);
+            if !is_sidebar_visible {
+                let sidebar_btn = div()
+                    .id(ElementId::named_usize("sidebar-toggle-btn", 0))
+                    .w(px(30.0))
+                    .h(px(30.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(6.0))
+                    .bg(rgba(0x00000000))
+                    .hover(move |s| s.bg(tb.card_hover))
+                    .active(|s| s.opacity(0.75))
+                    .cursor_pointer()
+                    .child(
+                        icons::icon(icons::SIDEBAR_LEFT)
+                            .size(px(16.0))
+                            .text_color(tb.chrome_fg_active),
+                    )
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.cycle_sidebar_mode(cx);
+                    }));
 
-            // In Hidden mode, show the topbar new tab button and session breadcrumb.
-            // When sidebar is visible (Expanded or Compact), new tab button lives inside the sidebar!
-            if self.sidebar_mode == sidebar::SidebarMode::Hidden {
+                bar = bar.child(sidebar_btn);
                 bar = bar.child(div().w(px(4.0)));
                 bar = bar.child(capsule);
+                bar = bar.child(div().w(px(8.0)));
+            }
 
-                let active_tab_title = if self.settings_open {
-                    "Settings".to_string()
-                } else if let Some(tab) = self.tabs.get(self.active) {
-                    if let Some(pane) = tab.panes.get(tab.active_pane) {
-                        tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
-                    } else {
-                        "Terminal".to_string()
-                    }
+            // Session breadcrumb in top bar: [Icon] Active Title › CWD [› Git Branch]
+            let active_pane = self.tabs.get(self.active).and_then(|t| t.panes.get(t.active_pane));
+            let shell_icon = active_pane.map(|p| session_icon(&p.title, p.profile)).unwrap_or(icons::TERMINAL);
+            let active_tab_title = if self.settings_open {
+                "Settings".to_string()
+            } else if let Some(tab) = self.tabs.get(self.active) {
+                if let Some(pane) = tab.panes.get(tab.active_pane) {
+                    tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
                 } else {
                     "Terminal".to_string()
-                };
+                }
+            } else {
+                "Terminal".to_string()
+            };
 
-                bar = bar.child(div().w(px(8.0)));
-                bar = bar.child(
+            let cwd_label = active_pane
+                .and_then(|p| p.cwd.as_ref())
+                .map(|c| {
+                    let s = c.to_string_lossy();
+                    #[cfg(windows)]
+                    {
+                        if let Ok(home) = std::env::var("USERPROFILE") {
+                            if let Some(rest) = s.strip_prefix(&home) {
+                                return format!("~{rest}");
+                            }
+                        }
+                    }
+                    s.to_string()
+                })
+                .unwrap_or_else(|| "~".to_string());
+            let branch_label = active_pane.and_then(|p| p.branch.clone());
+
+            let mut breadcrumb = div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(8.0))
+                .h(px(26.0))
+                .rounded(px(6.0))
+                .bg(tb.card_hover)
+                .child(icons::icon(shell_icon).size(px(13.0)).text_color(tb.accent))
+                .child(
                     div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.0))
-                        .px(px(8.0))
-                        .h(px(26.0))
-                        .rounded(px(6.0))
-                        .bg(tb.card_hover)
-                        .child(
-                            div()
-                                .text_size(px(12.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(tb.chrome_fg_active)
-                                .truncate()
-                                .child(active_tab_title),
-                        ),
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(tb.chrome_fg_active)
+                        .truncate()
+                        .child(active_tab_title),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(tb.faint_fg)
+                        .child("›"),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(tb.chrome_fg)
+                        .truncate()
+                        .child(cwd_label),
                 );
+
+            if let Some(branch) = branch_label {
+                breadcrumb = breadcrumb
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(tb.faint_fg)
+                            .child("›"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .text_color(tb.accent)
+                            .truncate()
+                            .child(format!("git:({branch})")),
+                    );
             }
+
+            bar = bar.child(breadcrumb);
 
             if let Some(tab) = self.tabs.get(self.active) {
                 let pane = tab.panes.get(tab.active_pane);
@@ -2055,30 +2104,14 @@ impl Render for AtlasView {
         }
 
         let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";
-        let content_row: AnyElement = if is_sidebar_mode {
-            let mut row = div()
-                .flex()
-                .flex_row()
-                .flex_1()
-                .w(relative(1.0))
-                .min_w(px(0.0))
-                .min_h(px(0.0))
-                .overflow_hidden();
-
-            if self.sidebar_current_width > 1.0 {
-                row = row.child(self.render_sidebar(&theme, is_translucent, cx));
-            }
-            row = row.child(sheet);
-            row.into_any_element()
-        } else {
-            sheet.into_any_element()
-        };
+        let is_sidebar_visible = is_sidebar_mode
+            && self.sidebar_mode != sidebar::SidebarMode::Hidden
+            && self.sidebar_current_width > 1.0;
 
         let container = div()
             .id(ElementId::named_usize("terminal-container", 0))
             .relative()
             .flex()
-            .flex_col()
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
@@ -2100,9 +2133,33 @@ impl Render for AtlasView {
                     view.sidebar_is_resizing = false;
                     cx.notify();
                 }
-            }))
-            .child(bar)
-            .child(content_row);
+            }));
+
+        let container = if is_sidebar_visible {
+            // Option 1: Full-Height macOS/Arc-style Unified Rail
+            // Left: Full-height sidebar running from top to bottom
+            // Right: Main column holding title/breadcrumb bar on top and terminal sheet below
+            let main_col = div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .h(relative(1.0))
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .child(bar)
+                .child(sheet);
+
+            container
+                .flex_row()
+                .child(self.render_sidebar(&theme, is_translucent, zoomed, cx))
+                .child(main_col)
+        } else {
+            // Standard top-down layout (top tab bar or hidden sidebar mode)
+            container
+                .flex_col()
+                .child(bar)
+                .child(sheet)
+        };
 
         let mut root = div()
             .relative()
