@@ -87,7 +87,7 @@ pub fn caption_spacer(slot: usize) -> impl IntoElement {
 }
 
 /// Unified Launch & Action Menu anchored under the left-side ( + │ ▾ ) capsule.
-pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
+pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
     let wsl_label = crate::wsl::default_distro()
         .map(|distro| format!("{} (WSL)", distro.title))
         .unwrap_or_else(|| "WSL".to_string());
@@ -100,8 +100,19 @@ pub fn profile_menu(theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -
     ];
     let item_hover = theme.card_hover;
     let zoomed = crate::rounded_corners::is_zoomed();
-    let menu_top = if zoomed { px(54.0) } else { px(46.0) };
-    let menu_left = if zoomed { px(18.0) } else { px(12.0) };
+    let (menu_top, menu_left) = {
+        let is_sidebar_mode = view.app_settings.tab_bar_position == "sidebar";
+        let sidebar_mode = view.sidebar_mode;
+        if is_sidebar_mode && sidebar_mode == crate::view::sidebar::SidebarMode::Expanded {
+            (px(78.0), px(12.0))
+        } else if is_sidebar_mode && sidebar_mode == crate::view::sidebar::SidebarMode::Compact {
+            (px(78.0), px(8.0))
+        } else if is_sidebar_mode {
+            (if zoomed { px(54.0) } else { px(46.0) }, px(48.0))
+        } else {
+            (if zoomed { px(54.0) } else { px(46.0) }, if zoomed { px(18.0) } else { px(12.0) })
+        }
+    };
     let mut menu = div()
         .id(ElementId::named_usize("launch-menu-dropdown", 0))
         .absolute()

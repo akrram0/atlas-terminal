@@ -62,6 +62,8 @@ pub struct Tab {
     pub close_progress: f32,
     /// Smooth hover expansion for the tab close button (0.0 .. 1.0).
     pub close_hover_progress: f32,
+    /// Per-tab isolated font size (zoom level). None uses global setting.
+    pub font_size: Option<f32>,
 }
 
 pub fn home_dir() -> Option<PathBuf> {

@@ -12,7 +12,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use alacritty_terminal::grid::Scroll;
-use alacritty_terminal::index::{Column, Point, Side};
+use alacritty_terminal::index::{Point, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
@@ -699,6 +699,14 @@ impl AtlasView {
         update_scheduler.detach();
 
         view
+    }
+
+    pub(crate) fn active_font_size(&self) -> f32 {
+        self.tab_font_size(self.active)
+    }
+
+    pub(crate) fn tab_font_size(&self, tab_ix: usize) -> f32 {
+        self.tabs.get(tab_ix).and_then(|t| t.font_size).unwrap_or(self.font_size)
     }
 }
 
@@ -1830,10 +1838,11 @@ impl Render for AtlasView {
                                 gpui::ScrollDelta::Lines(d) => d.y,
                                 gpui::ScrollDelta::Pixels(d) => f32::from(d.y),
                             };
+                            let cur = view.active_font_size();
                             if delta > 0.0 {
-                                view.adjust_font_size(view.font_size + 1.0, cx);
+                                view.adjust_font_size(cur + 1.0, cx);
                             } else if delta < 0.0 {
-                                view.adjust_font_size(view.font_size - 1.0, cx);
+                                view.adjust_font_size(cur - 1.0, cx);
                             }
                             return;
                         }
@@ -1896,7 +1905,8 @@ impl Render for AtlasView {
                                 .child("Press R to restart this pane"),
                         );
                 } else {
-                    let cell_height = (self.font_size * self.line_height).round().max(1.0);
+                    let tab_font = tab.font_size.unwrap_or(self.font_size);
+                    let cell_height = (tab_font * self.line_height).round().max(1.0);
                     let subpixel_y = if let Some((bound, pos, _)) = &self.scroll_anim {
                         if Rc::ptr_eq(bound, &pane.session) {
                             (pos - pos.ceil()) * cell_height
@@ -1921,7 +1931,7 @@ impl Render for AtlasView {
                         // paint their solid backgrounds with rounded edge quads rather than becoming transparent blur.
                         active_bg: if is_translucent && !pane_is_tui { rgba(0x00000000) } else { pane_bg },
                         font: self.font.clone(),
-                        font_size: self.font_size,
+                        font_size: tab_font,
                         line_height: self.line_height,
                         cursor_on: self.cursor_on,
                         cursor_override: self.cursor_style,
@@ -2057,7 +2067,7 @@ impl Render for AtlasView {
                 },
                 cx,
             ));
-            root = root.child(profile_menu(&theme, closing, cx));
+            root = root.child(profile_menu(self, &theme, closing, cx));
         }
         if self.palette_open {
             root = root.child(overlay_backdrop(

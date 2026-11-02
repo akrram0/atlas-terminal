@@ -49,39 +49,14 @@ impl AtlasView {
         // 1. COMPACT MODE (Icon Rail — 52px slim dock)
         // =========================================================================
         if is_compact {
-            // Header: Centered sidebar cycle button
-            let header = div()
+            // New Tab button at top of rail (left-click default profile, right-click menu)
+            let new_tab_btn = div()
                 .h(px(38.0))
                 .flex()
                 .items_center()
                 .justify_center()
                 .border_b_1()
-                .border_color(tb.hairline)
-                .child(
-                    div()
-                        .id(ElementId::named_usize("sidebar-compact-cycle", 0))
-                        .w(px(28.0))
-                        .h(px(28.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(6.0))
-                        .bg(Rgba { a: 0.12, ..tb.accent })
-                        .hover(move |s| s.bg(tb.card_hover))
-                        .active(|s| s.opacity(0.75))
-                        .cursor_pointer()
-                        .child(icons::icon(icons::SIDEBAR_LEFT).size(px(15.0)).text_color(tb.accent))
-                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                            view.cycle_sidebar_mode(cx);
-                        })),
-                );
-
-            // New Tab button
-            let new_tab_btn = div()
-                .h(px(34.0))
-                .flex()
-                .items_center()
-                .justify_center()
+                .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 })
                 .child(
                     div()
                         .id(ElementId::named_usize("sidebar-compact-new-tab", 0))
@@ -98,7 +73,13 @@ impl AtlasView {
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                             view.new_tab(default_prof, cx);
                             window.focus(&view.focus);
-                        })),
+                        }))
+                        .on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(|view, _: &MouseDownEvent, _window, cx| {
+                                view.toggle_profile_menu(cx);
+                            }),
+                        ),
                 );
 
             // Icon tiles stack
@@ -126,8 +107,11 @@ impl AtlasView {
                     (rgba(0x00000000), rgba(0x00000000), chrome_ink)
                 };
 
+                let is_hovered = self.hover_tab == Some(ix);
+
                 let mut tile = div()
                     .id(ElementId::named_usize("sidebar-compact-tab", ix))
+                    .relative()
                     .w(px(36.0))
                     .h(px(36.0))
                     .flex()
@@ -137,7 +121,16 @@ impl AtlasView {
                     .bg(card_bg)
                     .border_1()
                     .border_color(card_border)
-                    .cursor_pointer();
+                    .cursor_pointer()
+                    .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                        if !*hovered && view.hover_tab == Some(ix) {
+                            view.hover_tab = None;
+                            cx.notify();
+                        } else if *hovered && view.hover_tab != Some(ix) {
+                            view.hover_tab = Some(ix);
+                            cx.notify();
+                        }
+                    }));
 
                 if !tab.closing {
                     tile = tile
@@ -164,6 +157,39 @@ impl AtlasView {
                         .text_color(icon_color),
                 );
 
+                // Quick close button badge on hover
+                if is_hovered && !tab.closing {
+                    tile = tile.child(
+                        div()
+                            .id(ElementId::named_usize("sidebar-compact-close-btn", ix))
+                            .absolute()
+                            .top(px(-3.0))
+                            .right(px(-3.0))
+                            .w(px(16.0))
+                            .h(px(16.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .bg(tb.elevated_bg)
+                            .border_1()
+                            .border_color(tb.elevated_border)
+                            .shadow_sm()
+                            .hover(move |s| s.bg(tb.card_hover))
+                            .active(|s| s.opacity(0.75))
+                            .cursor_pointer()
+                            .child(
+                                icons::icon(icons::CLOSE)
+                                    .size(px(9.0))
+                                    .text_color(tb.chrome_fg_active),
+                            )
+                            .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                                view.close_tab(ix, cx);
+                                window.focus(&view.focus);
+                            })),
+                    );
+                }
+
                 tab_list = tab_list.child(tile);
             }
 
@@ -175,7 +201,7 @@ impl AtlasView {
                 .items_center()
                 .justify_center()
                 .border_t_1()
-                .border_color(tb.hairline)
+                .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 })
                 .child(
                     div()
                         .id(ElementId::named_usize("sidebar-compact-settings", 0))
@@ -212,9 +238,6 @@ impl AtlasView {
                 .min_h(px(0.0))
                 .overflow_hidden()
                 .bg(sidebar_bg)
-                .border_r_1()
-                .border_color(tb.hairline)
-                .child(header)
                 .child(new_tab_btn)
                 .child(tab_list)
                 .child(footer);
@@ -223,6 +246,75 @@ impl AtlasView {
         // =========================================================================
         // 2. EXPANDED MODE (Full Workspace Sidebar with Titles and Resize Handle)
         // =========================================================================
+        let is_menu_open = self.profile_menu;
+        let capsule_bg = if is_menu_open {
+            tb.elevated_bg
+        } else if is_translucent {
+            Rgba { a: 0.12, ..tb.card_hover }
+        } else {
+            tb.card_hover
+        };
+        let capsule_border = if is_menu_open {
+            tb.elevated_border
+        } else {
+            Rgba { a: 0.05, ..tb.hairline }
+        };
+
+        let plus_btn = div()
+            .id(ElementId::named_usize("sidebar-new-tab-btn", 0))
+            .w(px(22.0))
+            .h(px(24.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_l_full()
+            .hover(move |s| s.bg(tb.card_hover))
+            .active(|s| s.opacity(0.75))
+            .cursor_pointer()
+            .child(icons::icon(icons::PLUS).size(px(12.5)).text_color(tb.chrome_fg))
+            .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                view.new_tab(default_prof, cx);
+                window.focus(&view.focus);
+            }));
+
+        let divider = div()
+            .w(px(1.0))
+            .h(px(12.0))
+            .bg(Rgba { a: 0.20, ..tb.elevated_border });
+
+        let chevron_btn = div()
+            .id(ElementId::named_usize("sidebar-chevron-btn", 0))
+            .w(px(20.0))
+            .h(px(24.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_r_full()
+            .bg(if is_menu_open { tb.card_hover } else { rgba(0x00000000) })
+            .hover(move |s| s.bg(tb.card_hover))
+            .active(|s| s.opacity(0.75))
+            .cursor_pointer()
+            .child(icons::icon(icons::CHEVRON_DOWN).size(px(10.5)).text_color(tb.chrome_fg))
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.toggle_profile_menu(cx);
+                window.focus(&view.focus);
+            }));
+
+        let new_tab_capsule = div()
+            .id(ElementId::named_usize("sidebar-launch-capsule", 0))
+            .h(px(24.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .rounded_full()
+            .bg(capsule_bg)
+            .border_1()
+            .border_color(capsule_border)
+            .shadow_sm()
+            .child(plus_btn)
+            .child(divider)
+            .child(chevron_btn);
+
         let header = div()
             .h(px(38.0))
             .px(px(12.0))
@@ -231,7 +323,7 @@ impl AtlasView {
             .items_center()
             .justify_between()
             .border_b_1()
-            .border_color(tb.hairline)
+            .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 })
             .child(
                 div()
                     .flex()
@@ -247,49 +339,7 @@ impl AtlasView {
                             .child("TABS"),
                     ),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(4.0))
-                    .child(
-                        div()
-                            .id(ElementId::named_usize("sidebar-new-tab", 0))
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(5.0))
-                            .hover(move |s| s.bg(tb.card_hover))
-                            .active(|s| s.opacity(0.75))
-                            .cursor_pointer()
-                            .child(icons::icon(icons::PLUS).size(px(13.0)).text_color(tb.chrome_fg))
-                            .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                                view.new_tab(default_prof, cx);
-                                window.focus(&view.focus);
-                            })),
-                    )
-                    .child(
-                        div()
-                            .id(ElementId::named_usize("sidebar-cycle-btn", 0))
-                            .w(px(24.0))
-                            .h(px(24.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded(px(5.0))
-                            .bg(Rgba { a: 0.10, ..tb.accent })
-                            .hover(move |s| s.bg(tb.card_hover))
-                            .active(|s| s.opacity(0.75))
-                            .cursor_pointer()
-                            .child(icons::icon(icons::SIDEBAR_LEFT).size(px(13.0)).text_color(tb.accent))
-                            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                                view.cycle_sidebar_mode(cx);
-                            })),
-                    ),
-            );
+            .child(new_tab_capsule);
 
         let mut tab_list = div()
             .flex_1()
@@ -436,7 +486,7 @@ impl AtlasView {
             .h(px(42.0))
             .p(px(6.0))
             .border_t_1()
-            .border_color(tb.hairline)
+            .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 })
             .child(
                 div()
                     .id(ElementId::named_usize("sidebar-settings-btn", 0))
@@ -500,8 +550,6 @@ impl AtlasView {
             .min_h(px(0.0))
             .overflow_hidden()
             .bg(sidebar_bg)
-            .border_r_1()
-            .border_color(tb.hairline)
             .child(header)
             .child(tab_list)
             .child(footer)

@@ -106,14 +106,27 @@ impl AtlasView {
     }
 
     pub fn adjust_font_size(&mut self, new_size: f32, cx: &mut Context<Self>) {
-        self.font_size = new_size.clamp(10.0, 24.0);
+        let clamped = new_size.clamp(8.0, 36.0);
         self.scroll_anim = None;
-        for tab in &mut self.tabs {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.font_size = Some(clamped);
+            for pane in &mut tab.panes {
+                pane.cursor_pos = None;
+            }
+        } else {
+            self.font_size = clamped;
+        }
+        cx.notify();
+    }
+
+    pub fn reset_font_size(&mut self, cx: &mut Context<Self>) {
+        self.scroll_anim = None;
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.font_size = None;
             for pane in &mut tab.panes {
                 pane.cursor_pos = None;
             }
         }
-        self.sync_and_save_settings();
         cx.notify();
     }
 
@@ -490,15 +503,17 @@ impl AtlasView {
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_ZOOM_IN) {
-                    self.adjust_font_size(self.font_size + 1.0, cx);
+                    let cur = self.active_font_size();
+                    self.adjust_font_size(cur + 1.0, cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_ZOOM_OUT) {
-                    self.adjust_font_size(self.font_size - 1.0, cx);
+                    let cur = self.active_font_size();
+                    self.adjust_font_size(cur - 1.0, cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_ZOOM_RESET) {
-                    self.adjust_font_size(self.app_settings.font_size, cx);
+                    self.reset_font_size(cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_SELECT_ALL) {
@@ -572,7 +587,7 @@ impl AtlasView {
                     return;
                 }
                 "0" => {
-                    self.adjust_font_size(self.app_settings.font_size, cx);
+                    self.reset_font_size(cx);
                     return;
                 }
                 _ => {}
