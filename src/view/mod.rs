@@ -18,7 +18,7 @@ use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
+    linear_color_stop, linear_gradient, Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Rgba, ScrollHandle,
     ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
@@ -1977,8 +1977,9 @@ impl Render for AtlasView {
                 |el, delta| el.opacity(delta),
             );
 
-        let sheet = div()
+        let mut sheet = div()
             .id(ElementId::named_usize("terminal-sheet", 0))
+            .relative()
             .flex()
             .flex_col()
             .flex_1()
@@ -1993,6 +1994,65 @@ impl Render for AtlasView {
                 },
             ))
             .child(body);
+
+        // Smart Fullscreen Edge Blur Diffuser:
+        // In full screen / maximized mode, Windows DWM convolution blur clamps at the screen edge,
+        // causing wallpaper details near the screen borders to read as less blurry than the center.
+        // These feathered glass diffusers smoothly blend the perimeter into deep frosted blur.
+        if is_translucent && zoomed {
+            let edge_diffuse_tint = Rgba {
+                a: (0.32 + (1.0 - self.opacity) * 0.28).clamp(0.20, 0.55),
+                ..tb.panel_bg
+            };
+
+            let edge_diffuser_bottom = div()
+                .id(ElementId::named_usize("edge-diffuser-bottom", 0))
+                .absolute()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .h(px(32.0))
+                .bg(linear_gradient(
+                    180.0,
+                    linear_color_stop(rgba(0x00000000), 0.0),
+                    linear_color_stop(edge_diffuse_tint, 1.0),
+                ));
+
+            let edge_diffuser_right = div()
+                .id(ElementId::named_usize("edge-diffuser-right", 0))
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .right_0()
+                .w(px(32.0))
+                .bg(linear_gradient(
+                    90.0,
+                    linear_color_stop(rgba(0x00000000), 0.0),
+                    linear_color_stop(edge_diffuse_tint, 1.0),
+                ));
+
+            sheet = sheet.child(edge_diffuser_bottom).child(edge_diffuser_right);
+
+            let is_sidebar_hidden = self.app_settings.tab_bar_position != "sidebar"
+                || self.sidebar_mode == sidebar::SidebarMode::Hidden
+                || self.sidebar_current_width <= 1.0;
+
+            if is_sidebar_hidden {
+                let edge_diffuser_left = div()
+                    .id(ElementId::named_usize("edge-diffuser-left", 0))
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(32.0))
+                    .bg(linear_gradient(
+                        270.0,
+                        linear_color_stop(rgba(0x00000000), 0.0),
+                        linear_color_stop(edge_diffuse_tint, 1.0),
+                    ));
+                sheet = sheet.child(edge_diffuser_left);
+            }
+        }
 
         let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";
         let content_row: AnyElement = if is_sidebar_mode {

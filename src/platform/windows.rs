@@ -257,7 +257,7 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
             };
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                accent_flags: 0,
+                accent_flags: 2,
                 gradient_color: (alpha << 24) | rgb,
                 animation_id: 0,
             }
