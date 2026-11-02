@@ -775,39 +775,30 @@ impl Render for AtlasView {
             false
         };
 
+        let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";
+        let is_sidebar_visible = is_sidebar_mode
+            && self.sidebar_mode != sidebar::SidebarMode::Hidden
+            && self.sidebar_current_width > 1.0;
+
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
-            // In translucent mode: sheet and container must be fully transparent so
-            // the native acrylic accent (GPUI's `Blurred` background) shows
-            // through. Only the titlebar chrome gets a semi-transparent tint
-            // for legibility.
-            //
-            // The bar fill ramps from a 0.56 floor up to 0.90 as the slider
-            // approaches opaque. The old `opacity * 0.70` curve collapsed to
-            // 0.105 at 15% opacity, which let the wallpaper swallow the tab
-            // titles; the floor keeps the 36px bar dark (or light) enough for
-            // text at every slider position while the wallpaper still reads
-            // through it.
-            //
-            // The terminal element also skips default-cell backgrounds, so the
-            // cleared swapchain keeps alpha 0 across the terminal area. GPUI 0.2.2's
-            // DestBlendAlpha=ONE only over-accumulates overlapping translucent
-            // chrome layers; it does not force the empty terminal area opaque.
             let chrome = Rgba {
-                a: (0.56 + self.opacity * 0.34).clamp(0.56, 0.90),
+                a: (0.35 + self.opacity * 0.35).clamp(0.30, 0.75),
                 ..tb.panel_bg
             };
-            if is_tui_active {
-                (chrome, active_bg, tb.panel_bg)
-            } else {
-                (chrome, rgba(0x00000000), rgba(0x00000000))
-            }
+            (chrome, rgba(0x00000000), rgba(0x00000000))
         } else {
             (tb.panel_bg, term_base, tb.panel_bg)
         };
 
-        let bar_h = if zoomed { px(50.0) } else { px(42.0) };
-        let bar_pt = if zoomed { px(8.0) } else { px(0.0) };
-        let bar_pl = if zoomed { px(18.0) } else { px(12.0) };
+        // Ghostty-style minimalist top bar:
+        // Ultra-compact 32px (36px when zoomed) for maximum vertical terminal lines
+        let bar_h = if is_sidebar_visible {
+            if zoomed { px(36.0) } else { px(32.0) }
+        } else {
+            if zoomed { px(48.0) } else { px(40.0) }
+        };
+        let bar_pt = if zoomed { px(4.0) } else { px(0.0) };
+        let bar_pl = if is_sidebar_visible { px(10.0) } else if zoomed { px(14.0) } else { px(10.0) };
 
         let mut bar = div()
             .flex()
@@ -981,10 +972,6 @@ impl Render for AtlasView {
                 .flex_row()
                 .items_center()
                 .gap(px(6.0))
-                .px(px(8.0))
-                .h(px(26.0))
-                .rounded(px(6.0))
-                .bg(tb.card_hover)
                 .child(icons::icon(shell_icon).size(px(13.0)).text_color(tb.accent))
                 .child(
                     div()
@@ -1417,7 +1404,7 @@ impl Render for AtlasView {
             };
             let btn = div()
                 .id(ElementId::named_usize("window-control", index))
-                .w(px(46.0))
+                .w(if is_sidebar_visible { px(38.0) } else { px(46.0) })
                 .h(relative(1.0))
                 .flex()
                 .items_center()
@@ -2045,12 +2032,10 @@ impl Render for AtlasView {
             .child(body);
 
         // Smart Fullscreen Edge Blur Diffuser:
-        // In full screen / maximized mode, Windows DWM convolution blur clamps at the screen edge,
-        // causing wallpaper details near the screen borders to read as less blurry than the center.
-        // These feathered glass diffusers smoothly blend the perimeter into deep frosted blur.
-        if is_translucent && zoomed {
+        // When maximized, keep diffusers subtle (8px) and NEVER draw over active TUI apps.
+        if is_translucent && zoomed && !is_tui_active {
             let edge_diffuse_tint = Rgba {
-                a: (0.32 + (1.0 - self.opacity) * 0.28).clamp(0.20, 0.55),
+                a: 0.12,
                 ..tb.panel_bg
             };
 
@@ -2060,7 +2045,7 @@ impl Render for AtlasView {
                 .bottom_0()
                 .left_0()
                 .right_0()
-                .h(px(32.0))
+                .h(px(8.0))
                 .bg(linear_gradient(
                     180.0,
                     linear_color_stop(rgba(0x00000000), 0.0),
@@ -2073,7 +2058,7 @@ impl Render for AtlasView {
                 .top_0()
                 .bottom_0()
                 .right_0()
-                .w(px(32.0))
+                .w(px(8.0))
                 .bg(linear_gradient(
                     90.0,
                     linear_color_stop(rgba(0x00000000), 0.0),
@@ -2081,26 +2066,6 @@ impl Render for AtlasView {
                 ));
 
             sheet = sheet.child(edge_diffuser_bottom).child(edge_diffuser_right);
-
-            let is_sidebar_hidden = self.app_settings.tab_bar_position != "sidebar"
-                || self.sidebar_mode == sidebar::SidebarMode::Hidden
-                || self.sidebar_current_width <= 1.0;
-
-            if is_sidebar_hidden {
-                let edge_diffuser_left = div()
-                    .id(ElementId::named_usize("edge-diffuser-left", 0))
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left_0()
-                    .w(px(32.0))
-                    .bg(linear_gradient(
-                        270.0,
-                        linear_color_stop(rgba(0x00000000), 0.0),
-                        linear_color_stop(edge_diffuse_tint, 1.0),
-                    ));
-                sheet = sheet.child(edge_diffuser_left);
-            }
         }
 
         let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";

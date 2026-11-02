@@ -248,8 +248,7 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
         let set_composition: SetWindowCompositionAttributeFn = core::mem::transmute(p_fn);
 
         let mut policy = if enabled {
-            let zoomed = IsZoomed(hwnd) != 0;
-            let alpha: u32 = if zoomed { 0x26 } else { 0x01 };
+            let alpha: u32 = 0x01;
             let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
                 0x000000
             } else {
@@ -257,7 +256,7 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
             };
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                accent_flags: 2,
+                accent_flags: 0,
                 gradient_color: (alpha << 24) | rgb,
                 animation_id: 0,
             }
