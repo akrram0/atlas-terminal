@@ -413,8 +413,8 @@ impl AtlasView {
                     self.open_search(window, cx);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_TOGGLE_SIDEBAR) || chord == "ctrl+b" {
-                    self.toggle_sidebar(cx);
+                if chord == self.get_shortcut(ACTION_TOGGLE_SIDEBAR) || chord == "ctrl+s" || chord == "ctrl+b" {
+                    self.cycle_sidebar_mode(cx);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_NEW_TAB) {

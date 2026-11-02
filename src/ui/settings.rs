@@ -493,7 +493,11 @@ impl AtlasView {
             &self.app_settings.tab_bar_position,
             theme,
             |pos, view, cx| {
-                view.app_settings.tab_bar_position = pos;
+                view.app_settings.tab_bar_position = pos.clone();
+                if pos == "sidebar" {
+                    view.sidebar_mode = crate::view::sidebar::SidebarMode::Expanded;
+                    view.sidebar_open = true;
+                }
                 view.sync_and_save_settings();
                 cx.notify();
             },

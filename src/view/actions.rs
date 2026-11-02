@@ -535,9 +535,25 @@ impl AtlasView {
         cx.notify();
     }
 
-    pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
-        self.sidebar_open = !self.sidebar_open;
+    pub(crate) fn cycle_sidebar_mode(&mut self, cx: &mut Context<Self>) {
+        if self.app_settings.tab_bar_position != "sidebar" {
+            self.app_settings.tab_bar_position = "sidebar".to_string();
+            self.sidebar_mode = crate::view::sidebar::SidebarMode::Expanded;
+            self.sidebar_open = true;
+            cx.notify();
+            return;
+        }
+        self.sidebar_mode = match self.sidebar_mode {
+            crate::view::sidebar::SidebarMode::Expanded => crate::view::sidebar::SidebarMode::Compact,
+            crate::view::sidebar::SidebarMode::Compact => crate::view::sidebar::SidebarMode::Hidden,
+            crate::view::sidebar::SidebarMode::Hidden => crate::view::sidebar::SidebarMode::Expanded,
+        };
+        self.sidebar_open = self.sidebar_mode != crate::view::sidebar::SidebarMode::Hidden;
         cx.notify();
+    }
+
+    pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.cycle_sidebar_mode(cx);
     }
 
     pub(crate) fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {

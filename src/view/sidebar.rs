@@ -1,12 +1,20 @@
 use gpui::prelude::*;
 use gpui::{
-    div, px, relative, rgba, ClickEvent, Context, ElementId, FontWeight, IntoElement,
-    MouseButton, MouseDownEvent, Rgba,
+    div, px, relative, rgba, ClickEvent, Context, ElementId, FontWeight,
+    IntoElement, MouseButton, MouseDownEvent, Rgba,
 };
 use crate::icons;
 use crate::theme::Theme;
 use crate::workspace::{format_tab_title, session_icon};
 use super::AtlasView;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SidebarMode {
+    #[default]
+    Expanded,
+    Compact,
+    Hidden,
+}
 
 impl AtlasView {
     pub(crate) fn render_sidebar(
@@ -16,7 +24,8 @@ impl AtlasView {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let tb = theme.clone();
-        let sb_width = (210.0 * self.sidebar_expansion).round();
+        let current_w = self.sidebar_current_width;
+        let sb_width = current_w.round().max(0.0);
 
         let sidebar_bg = if is_translucent {
             Rgba {
@@ -34,8 +43,186 @@ impl AtlasView {
         };
 
         let default_prof = self.get_default_profile();
+        let is_compact = sb_width < 100.0;
 
-        // 1. Sidebar Header ("TABS", New Tab, Collapse)
+        // =========================================================================
+        // 1. COMPACT MODE (Icon Rail — 52px slim dock)
+        // =========================================================================
+        if is_compact {
+            // Header: Centered sidebar cycle button
+            let header = div()
+                .h(px(38.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .border_b_1()
+                .border_color(tb.hairline)
+                .child(
+                    div()
+                        .id(ElementId::named_usize("sidebar-compact-cycle", 0))
+                        .w(px(28.0))
+                        .h(px(28.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .bg(Rgba { a: 0.12, ..tb.accent })
+                        .hover(move |s| s.bg(tb.card_hover))
+                        .active(|s| s.opacity(0.75))
+                        .cursor_pointer()
+                        .child(icons::icon(icons::SIDEBAR_LEFT).size(px(15.0)).text_color(tb.accent))
+                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                            view.cycle_sidebar_mode(cx);
+                        })),
+                );
+
+            // New Tab button
+            let new_tab_btn = div()
+                .h(px(34.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .id(ElementId::named_usize("sidebar-compact-new-tab", 0))
+                        .w(px(28.0))
+                        .h(px(28.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .hover(move |s| s.bg(tb.card_hover))
+                        .active(|s| s.opacity(0.75))
+                        .cursor_pointer()
+                        .child(icons::icon(icons::PLUS).size(px(14.0)).text_color(tb.chrome_fg))
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            view.new_tab(default_prof, cx);
+                            window.focus(&view.focus);
+                        })),
+                );
+
+            // Icon tiles stack
+            let mut tab_list = div()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap(px(4.0))
+                .py(px(4.0))
+                .overflow_hidden();
+
+            for ix in 0..self.tabs.len() {
+                let active = ix == self.active && !self.settings_open;
+                let tab = &self.tabs[ix];
+                let pane = tab.panes.get(tab.active_pane);
+                let icon = match pane {
+                    Some(pane) => session_icon(&pane.title, pane.profile),
+                    None => icons::TERMINAL,
+                };
+
+                let (card_bg, card_border, icon_color) = if active {
+                    (tb.elevated_bg, tb.elevated_border, tb.accent)
+                } else {
+                    (rgba(0x00000000), rgba(0x00000000), chrome_ink)
+                };
+
+                let mut tile = div()
+                    .id(ElementId::named_usize("sidebar-compact-tab", ix))
+                    .w(px(36.0))
+                    .h(px(36.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(8.0))
+                    .bg(card_bg)
+                    .border_1()
+                    .border_color(card_border)
+                    .cursor_pointer();
+
+                if !tab.closing {
+                    tile = tile
+                        .hover(move |s| s.bg(tb.card_hover).text_color(tb.chrome_fg_active))
+                        .active(|s| s.opacity(0.82))
+                        .on_mouse_down(
+                            MouseButton::Middle,
+                            cx.listener(move |view, _: &MouseDownEvent, window, cx| {
+                                view.close_tab(ix, cx);
+                                window.focus(&view.focus);
+                            }),
+                        )
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            view.active = ix;
+                            view.settings_open = false;
+                            window.focus(&view.focus);
+                            cx.notify();
+                        }));
+                }
+
+                tile = tile.child(
+                    icons::icon(icon)
+                        .size(px(16.0))
+                        .text_color(icon_color),
+                );
+
+                tab_list = tab_list.child(tile);
+            }
+
+            // Compact Footer
+            let is_settings_active = self.settings_open;
+            let footer = div()
+                .h(px(42.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .border_t_1()
+                .border_color(tb.hairline)
+                .child(
+                    div()
+                        .id(ElementId::named_usize("sidebar-compact-settings", 0))
+                        .w(px(32.0))
+                        .h(px(32.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.0))
+                        .bg(if is_settings_active { tb.elevated_bg } else { rgba(0x00000000) })
+                        .border_1()
+                        .border_color(if is_settings_active { tb.elevated_border } else { rgba(0x00000000) })
+                        .hover(move |s| s.bg(tb.card_hover))
+                        .active(|s| s.opacity(0.8))
+                        .cursor_pointer()
+                        .child(
+                            icons::icon(icons::SETTINGS)
+                                .size(px(16.0))
+                                .text_color(if is_settings_active { tb.accent } else { chrome_ink }),
+                        )
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            view.toggle_settings(window, cx);
+                        })),
+                );
+
+            return div()
+                .id(ElementId::named_usize("vertical-sidebar-panel", 0))
+                .flex()
+                .flex_col()
+                .w(px(sb_width))
+                .min_w(px(sb_width))
+                .max_w(px(sb_width))
+                .h(relative(1.0))
+                .min_h(px(0.0))
+                .overflow_hidden()
+                .bg(sidebar_bg)
+                .border_r_1()
+                .border_color(tb.hairline)
+                .child(header)
+                .child(new_tab_btn)
+                .child(tab_list)
+                .child(footer);
+        }
+
+        // =========================================================================
+        // 2. EXPANDED MODE (Full Workspace Sidebar with Titles and Resize Handle)
+        // =========================================================================
         let header = div()
             .h(px(38.0))
             .px(px(12.0))
@@ -47,10 +234,18 @@ impl AtlasView {
             .border_color(tb.hairline)
             .child(
                 div()
-                    .text_size(px(11.0))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(tb.faint_fg)
-                    .child("TABS"),
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(icons::icon(icons::TERMINAL).size(px(13.0)).text_color(tb.faint_fg))
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(tb.faint_fg)
+                            .child("TABS"),
+                    ),
             )
             .child(
                 div()
@@ -78,25 +273,24 @@ impl AtlasView {
                     )
                     .child(
                         div()
-                            .id(ElementId::named_usize("sidebar-hide-btn", 0))
+                            .id(ElementId::named_usize("sidebar-cycle-btn", 0))
                             .w(px(24.0))
                             .h(px(24.0))
                             .flex()
                             .items_center()
                             .justify_center()
                             .rounded(px(5.0))
+                            .bg(Rgba { a: 0.10, ..tb.accent })
                             .hover(move |s| s.bg(tb.card_hover))
                             .active(|s| s.opacity(0.75))
                             .cursor_pointer()
-                            .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)).text_color(tb.chrome_fg))
+                            .child(icons::icon(icons::SIDEBAR_LEFT).size(px(13.0)).text_color(tb.accent))
                             .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                                view.sidebar_open = false;
-                                cx.notify();
+                                view.cycle_sidebar_mode(cx);
                             })),
                     ),
             );
 
-        // 2. Tab items stack
         let mut tab_list = div()
             .flex_1()
             .flex()
@@ -141,11 +335,11 @@ impl AtlasView {
                 .id(ElementId::named_usize("sidebar-tab-row", ix))
                 .h(px(32.0))
                 .w(relative(1.0))
-                .px(px(8.0))
+                .px(px(6.0))
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
+                .gap(px(6.0))
                 .rounded(px(6.0))
                 .bg(pill_bg)
                 .border_1()
@@ -181,7 +375,15 @@ impl AtlasView {
                     }));
             }
 
+            // Left vertical accent indicator bar
+            let indicator = if active {
+                div().w(px(3.0)).h(px(16.0)).rounded(px(1.5)).bg(tb.accent)
+            } else {
+                div().w(px(3.0)).h(px(16.0)).bg(rgba(0x00000000))
+            };
+
             tab_row = tab_row
+                .child(indicator)
                 .child(
                     div()
                         .text_color(pill_icon)
@@ -224,7 +426,7 @@ impl AtlasView {
             tab_list = tab_list.child(tab_row);
         }
 
-        // 3. Footer with Settings item
+        // Footer with Settings item
         let is_settings_active = self.settings_open;
         let footer_pill_bg = if is_settings_active { tb.elevated_bg } else { rgba(0x00000000) };
         let footer_pill_border = if is_settings_active { tb.elevated_border } else { rgba(0x00000000) };
@@ -269,8 +471,26 @@ impl AtlasView {
                     })),
             );
 
+        // Interactive right-edge resize handle
+        let resize_handle = div()
+            .id(ElementId::named_usize("sidebar-resize-handle", 0))
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .right_0()
+            .w(px(5.0))
+            .cursor_pointer()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|view, _: &MouseDownEvent, _window, cx| {
+                    view.sidebar_is_resizing = true;
+                    cx.notify();
+                }),
+            );
+
         div()
             .id(ElementId::named_usize("vertical-sidebar-panel", 0))
+            .relative()
             .flex()
             .flex_col()
             .w(px(sb_width))
@@ -285,5 +505,6 @@ impl AtlasView {
             .child(header)
             .child(tab_list)
             .child(footer)
+            .child(resize_handle)
     }
 }

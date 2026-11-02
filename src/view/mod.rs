@@ -167,6 +167,10 @@ pub struct AtlasView {
     pub(crate) hovered_link: Option<(usize, crate::url::DetectedUrl)>,
     pub(crate) sidebar_open: bool,
     pub(crate) sidebar_expansion: f32,
+    pub(crate) sidebar_mode: sidebar::SidebarMode,
+    pub(crate) sidebar_width: f32,
+    pub(crate) sidebar_current_width: f32,
+    pub(crate) sidebar_is_resizing: bool,
 }
 
 
@@ -325,6 +329,10 @@ impl AtlasView {
             hovered_link: None,
             sidebar_open: true,
             sidebar_expansion: 1.0,
+            sidebar_mode: sidebar::SidebarMode::Expanded,
+            sidebar_width: 210.0,
+            sidebar_current_width: 210.0,
+            sidebar_is_resizing: false,
         };
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(opacity);
@@ -573,20 +581,28 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
-                    // 8. Vertical sidebar kinetic expansion/collapse
-                    let target_sidebar = if view.sidebar_open { 1.0f32 } else { 0.0f32 };
-                    let sidebar_diff = target_sidebar - view.sidebar_expansion;
-                    if sidebar_diff.abs() > 0.005 {
+                    // 8. Vertical sidebar kinetic expansion/collapse (3 modes: Expanded, Compact, Hidden)
+                    let target_width = if view.sidebar_is_resizing {
+                        view.sidebar_width
+                    } else {
+                        match view.sidebar_mode {
+                            sidebar::SidebarMode::Expanded => view.sidebar_width,
+                            sidebar::SidebarMode::Compact => 52.0,
+                            sidebar::SidebarMode::Hidden => 0.0,
+                        }
+                    };
+                    let sidebar_diff = target_width - view.sidebar_current_width;
+                    if sidebar_diff.abs() > 0.5 {
                         active_motion = true;
-                        let factor = (1.0 - (-18.0 * dt).exp()).clamp(0.0, 1.0);
-                        view.sidebar_expansion = if sidebar_diff.abs() < 0.01 {
-                            target_sidebar
-                        } else {
-                            view.sidebar_expansion + sidebar_diff * factor
-                        };
+                        let factor = (1.0 - (-22.0 * dt).exp()).clamp(0.0, 1.0);
+                        view.sidebar_current_width += sidebar_diff * factor;
+                        view.sidebar_expansion = (view.sidebar_current_width / view.sidebar_width.max(1.0)).clamp(0.0, 1.0);
+                        view.sidebar_open = view.sidebar_mode != sidebar::SidebarMode::Hidden;
                         needs_paint = true;
-                    } else if view.sidebar_expansion != target_sidebar {
-                        view.sidebar_expansion = target_sidebar;
+                    } else if view.sidebar_current_width != target_width {
+                        view.sidebar_current_width = target_width;
+                        view.sidebar_expansion = (view.sidebar_current_width / view.sidebar_width.max(1.0)).clamp(0.0, 1.0);
+                        view.sidebar_open = view.sidebar_mode != sidebar::SidebarMode::Hidden;
                         needs_paint = true;
                     }
 
@@ -890,11 +906,11 @@ impl Render for AtlasView {
 
         let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";
         if is_sidebar_mode {
-            let is_sidebar_active = self.sidebar_open && self.sidebar_expansion > 0.3;
+            let is_sidebar_active = self.sidebar_mode != sidebar::SidebarMode::Hidden;
             let sidebar_btn = div()
                 .id(ElementId::named_usize("sidebar-toggle-btn", 0))
                 .w(px(30.0))
-                .h(px(32.0))
+                .h(px(30.0))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -909,13 +925,50 @@ impl Render for AtlasView {
                         .text_color(if is_sidebar_active { tb.accent } else { tb.chrome_fg_active }),
                 )
                 .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                    view.toggle_sidebar(cx);
+                    view.cycle_sidebar_mode(cx);
                 }));
 
             bar = bar.child(sidebar_btn);
-            bar = bar.child(div().w(px(2.0)));
-            bar = bar.child(capsule);
-            bar = bar.child(div().w(px(6.0)));
+
+            // In Hidden mode, show the topbar new tab button and session breadcrumb.
+            // When sidebar is visible (Expanded or Compact), new tab button lives inside the sidebar!
+            if self.sidebar_mode == sidebar::SidebarMode::Hidden {
+                bar = bar.child(div().w(px(4.0)));
+                bar = bar.child(capsule);
+
+                let active_tab_title = if self.settings_open {
+                    "Settings".to_string()
+                } else if let Some(tab) = self.tabs.get(self.active) {
+                    if let Some(pane) = tab.panes.get(tab.active_pane) {
+                        tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
+                    } else {
+                        "Terminal".to_string()
+                    }
+                } else {
+                    "Terminal".to_string()
+                };
+
+                bar = bar.child(div().w(px(8.0)));
+                bar = bar.child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(6.0))
+                        .px(px(8.0))
+                        .h(px(26.0))
+                        .rounded(px(6.0))
+                        .bg(tb.card_hover)
+                        .child(
+                            div()
+                                .text_size(px(12.0))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(tb.chrome_fg_active)
+                                .truncate()
+                                .child(active_tab_title),
+                        ),
+                );
+            }
 
             if let Some(tab) = self.tabs.get(self.active) {
                 let pane = tab.panes.get(tab.active_pane);
@@ -929,40 +982,6 @@ impl Render for AtlasView {
                     format!("{label} — Atlas Terminal")
                 };
                 crate::rounded_corners::set_window_title(&win_title);
-            }
-
-            if self.sidebar_expansion < 0.6 {
-                let active_tab_title = if self.settings_open {
-                    "Settings".to_string()
-                } else if let Some(tab) = self.tabs.get(self.active) {
-                    if let Some(pane) = tab.panes.get(tab.active_pane) {
-                        tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
-                    } else {
-                        "Terminal".to_string()
-                    }
-                } else {
-                    "Terminal".to_string()
-                };
-
-                bar = bar.child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.0))
-                        .px(px(8.0))
-                        .h(px(28.0))
-                        .rounded(px(6.0))
-                        .bg(tb.card_hover)
-                        .child(
-                            div()
-                                .text_size(px(12.5))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(tb.chrome_fg_active)
-                                .truncate()
-                                .child(active_tab_title),
-                        ),
-                );
             }
         } else {
             bar = bar.child(capsule);
@@ -1953,7 +1972,6 @@ impl Render for AtlasView {
             .flex()
             .flex_col()
             .flex_1()
-            .w(relative(1.0))
             .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_hidden()
@@ -1977,7 +1995,7 @@ impl Render for AtlasView {
                 .min_h(px(0.0))
                 .overflow_hidden();
 
-            if self.sidebar_expansion > 0.005 {
+            if self.sidebar_current_width > 1.0 {
                 row = row.child(self.render_sidebar(&theme, is_translucent, cx));
             }
             row = row.child(sheet);
@@ -1998,6 +2016,21 @@ impl Render for AtlasView {
             .min_h(px(0.0))
             .bg(container_bg)
             .overflow_hidden()
+            .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
+                if view.sidebar_is_resizing {
+                    let mouse_x = f32::from(event.position.x);
+                    let new_w = mouse_x.clamp(160.0, 420.0);
+                    view.sidebar_width = new_w;
+                    view.sidebar_current_width = new_w;
+                    cx.notify();
+                }
+            }))
+            .on_mouse_up(MouseButton::Left, cx.listener(|view, _: &MouseUpEvent, _window, cx| {
+                if view.sidebar_is_resizing {
+                    view.sidebar_is_resizing = false;
+                    cx.notify();
+                }
+            }))
             .child(bar)
             .child(content_row);
 
