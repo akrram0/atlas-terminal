@@ -61,10 +61,12 @@ impl AtlasView {
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(self.opacity);
         save_app_settings(&self.app_settings);
+        self.last_settings_mtime = std::fs::metadata(crate::user_data_dir().join("settings.json")).and_then(|m| m.modified()).ok();
     }
 
     pub fn reload_settings_from_disk(&mut self, cx: &mut Context<Self>) {
         let loaded = crate::config::load_app_settings();
+        self.last_settings_mtime = std::fs::metadata(crate::user_data_dir().join("settings.json")).and_then(|m| m.modified()).ok();
         self.theme_mode = loaded.theme_mode.clone();
         self.font_family = loaded.font_family.clone();
         self.font_size = loaded.font_size;

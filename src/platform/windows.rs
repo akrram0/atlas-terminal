@@ -249,8 +249,8 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
         let set_composition: SetWindowCompositionAttributeFn = core::mem::transmute(p_fn);
 
         let mut policy = if enabled {
-            let is_zoomed = unsafe { IsZoomed(hwnd) } != 0;
-            let alpha: u32 = if is_zoomed { 0x36 } else { 0x1A };
+            let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::Relaxed));
+            let alpha = ((op.clamp(0.05, 0.95)) * 40.0) as u32;
             let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
                 0x0a0c10
             } else {
@@ -580,40 +580,8 @@ unsafe extern "system" fn window_proc(
             }
         }
         WM_NCCALCSIZE => {
-            if unsafe { IsZoomed(hwnd) } != 0 {
-                // When maximized, Windows outdents a WS_THICKFRAME window by the resize frame
-                // (SM_CYFRAME + SM_CXPADDEDBORDER, usually 8px) into negative coordinates.
-                // Insetting rgrc[0] by this frame prevents content from being clipped offscreen
-                // and keeps acrylic blur perfectly framed within the monitor work area.
-                let frame_y = unsafe {
-                    GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
-                };
-                let frame_x = unsafe {
-                    GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
-                };
-                if wparam != 0 {
-                    let params = lparam as *mut NcCalcSizeParams;
-                    if !params.is_null() {
-                        unsafe {
-                            (*params).rgrc[0].top += frame_y;
-                            (*params).rgrc[0].left += frame_x;
-                            (*params).rgrc[0].right -= frame_x;
-                            (*params).rgrc[0].bottom -= frame_y;
-                        }
-                    }
-                } else {
-                    let rect = lparam as *mut Rect;
-                    if !rect.is_null() {
-                        unsafe {
-                            (*rect).top += frame_y;
-                            (*rect).left += frame_x;
-                            (*rect).right -= frame_x;
-                            (*rect).bottom -= frame_y;
-                        }
-                    }
-                }
-                return 0;
-            }
+            // Full client area coverage: 100% of window rect is client area so
+            // DWM DirectComposition acrylic blur extends smoothly to every screen edge.
             0
         }
         WM_NCHITTEST => {
@@ -628,18 +596,8 @@ unsafe extern "system" fn window_proc(
                         return hit;
                     }
                 }
-                let (frame_x, frame_y) = if zoomed {
-                    unsafe {
-                        (
-                            GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
-                            GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
-                        )
-                    }
-                } else {
-                    (0, 0)
-                };
-                let client_x = (x - (rect.left + frame_x)) as f32;
-                let client_y = (y - (rect.top + frame_y)) as f32;
+                let client_x = (x - rect.left) as f32;
+                let client_y = (y - rect.top) as f32;
 
                 // Borderless Terminal Drag-Everywhere:
                 // Strictly active in Borderless mode ONLY.

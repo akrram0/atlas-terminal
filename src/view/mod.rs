@@ -175,6 +175,7 @@ pub struct AtlasView {
     pub(crate) sidebar_width: f32,
     pub(crate) sidebar_current_width: f32,
     pub(crate) sidebar_is_resizing: bool,
+    pub(crate) last_settings_mtime: Option<std::time::SystemTime>,
 }
 
 
@@ -340,6 +341,7 @@ impl AtlasView {
             sidebar_width: 210.0,
             sidebar_current_width: 210.0,
             sidebar_is_resizing: false,
+            last_settings_mtime: std::fs::metadata(crate::user_data_dir().join("settings.json")).and_then(|m| m.modified()).ok(),
         };
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(opacity);
@@ -1072,6 +1074,18 @@ impl AtlasView {
                 .child(hud)
                 .into_any_element()
     }
+
+    pub(crate) fn check_settings_reload(&mut self, cx: &mut Context<Self>) {
+        let path = crate::user_data_dir().join("settings.json");
+        if let Ok(m) = std::fs::metadata(&path) {
+            if let Ok(mtime) = m.modified() {
+                if self.last_settings_mtime.map_or(true, |last| mtime > last) {
+                    self.last_settings_mtime = Some(mtime);
+                    self.reload_settings_from_disk(cx);
+                }
+            }
+        }
+    }
 }
 
 impl Render for AtlasView {
@@ -1079,6 +1093,7 @@ impl Render for AtlasView {
         let is_active = crate::rounded_corners::is_active();
         if is_active && !self.window_was_active {
             self.maybe_auto_check(true, cx);
+            self.check_settings_reload(cx);
         }
         self.window_was_active = is_active;
 
@@ -1149,12 +1164,13 @@ impl Render for AtlasView {
             && self.sidebar_current_width > 1.0;
 
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
+            let alpha = self.opacity.clamp(0.05, 0.95);
             let chrome = Rgba {
-                a: (0.35 + self.opacity * 0.35).clamp(0.30, 0.75),
+                a: (alpha * 0.90).clamp(0.15, 0.85),
                 ..tb.panel_bg
             };
             let sheet = Rgba {
-                a: if zoomed { 0.52 } else { 0.32 },
+                a: alpha,
                 ..term_base
             };
             (chrome, sheet, sheet)
