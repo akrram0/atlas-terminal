@@ -18,7 +18,7 @@ use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    linear_color_stop, linear_gradient, Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
+    Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Rgba, ScrollHandle,
     ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
@@ -290,7 +290,7 @@ impl AtlasView {
             last_scroll_time: std::time::Instant::now(),
             island_hud_opacity: 0.0,
             island_hud_hovered: false,
-            last_island_hud_time: std::time::Instant::now(),
+            last_island_hud_time: std::time::Instant::now().checked_sub(std::time::Duration::from_secs(10)).unwrap_or_else(std::time::Instant::now),
             hover_tab: None,
             hover_mark: None,
             updater_settings: UpdaterSettings {
@@ -479,9 +479,9 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
-                    // 4b. Dynamic Island HUD smooth fade
+                    // 4b. Dynamic Island HUD smooth fade: stays awake when hovered while already visible
                     let island_idle = view.last_island_hud_time.elapsed().as_millis();
-                    let target_island = if view.island_hud_hovered || island_idle < 2800 {
+                    let target_island = if (view.island_hud_hovered && view.island_hud_opacity > 0.5) || island_idle < 2500 {
                         1.0
                     } else {
                         0.0
@@ -489,7 +489,7 @@ impl AtlasView {
                     let diff_island = target_island - view.island_hud_opacity;
                     if diff_island.abs() > 0.005 {
                         active_motion = true;
-                        let factor = (1.0 - (-11.0 * dt).exp()).clamp(0.0, 1.0);
+                        let factor = (1.0 - (-12.0 * dt).exp()).clamp(0.0, 1.0);
                         view.island_hud_opacity += diff_island * factor;
                         needs_paint = true;
                     } else if view.island_hud_opacity != target_island {
@@ -778,29 +778,31 @@ impl AtlasView {
         let chrome_fg = tb.chrome_fg;
         let accent_color = tb.accent;
 
-        // Slide down offset: -52px when hidden, 0px when fully open
-        let slide_y = (1.0 - opacity) * -52.0;
+        // Slide down offset: -60px when hidden, 0px when fully open
+        let slide_y = (1.0 - opacity) * -60.0;
 
         let mut hud = div()
             .id(ElementId::named_usize("dynamic-island-hud", 0))
             .mt(px(8.0 + slide_y))
-            .w(px(680.0))
-            .h(px(44.0))
+            .w(px(720.0))
+            .h(px(46.0))
             .opacity(opacity)
-            .rounded(px(22.0))
+            .rounded(px(23.0))
             .bg(bg_color)
             .border_1()
             .border_color(border_color)
             .shadow_xl()
-            .px(px(12.0))
+            .px(px(14.0))
             .flex()
             .items_center()
             .justify_between()
             .cursor_default()
             .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
-                view.island_hud_hovered = *hovered;
-                if *hovered {
-                    view.last_island_hud_time = std::time::Instant::now();
+                if view.island_hud_opacity > 0.5 {
+                    view.island_hud_hovered = *hovered;
+                    if *hovered {
+                        view.last_island_hud_time = std::time::Instant::now();
+                    }
                     cx.notify();
                 }
             }));
@@ -945,6 +947,22 @@ impl AtlasView {
                             view.apply_update_and_restart(cx);
                         })),
                 );
+            } else if let UpdateDownloadState::Downloading { percent, .. } = self.update_download_state {
+                right_section = right_section.child(
+                    div()
+                        .id(ElementId::named_usize("island-downloading-btn", 0))
+                        .px(px(9.0))
+                        .h(px(26.0))
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .rounded(px(6.0))
+                        .bg(accent_color)
+                        .text_color(tb2.elevated_bg)
+                        .text_size(px(11.5))
+                        .font_weight(FontWeight::BOLD)
+                        .child(format!("⏳ {percent}%")),
+                );
             } else if self.available_update.is_some() {
                 right_section = right_section.child(
                     div()
@@ -1013,7 +1031,29 @@ impl AtlasView {
                     view.trigger_island_hud(cx);
                 }));
 
-            right_section = right_section.child(split_btn).child(close_btn);
+            // 1-Click Settings Button
+            let tb4 = theme.clone();
+            let settings_btn = div()
+                .id(ElementId::named_usize("island-settings", 0))
+                .w(px(26.0))
+                .h(px(26.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.0))
+                .bg(rgba(0x00000000))
+                .hover(move |s| s.bg(tb4.card_hover))
+                .cursor_pointer()
+                .child(
+                    icons::icon(icons::SETTINGS)
+                        .size(px(13.0))
+                        .text_color(chrome_fg),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                    view.toggle_settings(window, cx);
+                }));
+
+            right_section = right_section.child(split_btn).child(close_btn).child(settings_btn);
 
             hud = hud
                 .child(left_section)
@@ -1049,6 +1089,10 @@ impl Render for AtlasView {
         // moved.
         crate::rounded_corners::set_opacity(self.opacity);
         let is_translucent = self.opacity < 0.999;
+
+        let is_borderless = self.app_settings.tab_bar_position == "borderless";
+        let is_island_visible = is_borderless && self.island_hud_opacity > 0.005;
+        crate::rounded_corners::set_borderless_mode(is_borderless, is_island_visible);
 
         // A dismissal that raced another state change must not stay armed.
         if !self.palette_open {
@@ -2258,7 +2302,7 @@ impl Render for AtlasView {
             px(0.0)
         };
 
-        let mut sheet = div()
+        let sheet = div()
             .id(ElementId::named_usize("terminal-sheet", 0))
             .relative()
             .flex()
@@ -2277,42 +2321,6 @@ impl Render for AtlasView {
             ))
             .child(body);
 
-        // Fullscreen edge blur diffusers:
-        // Windows DWM acrylic blur kernel collapses at the display boundaries because pixels outside
-        // the display do not exist, causing high-contrast desktop icons on the screen edge to bleed through.
-        // A subtle frosted edge gradient smoothly diffuses edge artifacts.
-        if is_translucent && zoomed {
-            let edge_tint = Rgba {
-                a: 0.32,
-                ..tb.panel_bg
-            };
-            let edge_left = div()
-                .id(ElementId::named_usize("edge-diffuser-left", 0))
-                .absolute()
-                .top_0()
-                .bottom_0()
-                .left_0()
-                .w(px(28.0))
-                .bg(linear_gradient(
-                    90.0,
-                    linear_color_stop(edge_tint, 0.0),
-                    linear_color_stop(rgba(0x00000000), 1.0),
-                ));
-            let edge_right = div()
-                .id(ElementId::named_usize("edge-diffuser-right", 0))
-                .absolute()
-                .top_0()
-                .bottom_0()
-                .right_0()
-                .w(px(28.0))
-                .bg(linear_gradient(
-                    270.0,
-                    linear_color_stop(edge_tint, 0.0),
-                    linear_color_stop(rgba(0x00000000), 1.0),
-                ));
-            sheet = sheet.child(edge_left).child(edge_right);
-        }
-
         let sheet_with_controls = if !is_top_tab_mode {
             let tb = theme.clone();
             let is_hidden_sidebar = is_sidebar_mode && !is_sidebar_visible;
@@ -2320,43 +2328,43 @@ impl Render for AtlasView {
             let is_borderless = self.app_settings.tab_bar_position == "borderless";
             let is_island_visible = is_borderless && self.island_hud_opacity > 0.005;
 
-            // In borderless mode when the Dynamic Island is visible, split the drag band so the island
-            // can receive pointer clicks. When the island is hidden (or when in sidebar mode), provide
-            // a FULL, wide drag band across the entire top edge so the window can easily and reliably be dragged!
+            // Top drag band across the window width (leaving clearance for top-right controls):
             let drag_band = if is_island_visible {
                 div()
+                    .id(ElementId::named_usize("floating-drag-band-split", 0))
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right(px(120.0))
+                    .h(px(36.0))
+                    .flex()
+                    .flex_row()
+                    .justify_between()
                     .child(
                         div()
-                            .id(ElementId::named_usize("floating-drag-band-left", 0))
-                            .absolute()
-                            .top_0()
-                            .left_0()
                             .w(px(140.0))
-                            .h(px(32.0))
+                            .h(relative(1.0))
+                            .flex()
                             .child(caption_spacer(0)),
                     )
                     .child(
                         div()
-                            .id(ElementId::named_usize("floating-drag-band-right", 0))
-                            .absolute()
-                            .top_0()
-                            .right(px(120.0))
                             .w(px(100.0))
-                            .h(px(32.0))
+                            .h(relative(1.0))
+                            .flex()
                             .child(caption_spacer(1)),
                     )
             } else {
                 div()
-                    .child(
-                        div()
-                            .id(ElementId::named_usize("floating-drag-band-full", 0))
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right(px(140.0))
-                            .h(px(32.0))
-                            .child(caption_spacer(0)),
-                    )
+                    .id(ElementId::named_usize("floating-drag-band-full", 0))
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .right(px(120.0))
+                    .h(px(36.0))
+                    .flex()
+                    .flex_row()
+                    .child(caption_spacer(0))
             };
 
             // Floating controls in the top-right corner

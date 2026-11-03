@@ -5,7 +5,7 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement,
-    Window, canvas, div, px, rgba,
+    Window, canvas, div, px, relative, rgba,
 };
 
 use crate::icons;
@@ -65,8 +65,11 @@ pub fn overlay_backdrop(
 pub fn caption_spacer(slot: usize) -> impl IntoElement {
     div()
         .id(ElementId::named_usize("caption-spacer", slot))
+        .w(relative(1.0))
         .flex_1()
-        .h(px(36.0))
+        .h(relative(1.0))
+        .min_w(px(0.0))
+        .min_h(px(0.0))
         .relative()
         .child(
             canvas(

@@ -4,7 +4,6 @@ use gpui::{
     IntoElement, MouseButton, MouseDownEvent, Rgba,
 };
 use crate::icons;
-use crate::ui::overlay::caption_spacer;
 use crate::theme::Theme;
 use crate::workspace::{format_tab_title, session_icon};
 use super::AtlasView;
@@ -400,7 +399,13 @@ impl AtlasView {
                             .child("TABS"),
                     ),
             )
-            .child(caption_spacer(2))
+            .child(
+                div()
+                    .flex_1()
+                    .h(relative(1.0))
+                    .flex()
+                    .child(crate::ui::overlay::caption_spacer(2)),
+            )
             .child(new_tab_capsule);
 
         let mut tab_list = div()

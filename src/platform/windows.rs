@@ -185,6 +185,7 @@ unsafe extern "system" {
     fn SetWindowTextW(hwnd: Hwnd, lp_string: *const u16) -> i32;
     fn GetForegroundWindow() -> Hwnd;
     fn GetSystemMetrics(n_index: i32) -> i32;
+    fn GetAsyncKeyState(v_key: i32) -> i16;
 }
 
 const SM_CXFRAME: i32 = 32;
@@ -405,6 +406,15 @@ pub fn set_caption_rect(slot: usize, x: f32, y: f32, w: f32, h: f32) {
     CAPTION_RECTS[base + 3].store((y + h).to_bits(), Ordering::Relaxed);
 }
 
+static IS_BORDERLESS: AtomicBool = AtomicBool::new(false);
+static ISLAND_VISIBLE: AtomicBool = AtomicBool::new(false);
+
+/// Sync borderless mode and Dynamic Island visibility for native hit-testing.
+pub fn set_borderless_mode(borderless: bool, island_visible: bool) {
+    IS_BORDERLESS.store(borderless, Ordering::Relaxed);
+    ISLAND_VISIBLE.store(island_visible, Ordering::Relaxed);
+}
+
 /// True when a physical client point lies inside one of the reported drag
 /// bands.
 fn caption_hit(hwnd: Hwnd, client_x: f32, client_y: f32) -> bool {
@@ -570,8 +580,40 @@ unsafe extern "system" fn window_proc(
             }
         }
         WM_NCCALCSIZE => {
-            // Full client area coverage: 100% of window rect is client area so
-            // DWM DirectComposition acrylic blur extends smoothly to every screen edge.
+            if unsafe { IsZoomed(hwnd) } != 0 {
+                // When maximized, Windows outdents a WS_THICKFRAME window by the resize frame
+                // (SM_CYFRAME + SM_CXPADDEDBORDER, usually 8px) into negative coordinates.
+                // Insetting rgrc[0] by this frame prevents content from being clipped offscreen
+                // and keeps acrylic blur perfectly framed within the monitor work area.
+                let frame_y = unsafe {
+                    GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
+                };
+                let frame_x = unsafe {
+                    GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER)
+                };
+                if wparam != 0 {
+                    let params = lparam as *mut NcCalcSizeParams;
+                    if !params.is_null() {
+                        unsafe {
+                            (*params).rgrc[0].top += frame_y;
+                            (*params).rgrc[0].left += frame_x;
+                            (*params).rgrc[0].right -= frame_x;
+                            (*params).rgrc[0].bottom -= frame_y;
+                        }
+                    }
+                } else {
+                    let rect = lparam as *mut Rect;
+                    if !rect.is_null() {
+                        unsafe {
+                            (*rect).top += frame_y;
+                            (*rect).left += frame_x;
+                            (*rect).right -= frame_x;
+                            (*rect).bottom -= frame_y;
+                        }
+                    }
+                }
+                return 0;
+            }
             0
         }
         WM_NCHITTEST => {
@@ -586,8 +628,49 @@ unsafe extern "system" fn window_proc(
                         return hit;
                     }
                 }
-                let client_x = (x - rect.left) as f32;
-                let client_y = (y - rect.top) as f32;
+                let (frame_x, frame_y) = if zoomed {
+                    unsafe {
+                        (
+                            GetSystemMetrics(SM_CXFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
+                            GetSystemMetrics(SM_CYFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER),
+                        )
+                    }
+                } else {
+                    (0, 0)
+                };
+                let client_x = (x - (rect.left + frame_x)) as f32;
+                let client_y = (y - (rect.top + frame_y)) as f32;
+
+                // Borderless Terminal Drag-Everywhere:
+                // Strictly active in Borderless mode ONLY.
+                if IS_BORDERLESS.load(Ordering::Relaxed) {
+                    let scale = unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0;
+                    let log_x = client_x / scale;
+                    let log_y = client_y / scale;
+                    let win_w = (rect.right - rect.left) as f32 / scale;
+
+                    // 1. Linux Tiling Window Manager style: Alt+Drag anywhere in the window
+                    const VK_MENU: i32 = 0x12;
+                    let alt_down = unsafe { GetAsyncKeyState(VK_MENU) } < 0;
+                    if alt_down && !zoomed {
+                        return HTCAPTION;
+                    }
+
+                    // 2. Normal top drag zone: y < 38px across the whole top of the window
+                    // except the window controls on the top-right and the island when open
+                    if log_y >= 0.0 && log_y < 38.0 {
+                        let in_controls = log_x >= (win_w - 120.0);
+                        let in_island = ISLAND_VISIBLE.load(Ordering::Relaxed)
+                            && log_x >= (win_w - 720.0) / 2.0
+                            && log_x <= (win_w + 720.0) / 2.0
+                            && log_y <= 60.0;
+
+                        if !in_controls && !in_island {
+                            return HTCAPTION;
+                        }
+                    }
+                }
+
                 if caption_hit(hwnd, client_x, client_y) {
                     return HTCAPTION;
                 }
