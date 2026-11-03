@@ -194,13 +194,13 @@ pub(crate) fn resolve_terminal_font(family: &str) -> gpui::Font {
     font
 }
 
-/// A saved 100% opacity is a real user choice (the settings toggle offers it),
-/// so loading must not silently turn it back into the old 85% acrylic default.
+/// Normalize opacity from settings.json: supports percentage notation (e.g. 66 or 67 -> 0.67)
+/// as well as standard 0.0..1.0 float values (e.g. 0.0, 0.67, 1.0).
 pub(crate) fn normalize_opacity(saved: f32) -> f32 {
-    if saved >= 0.999 {
-        1.0
+    if saved > 1.0 {
+        (saved / 100.0).clamp(0.0, 1.0)
     } else {
-        saved.clamp(0.15, 1.0)
+        saved.clamp(0.0, 1.0)
     }
 }
 
@@ -2603,9 +2603,12 @@ mod tests {
     #[test]
     fn saved_full_opacity_survives_load() {
         assert_eq!(normalize_opacity(1.0), 1.0);
-        assert_eq!(normalize_opacity(0.999), 1.0);
+        assert_eq!(normalize_opacity(0.999), 0.999);
         assert_eq!(normalize_opacity(0.85), 0.85);
         assert_eq!(normalize_opacity(0.15), 0.15);
-        assert_eq!(normalize_opacity(0.0), 0.15);
+        assert_eq!(normalize_opacity(0.0), 0.0);
+        assert!((normalize_opacity(67.0) - 0.67).abs() < 1e-4);
+        assert!((normalize_opacity(66.0) - 0.66).abs() < 1e-4);
+        assert_eq!(normalize_opacity(100.0), 1.0);
     }
 }

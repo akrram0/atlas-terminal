@@ -462,6 +462,33 @@ impl AtlasView {
             cx,
         );
 
+        // Opacity Stepper: 0% to 100% in 5% increments
+        let opacity_pct = (self.opacity * 100.0).round() as i32;
+        let opacity_ctrl = stepper(
+            112,
+            format!("{}%", opacity_pct),
+            theme,
+            |view, cx| {
+                let current_pct = (view.opacity * 100.0).round() as i32;
+                let next_pct = (current_pct - 5).clamp(0, 100);
+                view.opacity = next_pct as f32 / 100.0;
+                view.app_settings.opacity = view.opacity;
+                view.app_settings.blur_enabled = view.opacity < 0.999;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            |view, cx| {
+                let current_pct = (view.opacity * 100.0).round() as i32;
+                let next_pct = (current_pct + 5).clamp(0, 100);
+                view.opacity = next_pct as f32 / 100.0;
+                view.app_settings.opacity = view.opacity;
+                view.app_settings.blur_enabled = view.opacity < 0.999;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         // Blur Background Switch
         let is_blur = self.opacity < 0.999;
         let blur_switch = toggle_pill(
@@ -473,10 +500,10 @@ impl AtlasView {
                     view.opacity = 1.0;
                     view.app_settings.blur_enabled = false;
                 } else {
-                    let target = if view.app_settings.opacity < 0.999 && view.app_settings.opacity >= 0.15 {
+                    let target = if view.app_settings.opacity < 0.999 && view.app_settings.opacity >= 0.05 {
                         view.app_settings.opacity
                     } else {
-                        0.85
+                        0.67
                     };
                     view.opacity = target;
                     view.app_settings.blur_enabled = true;
@@ -563,7 +590,8 @@ impl AtlasView {
             .child(
                 card()
                     .child(section_header("BACKGROUND & BLUR"))
-                    .child(setting_row("Blur Background", Some("Fluent acrylic translucency (adjust % in settings.json)"), blur_switch, true)),
+                    .child(setting_row("Blur Background", Some("Fluent acrylic translucency (toggles desktop blur)"), blur_switch, false))
+                    .child(setting_row("Window Opacity", Some("Sheet opacity (0% = fully translucent glass, 100% = solid)"), opacity_ctrl, true)),
             )
             .child(
                 card()

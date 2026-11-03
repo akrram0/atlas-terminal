@@ -572,12 +572,45 @@ unsafe extern "system" fn window_proc(
 ) -> Lresult {
     match msg {
         WM_GETMINMAXINFO => {
+            // A frameless WS_THICKFRAME window is normally maximized to the
+            // work area *plus* the resize frame, outdented past the screen.
+            // Pinning the maximized rect to the work area lets the client
+            // cover the whole window (see WM_NCCALCSIZE), so the acrylic
+            // backdrop reaches the screen edges instead of leaving an
+            // unblurred frame ring around a maximized window.
             let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
-            if prev == 0 {
+            let result = if prev == 0 {
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
             } else {
                 unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
+            };
+            let info = lparam as *mut MinMaxInfo;
+            let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+            if !info.is_null() && !monitor.is_null() {
+                let mut mi = MonitorInfo {
+                    cb_size: core::mem::size_of::<MonitorInfo>() as u32,
+                    rc_monitor: Rect::default(),
+                    rc_work: Rect::default(),
+                    dw_flags: 0,
+                };
+                if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
+                    unsafe {
+                        (*info).pt_max_position.x = mi.rc_work.left - mi.rc_monitor.left;
+                        (*info).pt_max_position.y = mi.rc_work.top - mi.rc_monitor.top;
+                        (*info).pt_max_size.x = mi.rc_work.right - mi.rc_work.left;
+                        (*info).pt_max_size.y = mi.rc_work.bottom - mi.rc_work.top;
+                        if (*info).pt_max_track_size.x <= 0 {
+                            (*info).pt_max_track_size.x =
+                                mi.rc_monitor.right - mi.rc_monitor.left;
+                        }
+                        if (*info).pt_max_track_size.y <= 0 {
+                            (*info).pt_max_track_size.y =
+                                mi.rc_monitor.bottom - mi.rc_monitor.top;
+                        }
+                    }
+                }
             }
+            result
         }
         WM_NCCALCSIZE => {
             // Full client area coverage: 100% of window rect is client area so
