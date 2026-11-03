@@ -430,35 +430,81 @@ impl AtlasView {
                     self.cycle_sidebar_mode(cx);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB) {
+                // Browser & Kitty tab navigation chords:
+                if chord == "ctrl+tab" || chord == "ctrl+shift+]" || chord == "ctrl+pagedown" || chord == self.get_shortcut(ACTION_NEXT_TAB) {
+                    self.cycle(1);
+                    self.trigger_island_hud(cx);
+                    cx.notify();
+                    return;
+                }
+                if chord == "ctrl+shift+tab" || chord == "ctrl+shift+[" || chord == "ctrl+pageup" || chord == self.get_shortcut(ACTION_PREV_TAB) {
+                    self.cycle(-1);
+                    self.trigger_island_hud(cx);
+                    cx.notify();
+                    return;
+                }
+                // Browser & Kitty new tab / close tab:
+                if chord == "ctrl+shift+t" || chord == "ctrl+shift+n" || chord == self.get_shortcut(ACTION_NEW_TAB) {
                     let prof = self.get_default_profile();
                     self.new_tab(prof, cx);
+                    self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_CLOSE_TAB) {
+                if chord == "ctrl+shift+w" || chord == self.get_shortcut(ACTION_CLOSE_TAB) {
                     self.close_pane(cx);
+                    self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL) {
+                // Kitty & Tiling window manager split pane chords:
+                if chord == "ctrl+shift+enter" || chord == "ctrl+shift+d" || chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL) {
                     self.split_active(SplitAxis::Rows, cx);
+                    self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_SPLIT_VERTICAL) {
+                if chord == "ctrl+shift+e" || chord == self.get_shortcut(ACTION_SPLIT_VERTICAL) {
                     self.split_active(SplitAxis::Columns, cx);
+                    self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEXT_TAB) {
-                    self.cycle(1);
-                    cx.notify();
+                // Shell / Profile Switcher shortcuts:
+                if chord == "ctrl+alt+t" || chord == "ctrl+shift+o" || chord == "ctrl+shift+l" {
+                    self.toggle_profile_menu(cx);
+                    self.trigger_island_hud(cx);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_PREV_TAB) {
-                    self.cycle(-1);
-                    cx.notify();
+                // Direct Profile Tab Launchers:
+                if chord == "ctrl+alt+1" {
+                    self.new_tab(Profile::PowerShell, cx);
+                    self.trigger_island_hud(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                if chord == "ctrl+alt+2" {
+                    self.new_tab(Profile::Wsl, cx);
+                    self.trigger_island_hud(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                if chord == "ctrl+alt+3" {
+                    self.new_tab(Profile::Cmd, cx);
+                    self.trigger_island_hud(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                if chord == "ctrl+alt+4" {
+                    self.new_tab(Profile::GitBash, cx);
+                    self.trigger_island_hud(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                if chord == "ctrl+alt+5" {
+                    self.new_tab(Profile::OpenCode, cx);
+                    self.trigger_island_hud(cx);
+                    self.focus_main(window);
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_FOCUS_NEXT_PANE) {
@@ -556,6 +602,20 @@ impl AtlasView {
             }
         }
 
+        // Mouseless shortcut: Ctrl+Tab and Ctrl+Shift+Tab
+        if modifiers.control && !modifiers.alt {
+            if key == "tab" {
+                if modifiers.shift {
+                    self.cycle(-1);
+                } else {
+                    self.cycle(1);
+                }
+                self.trigger_island_hud(cx);
+                cx.notify();
+                return;
+            }
+        }
+
         // Mouseless shortcut: Ctrl+1 through Ctrl+9 to switch tabs directly
         if modifiers.control && !modifiers.shift && !modifiers.alt {
             if let Ok(num) = key.parse::<usize>() {
@@ -568,6 +628,7 @@ impl AtlasView {
                     if target < self.tabs.len() {
                         self.active = target;
                         self.settings_open = false;
+                        self.trigger_island_hud(cx);
                         self.focus_main(window);
                         cx.notify();
                         return;
@@ -578,11 +639,13 @@ impl AtlasView {
             match key {
                 "pageup" => {
                     self.cycle(-1);
+                    self.trigger_island_hud(cx);
                     cx.notify();
                     return;
                 }
                 "pagedown" => {
                     self.cycle(1);
+                    self.trigger_island_hud(cx);
                     cx.notify();
                     return;
                 }
@@ -595,12 +658,13 @@ impl AtlasView {
         }
 
         // Mouseless shortcut: Alt+Arrows (and Ctrl+Alt+Arrows) to cycle focus between split panes
-        if modifiers.alt && !modifiers.shift {
+        if (modifiers.alt || (modifiers.control && modifiers.alt)) && !modifiers.shift {
             match key {
                 "arrowright" | "arrowdown" | "right" | "down" => {
                     if let Some(tab) = self.tabs.get_mut(self.active) {
                         if tab.panes.len() > 1 {
                             tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
+                            self.trigger_island_hud(cx);
                             cx.notify();
                             return;
                         }
@@ -614,6 +678,7 @@ impl AtlasView {
                             } else {
                                 tab.active_pane - 1
                             };
+                            self.trigger_island_hud(cx);
                             cx.notify();
                             return;
                         }

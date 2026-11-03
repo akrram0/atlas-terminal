@@ -121,6 +121,7 @@ impl AtlasView {
                     font_size: None,
                 });
                 self.active = self.tabs.len() - 1;
+                self.trigger_island_hud(cx);
                 self.save_session();
                 Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("tab {id}: shell spawned"));
@@ -318,6 +319,7 @@ impl AtlasView {
                 self.save_session();
                 Self::watch(epoch, session, rx, cx);
                 crate::log_line(&format!("pane split: shell spawned (epoch {epoch})"));
+                self.trigger_island_hud(cx);
             }
             Err(err) => {
                 eprintln!("atlas-native: failed to split pane: {err:#}");
@@ -344,6 +346,7 @@ impl AtlasView {
         if let Some(next_active) = tab.panes.iter().enumerate().position(|(i, p)| i != tab.active_pane && !p.closing) {
             tab.active_pane = next_active;
         }
+        self.trigger_island_hud(cx);
         self.save_session();
         cx.notify();
     }
@@ -547,10 +550,9 @@ impl AtlasView {
         }
         self.sidebar_mode = match self.sidebar_mode {
             crate::view::sidebar::SidebarMode::Expanded => crate::view::sidebar::SidebarMode::Compact,
-            crate::view::sidebar::SidebarMode::Compact => crate::view::sidebar::SidebarMode::Hidden,
-            crate::view::sidebar::SidebarMode::Hidden => crate::view::sidebar::SidebarMode::Expanded,
+            _ => crate::view::sidebar::SidebarMode::Expanded,
         };
-        self.sidebar_open = self.sidebar_mode != crate::view::sidebar::SidebarMode::Hidden;
+        self.sidebar_open = true;
         cx.notify();
     }
 

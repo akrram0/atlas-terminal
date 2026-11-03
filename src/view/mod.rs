@@ -129,6 +129,10 @@ pub struct AtlasView {
     /// Floating auto-hiding scrollbar opacity and activity timer.
     pub(crate) scrollbar_opacity: f32,
     pub(crate) last_scroll_time: std::time::Instant,
+    /// Dynamic Island HUD opacity (0.0 to 1.0) and hover state
+    pub(crate) island_hud_opacity: f32,
+    pub(crate) island_hud_hovered: bool,
+    pub(crate) last_island_hud_time: std::time::Instant,
     /// Tab pill currently under the pointer: its hover-only close mark.
     pub(crate) hover_tab: Option<usize>,
     /// Geometric chrome mark under the pointer (new-tab plus, pane actions).
@@ -284,6 +288,9 @@ impl AtlasView {
             scroll_anim: None,
             scrollbar_opacity: 0.0,
             last_scroll_time: std::time::Instant::now(),
+            island_hud_opacity: 0.0,
+            island_hud_hovered: false,
+            last_island_hud_time: std::time::Instant::now(),
             hover_tab: None,
             hover_mark: None,
             updater_settings: UpdaterSettings {
@@ -469,6 +476,24 @@ impl AtlasView {
                     } else if view.scrollbar_opacity > 0.0 {
                         active_motion = true;
                         view.scrollbar_opacity = (view.scrollbar_opacity - dt * 3.5).max(0.0);
+                        needs_paint = true;
+                    }
+
+                    // 4b. Dynamic Island HUD smooth fade
+                    let island_idle = view.last_island_hud_time.elapsed().as_millis();
+                    let target_island = if view.island_hud_hovered || island_idle < 2200 {
+                        1.0
+                    } else {
+                        0.0
+                    };
+                    let diff_island = target_island - view.island_hud_opacity;
+                    if diff_island.abs() > 0.005 {
+                        active_motion = true;
+                        let factor = (1.0 - (-14.0 * dt).exp()).clamp(0.0, 1.0);
+                        view.island_hud_opacity += diff_island * factor;
+                        needs_paint = true;
+                    } else if view.island_hud_opacity != target_island {
+                        view.island_hud_opacity = target_island;
                         needs_paint = true;
                     }
 
@@ -707,6 +732,236 @@ impl AtlasView {
 
     pub(crate) fn tab_font_size(&self, tab_ix: usize) -> f32 {
         self.tabs.get(tab_ix).and_then(|t| t.font_size).unwrap_or(self.font_size)
+    }
+
+    pub(crate) fn trigger_island_hud(&mut self, cx: &mut Context<Self>) {
+        self.last_island_hud_time = std::time::Instant::now();
+        self.island_hud_opacity = 1.0;
+        cx.notify();
+    }
+
+    pub(crate) fn render_island_hud(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let opacity = self.island_hud_opacity;
+        let is_visible = opacity > 0.005;
+
+        // Hover trigger zone along top-center edge to reveal the island on mouse hover
+        let hover_trigger = div()
+            .id(ElementId::named_usize("island-hover-trigger", 0))
+            .absolute()
+            .top_0()
+            .left(relative(0.5))
+            .ml(px(-190.0))
+            .w(px(380.0))
+            .h(px(14.0))
+            .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
+                if *hovered {
+                    view.island_hud_hovered = true;
+                    view.trigger_island_hud(cx);
+                } else {
+                    view.island_hud_hovered = false;
+                }
+            }));
+
+        let island = if is_visible {
+            let active_tab_ix = self.active;
+            let total_tabs = self.tabs.len();
+            let active_pane = self.tabs.get(active_tab_ix).and_then(|t| t.panes.get(t.active_pane));
+            let shell_icon = active_pane.map(|p| session_icon(&p.title, p.profile)).unwrap_or(icons::TERMINAL);
+            let active_title = if let Some(tab) = self.tabs.get(active_tab_ix) {
+                if let Some(pane) = tab.panes.get(tab.active_pane) {
+                    tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
+                } else {
+                    "Tab".to_string()
+                }
+            } else {
+                "Tab".to_string()
+            };
+
+            let tb = theme.clone();
+            // Apple Dynamic Island dark glass style:
+            let bg_color = Rgba { r: 0.08, g: 0.09, b: 0.12, a: 0.90 };
+            let border_color = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.14 };
+            let text_color = tb.fg;
+            let chrome_fg = tb.chrome_fg;
+            let accent_color = tb.accent;
+
+            // Slide down offset: -12px when hidden, 0px when fully open
+            let slide_y = (1.0 - opacity) * -12.0;
+
+            let mut hud = div()
+                .id(ElementId::named_usize("dynamic-island-hud", 0))
+                .absolute()
+                .top(px(10.0 + slide_y))
+                .left(relative(0.5))
+                .ml(px(-190.0))
+                .w(px(380.0))
+                .h(px(34.0))
+                .opacity(opacity)
+                .rounded(px(17.0))
+                .bg(bg_color)
+                .border_1()
+                .border_color(border_color)
+                .shadow_lg()
+                .px(px(10.0))
+                .flex()
+                .items_center()
+                .justify_between()
+                .cursor_default()
+                .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
+                    view.island_hud_hovered = *hovered;
+                    if *hovered {
+                        view.trigger_island_hud(cx);
+                    }
+                }));
+
+            // Left side: Active shell icon + position badge (e.g. "2 / 4")
+            let left_section = div()
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .child(
+                    icons::icon(shell_icon)
+                        .size(px(14.0))
+                        .text_color(accent_color),
+                )
+                .child(
+                    div()
+                        .px(px(5.0))
+                        .py(px(1.5))
+                        .rounded(px(5.0))
+                        .bg(Rgba { a: 0.18, ..accent_color })
+                        .text_size(px(10.5))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(accent_color)
+                        .child(format!("{}/{}", active_tab_ix + 1, total_tabs.max(1))),
+                )
+                .child(
+                    div()
+                        .max_w(px(110.0))
+                        .overflow_hidden()
+                        .text_size(px(11.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(text_color)
+                        .child(active_title),
+                );
+
+            // Middle section: Quick Tab Switcher Pills
+            let mut tab_dots = div()
+                .flex()
+                .items_center()
+                .gap(px(4.0));
+
+            for i in 0..total_tabs.min(6) {
+                let is_current = i == active_tab_ix;
+                let dot_theme = theme.clone();
+                let dot = div()
+                    .id(ElementId::named_usize("island-tab-pill", i))
+                    .w(if is_current { px(18.0) } else { px(8.0) })
+                    .h(px(7.0))
+                    .rounded(px(3.5))
+                    .bg(if is_current { accent_color } else { Rgba { a: 0.35, ..chrome_fg } })
+                    .hover(move |s| s.bg(dot_theme.card_hover))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                        view.active = i;
+                        view.trigger_island_hud(cx);
+                        cx.notify();
+                    }));
+                tab_dots = tab_dots.child(dot);
+            }
+
+            // Right section: Quick actions (+ dropdown for shells, split, close)
+            let tb2 = theme.clone();
+            let add_btn = div()
+                .id(ElementId::named_usize("island-add-shell", 0))
+                .w(px(22.0))
+                .h(px(22.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.0))
+                .bg(rgba(0x00000000))
+                .hover(move |s| s.bg(tb2.card_hover))
+                .cursor_pointer()
+                .child(
+                    icons::icon(icons::PLUS)
+                        .size(px(12.0))
+                        .text_color(chrome_fg),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    view.toggle_profile_menu(cx);
+                }));
+
+            let tb3 = theme.clone();
+            let split_btn = div()
+                .id(ElementId::named_usize("island-split-pane", 0))
+                .w(px(22.0))
+                .h(px(22.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.0))
+                .bg(rgba(0x00000000))
+                .hover(move |s| s.bg(tb3.card_hover))
+                .cursor_pointer()
+                .child(
+                    icons::icon(icons::SPLIT_COLUMNS)
+                        .size(px(12.0))
+                        .text_color(chrome_fg),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    view.split_active(crate::workspace::SplitAxis::Columns, cx);
+                    view.trigger_island_hud(cx);
+                }));
+
+            let tb4 = theme.clone();
+            let close_btn = div()
+                .id(ElementId::named_usize("island-close-tab", 0))
+                .w(px(22.0))
+                .h(px(22.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.0))
+                .bg(rgba(0x00000000))
+                .hover(move |s| s.bg(tb4.card_hover))
+                .cursor_pointer()
+                .child(
+                    icons::icon(icons::CLOSE)
+                        .size(px(12.0))
+                        .text_color(chrome_fg),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    view.close_pane(cx);
+                    view.trigger_island_hud(cx);
+                }));
+
+            let right_section = div()
+                .flex()
+                .items_center()
+                .gap(px(2.0))
+                .child(add_btn)
+                .child(split_btn)
+                .child(close_btn);
+
+            hud = hud
+                .child(left_section)
+                .child(tab_dots)
+                .child(right_section);
+
+            Some(hud)
+        } else {
+            None
+        };
+
+        div()
+            .id(ElementId::named_usize("island-hud-container", 0))
+            .child(hover_trigger)
+            .children(island)
     }
 }
 
@@ -1887,7 +2142,7 @@ impl Render for AtlasView {
         // Swap the body through a quick fade: the settings page slides in over
         // the terminal, and the terminal fades back when settings closes (its
         // element remounts, which restarts the animation).
-        let body = div()
+        let tab_body = div()
             .flex()
             .flex_col()
             .flex_1()
@@ -1895,6 +2150,20 @@ impl Render for AtlasView {
             .min_h(px(0.0))
             .overflow_hidden()
             .child(body)
+            .with_animation(
+                ElementId::named_usize("tab-motion", self.active),
+                Animation::new(Duration::from_millis(140)).with_easing(ease_apple_snappy),
+                |el, delta| el.opacity(0.85 + 0.15 * delta),
+            );
+
+        let body = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .overflow_hidden()
+            .child(tab_body)
             .with_animation(
                 ElementId::named_usize("body-anim", self.settings_open as usize),
                 Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
@@ -2121,6 +2390,10 @@ impl Render for AtlasView {
             .font_family("Segoe UI")
             .text_color(tb.chrome_fg_active)
             .child(container);
+
+        if !is_top_tab_mode {
+            root = root.child(self.render_island_hud(&theme, cx));
+        }
         // Overlays paint last: each is a dim click-catcher plus its panel, in
         // stacking order (profile menu, palette, rename dialog). The
         // `*_closing` flags drive fade-outs; dismissal tasks unmount them.
