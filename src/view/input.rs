@@ -427,7 +427,7 @@ impl AtlasView {
                     self.open_search(window, cx);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_TOGGLE_SIDEBAR) || chord == "ctrl+s" || chord == "ctrl+b" {
+                if chord == self.get_shortcut(ACTION_TOGGLE_SIDEBAR) || chord == "ctrl+b" {
                     self.cycle_sidebar_mode(cx);
                     return;
                 }
@@ -472,7 +472,7 @@ impl AtlasView {
                     return;
                 }
                 // Shell / Profile Switcher shortcuts:
-                if chord == self.get_shortcut(ACTION_PROFILE_MENU) || chord == "ctrl+alt+t" || chord == "ctrl+shift+o" || chord == "ctrl+shift+l" {
+                if chord == self.get_shortcut(ACTION_PROFILE_MENU) || chord == "ctrl+alt+t" {
                     self.toggle_profile_menu(cx);
                     self.trigger_island_hud(cx);
                     return;
@@ -591,7 +591,7 @@ impl AtlasView {
                     self.open_buffer_urls(window, cx);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_TOGGLE_THEME) {
+                if chord == self.get_shortcut(ACTION_TOGGLE_THEME) || chord == "ctrl+shift+l" || chord == "alt+shift+t" {
                     self.toggle_theme(cx);
                     return;
                 }
