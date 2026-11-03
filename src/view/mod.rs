@@ -735,6 +735,9 @@ impl AtlasView {
     }
 
     pub(crate) fn trigger_island_hud(&mut self, cx: &mut Context<Self>) {
+        if self.app_settings.tab_bar_position != "borderless" {
+            return;
+        }
         self.last_island_hud_time = std::time::Instant::now();
         cx.notify();
     }
@@ -744,71 +747,63 @@ impl AtlasView {
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let opacity = self.island_hud_opacity;
-        let is_visible = opacity > 0.005;
+        if self.app_settings.tab_bar_position != "borderless" {
+            return div().into_any_element();
+        }
 
-        // Hover trigger zone along top-center edge to reveal the island on mouse hover
-        let hover_trigger = div()
-            .id(ElementId::named_usize("island-hover-trigger", 0))
-            .absolute()
-            .top_0()
+        let opacity = self.island_hud_opacity;
+        if opacity <= 0.005 {
+            return div().into_any_element();
+        }
+
+        let active_tab_ix = self.active;
+        let total_tabs = self.tabs.len();
+        let active_pane = self.tabs.get(active_tab_ix).and_then(|t| t.panes.get(t.active_pane));
+        let shell_icon = active_pane.map(|p| session_icon(&p.title, p.profile)).unwrap_or(icons::TERMINAL);
+        let active_title = if let Some(tab) = self.tabs.get(active_tab_ix) {
+            if let Some(pane) = tab.panes.get(tab.active_pane) {
+                tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
+            } else {
+                "Tab".to_string()
+            }
+        } else {
+            "Tab".to_string()
+        };
+
+        let tb = theme.clone();
+        // Apple Dynamic Island dark glass style:
+        let bg_color = Rgba { r: 0.09, g: 0.10, b: 0.14, a: 0.96 };
+        let border_color = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.18 };
+        let text_color = tb.fg;
+        let chrome_fg = tb.chrome_fg;
+        let accent_color = tb.accent;
+
+        // Slide down offset: -52px when hidden, 0px when fully open
+        let slide_y = (1.0 - opacity) * -52.0;
+
+        let mut hud = div()
+            .id(ElementId::named_usize("dynamic-island-hud", 0))
+            .mt(px(8.0 + slide_y))
             .w(px(680.0))
-            .h(px(56.0))
+            .h(px(44.0))
+            .opacity(opacity)
+            .rounded(px(22.0))
+            .bg(bg_color)
+            .border_1()
+            .border_color(border_color)
+            .shadow_xl()
+            .px(px(12.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .cursor_default()
             .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
                 view.island_hud_hovered = *hovered;
                 if *hovered {
-                    view.trigger_island_hud(cx);
+                    view.last_island_hud_time = std::time::Instant::now();
+                    cx.notify();
                 }
             }));
-
-        let island = if is_visible {
-            let active_tab_ix = self.active;
-            let total_tabs = self.tabs.len();
-            let active_pane = self.tabs.get(active_tab_ix).and_then(|t| t.panes.get(t.active_pane));
-            let shell_icon = active_pane.map(|p| session_icon(&p.title, p.profile)).unwrap_or(icons::TERMINAL);
-            let active_title = if let Some(tab) = self.tabs.get(active_tab_ix) {
-                if let Some(pane) = tab.panes.get(tab.active_pane) {
-                    tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
-                } else {
-                    "Tab".to_string()
-                }
-            } else {
-                "Tab".to_string()
-            };
-
-            let tb = theme.clone();
-            // Apple Dynamic Island dark glass style:
-            let bg_color = Rgba { r: 0.09, g: 0.10, b: 0.14, a: 0.96 };
-            let border_color = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.18 };
-            let text_color = tb.fg;
-            let chrome_fg = tb.chrome_fg;
-            let accent_color = tb.accent;
-
-            // Slide down offset: -52px when hidden, 0px when fully open
-            let slide_y = (1.0 - opacity) * -52.0;
-
-            let mut hud = div()
-                .id(ElementId::named_usize("dynamic-island-hud", 0))
-                .mt(px(8.0 + slide_y))
-                .w(px(680.0))
-                .h(px(44.0))
-                .opacity(opacity)
-                .rounded(px(22.0))
-                .bg(bg_color)
-                .border_1()
-                .border_color(border_color)
-                .shadow_xl()
-                .px(px(12.0))
-                .flex()
-                .items_center()
-                .justify_between()
-                .cursor_default()
-                .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
-                    view.island_hud_hovered = *hovered;
-                    if *hovered {
-                        view.trigger_island_hud(cx);
-                    }
-                }));
 
             // 1. Left side: Active shell icon + position badge (e.g. "2 / 4") + title
             let left_section = div()
@@ -1025,22 +1020,17 @@ impl AtlasView {
                 .child(tab_dots)
                 .child(right_section);
 
-            Some(hud)
-        } else {
-            None
-        };
-
-        div()
-            .id(ElementId::named_usize("island-hud-container", 0))
-            .absolute()
-            .top(px(0.0))
-            .left(px(0.0))
-            .right(px(0.0))
-            .flex()
-            .flex_col()
-            .items_center()
-            .child(hover_trigger)
-            .children(island)
+            div()
+                .id(ElementId::named_usize("island-hud-container", 0))
+                .absolute()
+                .top(px(0.0))
+                .left(px(0.0))
+                .right(px(0.0))
+                .flex()
+                .flex_col()
+                .items_center()
+                .child(hud)
+                .into_any_element()
     }
 }
 
@@ -2327,26 +2317,47 @@ impl Render for AtlasView {
             let tb = theme.clone();
             let is_hidden_sidebar = is_sidebar_mode && !is_sidebar_visible;
 
-            // Split drag bands along top edge:
-            // CRITICAL: We leave the center region (where Dynamic Island lives) free of caption_spacer
-            // so Windows DWM does NOT intercept clicks/hovers as HTCAPTION window dragging!
-            let drag_band_left = div()
-                .id(ElementId::named_usize("floating-drag-band-left", 0))
-                .absolute()
-                .top_0()
-                .left_0()
-                .w(px(140.0))
-                .h(px(28.0))
-                .child(caption_spacer(0));
+            let is_borderless = self.app_settings.tab_bar_position == "borderless";
+            let is_island_visible = is_borderless && self.island_hud_opacity > 0.005;
 
-            let drag_band_right = div()
-                .id(ElementId::named_usize("floating-drag-band-right", 0))
-                .absolute()
-                .top_0()
-                .right(px(120.0))
-                .w(px(80.0))
-                .h(px(28.0))
-                .child(caption_spacer(0));
+            // In borderless mode when the Dynamic Island is visible, split the drag band so the island
+            // can receive pointer clicks. When the island is hidden (or when in sidebar mode), provide
+            // a FULL, wide drag band across the entire top edge so the window can easily and reliably be dragged!
+            let drag_band = if is_island_visible {
+                div()
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("floating-drag-band-left", 0))
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .w(px(140.0))
+                            .h(px(32.0))
+                            .child(caption_spacer(0)),
+                    )
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("floating-drag-band-right", 0))
+                            .absolute()
+                            .top_0()
+                            .right(px(120.0))
+                            .w(px(100.0))
+                            .h(px(32.0))
+                            .child(caption_spacer(1)),
+                    )
+            } else {
+                div()
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("floating-drag-band-full", 0))
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .right(px(140.0))
+                            .h(px(32.0))
+                            .child(caption_spacer(0)),
+                    )
+            };
 
             // Floating controls in the top-right corner
             let mut controls_bar = div()
@@ -2430,7 +2441,7 @@ impl Render for AtlasView {
                 controls_bar = controls_bar.child(btn);
             }
 
-            sheet.child(drag_band_left).child(drag_band_right).child(controls_bar)
+            sheet.child(drag_band).child(controls_bar)
         } else {
             sheet
         };
@@ -2494,7 +2505,7 @@ impl Render for AtlasView {
             .text_color(tb.chrome_fg_active)
             .child(container);
 
-        if !is_top_tab_mode {
+        if self.app_settings.tab_bar_position == "borderless" {
             root = root.child(self.render_island_hud(&theme, cx));
         }
         // Overlays paint last: each is a dim click-catcher plus its panel, in
