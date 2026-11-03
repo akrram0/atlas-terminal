@@ -1164,7 +1164,7 @@ impl Render for AtlasView {
             && self.sidebar_current_width > 1.0;
 
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
-            let alpha = self.opacity.clamp(0.05, 0.95);
+            let alpha = self.opacity.clamp(0.0, 1.0);
             let chrome = Rgba {
                 a: (alpha * 0.90).clamp(0.15, 0.85),
                 ..tb.panel_bg
@@ -1173,7 +1173,7 @@ impl Render for AtlasView {
                 a: alpha,
                 ..term_base
             };
-            (chrome, sheet, sheet)
+            (chrome, sheet, rgba(0x00000000))
         } else {
             (tb.panel_bg, term_base, tb.panel_bg)
         };

@@ -250,7 +250,7 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
 
         let mut policy = if enabled {
             let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::Relaxed));
-            let alpha = ((op.clamp(0.05, 0.95)) * 40.0) as u32;
+            let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
             let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
                 0x0a0c10
             } else {
@@ -259,7 +259,7 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
                 accent_flags: 0,
-                gradient_color: (alpha << 24) | rgb,
+                gradient_color: (alpha.max(1) << 24) | rgb,
                 animation_id: 0,
             }
         } else {
@@ -884,9 +884,8 @@ pub fn apply() {
                         &preference as *const i32 as *const core::ffi::c_void,
                         core::mem::size_of::<i32>() as u32,
                     );
-                    // Use default system border to cleanly frame rounded corners and
-                    // prevent acrylic blur leakage or fuzzy smudges at the corners.
-                    let border: u32 = DWMWA_COLOR_DEFAULT;
+                    // Suppress DWM window border drawing to prevent any visible edge line or frame artifacts.
+                    let border: u32 = DWMWA_COLOR_NONE;
                     let _ = DwmSetWindowAttribute(
                         hwnd,
                         DWMWA_BORDER_COLOR,

@@ -500,7 +500,7 @@ impl AtlasView {
                     view.opacity = 1.0;
                     view.app_settings.blur_enabled = false;
                 } else {
-                    let target = if view.app_settings.opacity < 0.999 && view.app_settings.opacity >= 0.05 {
+                    let target = if view.app_settings.opacity < 0.999 && view.app_settings.opacity >= 0.0 {
                         view.app_settings.opacity
                     } else {
                         0.67
