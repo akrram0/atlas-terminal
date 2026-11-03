@@ -101,16 +101,17 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
     let item_hover = theme.card_hover;
     let zoomed = crate::rounded_corners::is_zoomed();
     let (menu_top, menu_left) = {
+        let is_top_tab_mode = view.app_settings.tab_bar_position == "top";
         let is_sidebar_mode = view.app_settings.tab_bar_position == "sidebar";
         let sidebar_mode = view.sidebar_mode;
         if is_sidebar_mode && sidebar_mode == crate::view::sidebar::SidebarMode::Expanded {
-            (px(78.0), px(12.0))
+            (px(38.0), px(12.0))
         } else if is_sidebar_mode && sidebar_mode == crate::view::sidebar::SidebarMode::Compact {
-            (px(78.0), px(8.0))
-        } else if is_sidebar_mode {
-            (if zoomed { px(54.0) } else { px(46.0) }, px(48.0))
+            (px(72.0), px(48.0))
+        } else if is_top_tab_mode {
+            (if zoomed { px(52.0) } else { px(44.0) }, if zoomed { px(18.0) } else { px(12.0) })
         } else {
-            (if zoomed { px(54.0) } else { px(46.0) }, if zoomed { px(18.0) } else { px(12.0) })
+            (px(34.0), px(12.0))
         }
     };
     let mut menu = div()

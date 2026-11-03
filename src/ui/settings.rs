@@ -486,6 +486,7 @@ impl AtlasView {
         let tab_layout_options = vec![
             ("top".to_string(), "Top Bar".to_string()),
             ("sidebar".to_string(), "Sidebar".to_string()),
+            ("borderless".to_string(), "Borderless".to_string()),
         ];
         let tab_layout_ctrl = segmented_control(
             "tab-layout-ctrl",
@@ -497,6 +498,9 @@ impl AtlasView {
                 if pos == "sidebar" {
                     view.sidebar_mode = crate::view::sidebar::SidebarMode::Expanded;
                     view.sidebar_open = true;
+                } else if pos == "borderless" {
+                    view.sidebar_mode = crate::view::sidebar::SidebarMode::Hidden;
+                    view.sidebar_open = false;
                 }
                 view.sync_and_save_settings();
                 cx.notify();
