@@ -18,7 +18,7 @@ use alacritty_terminal::term::TermMode;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    linear_color_stop, linear_gradient, Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
+    Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Rgba, ScrollHandle,
     ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
@@ -751,18 +751,12 @@ impl AtlasView {
         // Hover trigger zone along top-center edge to reveal the island on mouse hover
         let hover_trigger = div()
             .id(ElementId::named_usize("island-hover-trigger", 0))
-            .absolute()
-            .top_0()
-            .left(relative(0.5))
-            .ml(px(-190.0))
-            .w(px(380.0))
-            .h(px(14.0))
+            .w(px(400.0))
+            .h(px(16.0))
             .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
+                view.island_hud_hovered = *hovered;
                 if *hovered {
-                    view.island_hud_hovered = true;
                     view.trigger_island_hud(cx);
-                } else {
-                    view.island_hud_hovered = false;
                 }
             }));
 
@@ -783,8 +777,8 @@ impl AtlasView {
 
             let tb = theme.clone();
             // Apple Dynamic Island dark glass style:
-            let bg_color = Rgba { r: 0.08, g: 0.09, b: 0.12, a: 0.90 };
-            let border_color = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.14 };
+            let bg_color = Rgba { r: 0.08, g: 0.09, b: 0.12, a: 0.92 };
+            let border_color = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.16 };
             let text_color = tb.fg;
             let chrome_fg = tb.chrome_fg;
             let accent_color = tb.accent;
@@ -794,10 +788,7 @@ impl AtlasView {
 
             let mut hud = div()
                 .id(ElementId::named_usize("dynamic-island-hud", 0))
-                .absolute()
-                .top(px(10.0 + slide_y))
-                .left(relative(0.5))
-                .ml(px(-190.0))
+                .mt(px(slide_y))
                 .w(px(380.0))
                 .h(px(34.0))
                 .opacity(opacity)
@@ -960,6 +951,13 @@ impl AtlasView {
 
         div()
             .id(ElementId::named_usize("island-hud-container", 0))
+            .absolute()
+            .top(px(0.0))
+            .left(px(0.0))
+            .right(px(0.0))
+            .flex()
+            .flex_col()
+            .items_center()
             .child(hover_trigger)
             .children(island)
     }
@@ -1020,7 +1018,7 @@ impl Render for AtlasView {
             tb.chrome_fg
         };
 
-        let is_tui_active = if let Some(tab) = self.tabs.get(self.active) {
+        let _is_tui_active = if let Some(tab) = self.tabs.get(self.active) {
             if let Some(pane) = tab.panes.get(tab.active_pane) {
                 Self::is_pane_tui(pane, &theme)
             } else {
@@ -2170,7 +2168,7 @@ impl Render for AtlasView {
                 |el, delta| el.opacity(delta),
             );
 
-        let mut sheet = div()
+        let sheet = div()
             .id(ElementId::named_usize("terminal-sheet", 0))
             .relative()
             .flex()
@@ -2187,43 +2185,6 @@ impl Render for AtlasView {
                 },
             ))
             .child(body);
-
-        // Smart Fullscreen Edge Blur Diffuser:
-        // When maximized, keep diffusers subtle (8px) and NEVER draw over active TUI apps.
-        if is_translucent && zoomed && !is_tui_active {
-            let edge_diffuse_tint = Rgba {
-                a: 0.12,
-                ..tb.panel_bg
-            };
-
-            let edge_diffuser_bottom = div()
-                .id(ElementId::named_usize("edge-diffuser-bottom", 0))
-                .absolute()
-                .bottom_0()
-                .left_0()
-                .right_0()
-                .h(px(8.0))
-                .bg(linear_gradient(
-                    180.0,
-                    linear_color_stop(rgba(0x00000000), 0.0),
-                    linear_color_stop(edge_diffuse_tint, 1.0),
-                ));
-
-            let edge_diffuser_right = div()
-                .id(ElementId::named_usize("edge-diffuser-right", 0))
-                .absolute()
-                .top_0()
-                .bottom_0()
-                .right_0()
-                .w(px(8.0))
-                .bg(linear_gradient(
-                    90.0,
-                    linear_color_stop(rgba(0x00000000), 0.0),
-                    linear_color_stop(edge_diffuse_tint, 1.0),
-                ));
-
-            sheet = sheet.child(edge_diffuser_bottom).child(edge_diffuser_right);
-        }
 
         let is_top_tab_mode = self.app_settings.tab_bar_position == "top";
         let is_sidebar_mode = self.app_settings.tab_bar_position == "sidebar";

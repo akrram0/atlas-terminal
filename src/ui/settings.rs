@@ -20,6 +20,8 @@ use crate::config::{
     ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_TO_TOP, ACTION_SCROLL_TO_BOTTOM,
     ACTION_OPEN_URL_PICKER, ACTION_TOGGLE_THEME, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR,
+    ACTION_PROFILE_MENU, ACTION_NEW_TAB_WSL, ACTION_NEW_TAB_POWERSHELL, ACTION_NEW_TAB_CMD,
+    ACTION_NEW_TAB_GITBASH, ACTION_NEW_TAB_OPENCODE,
 };
 use crate::icons;
 use crate::theme::Theme;
@@ -1189,6 +1191,79 @@ impl AtlasView {
             tab_window_card = tab_window_card.child(render_shortcut_row(100 + i, act));
         }
 
+        let shell_actions = [
+            ACTION_PROFILE_MENU,
+            ACTION_NEW_TAB_WSL,
+            ACTION_NEW_TAB_POWERSHELL,
+            ACTION_NEW_TAB_CMD,
+            ACTION_NEW_TAB_GITBASH,
+            ACTION_NEW_TAB_OPENCODE,
+        ];
+        let mut shell_card = card().child(section_header("SHELLS & PROFILES (QUICK LAUNCH)"));
+        for (i, &act) in shell_actions.iter().enumerate() {
+            shell_card = shell_card.child(render_shortcut_row(150 + i, act));
+        }
+
+        let ref_keycap_bg = if is_dark {
+            rgba(0xFFFFFF12)
+        } else {
+            rgba(0x0000000C)
+        };
+        let ref_keycap_border = if is_dark {
+            rgba(0xFFFFFF1E)
+        } else {
+            rgba(0x00000014)
+        };
+
+        let render_reference_row = |desc: &'static str, keycaps: &'static str| {
+            div()
+                .h(px(40.0))
+                .px(px(16.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .justify_between()
+                .border_b_1()
+                .border_color(theme.hairline)
+                .child(
+                    div()
+                        .text_size(px(13.0))
+                        .text_color(sc_label)
+                        .child(desc),
+                )
+                .child(
+                    div()
+                        .h(px(26.0))
+                        .px(px(10.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(5.0))
+                        .bg(ref_keycap_bg)
+                        .border_1()
+                        .border_color(ref_keycap_border)
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(sc_label)
+                        .child(keycaps),
+                )
+        };
+
+        let mut built_in_card = card().child(section_header("BUILT-IN SHORTCUTS & NAVIGATION"));
+        let built_in_list: [(&'static str, &'static str); 8] = [
+            ("Cycle Tabs Forward (Browser & Kitty)", "Ctrl+Tab / Ctrl+PageDown / Ctrl+Shift+]"),
+            ("Cycle Tabs Backward (Browser & Kitty)", "Ctrl+Shift+Tab / Ctrl+PageUp / Ctrl+Shift+["),
+            ("Switch Directly to Tab 1 through 8", "Ctrl+1 … Ctrl+8"),
+            ("Switch to Last Tab", "Ctrl+9"),
+            ("Split Pane Horizontally / Vertically", "Ctrl+Shift+Enter / Ctrl+Shift+D / Ctrl+Shift+E"),
+            ("Focus Neighbor Split Pane", "Alt+Arrows / Ctrl+Alt+Arrows"),
+            ("Dynamic Island HUD & Quick Actions", "Hover Top-Center or trigger tab shortcuts"),
+            ("Command Palette & Shell Catalog", "Ctrl+K / Ctrl+Shift+P"),
+        ];
+        for (label, keycap) in built_in_list {
+            built_in_card = built_in_card.child(render_reference_row(label, keycap));
+        }
+
         let split_actions = [
             ACTION_SPLIT_HORIZONTAL,
             ACTION_SPLIT_VERTICAL,
@@ -1266,6 +1341,8 @@ impl AtlasView {
                     )),
             )
             .child(tab_window_card)
+            .child(shell_card)
+            .child(built_in_card)
             .child(split_pane_card)
             .child(scroll_card)
             .child(text_card)

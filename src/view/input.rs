@@ -13,7 +13,8 @@ use crate::config::{
     ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_TO_BOTTOM, ACTION_SCROLL_TO_TOP, ACTION_SELECT_ALL, ACTION_SPLIT_HORIZONTAL,
     ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR, ACTION_TOGGLE_THEME, ACTION_ZOOM_IN,
-    ACTION_ZOOM_OUT, ACTION_ZOOM_RESET,
+    ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_PROFILE_MENU, ACTION_NEW_TAB_WSL, ACTION_NEW_TAB_POWERSHELL,
+    ACTION_NEW_TAB_CMD, ACTION_NEW_TAB_GITBASH, ACTION_NEW_TAB_OPENCODE,
 };
 use crate::keymap;
 use crate::session::Profile;
@@ -471,37 +472,37 @@ impl AtlasView {
                     return;
                 }
                 // Shell / Profile Switcher shortcuts:
-                if chord == "ctrl+alt+t" || chord == "ctrl+shift+o" || chord == "ctrl+shift+l" {
+                if chord == self.get_shortcut(ACTION_PROFILE_MENU) || chord == "ctrl+alt+t" || chord == "ctrl+shift+o" || chord == "ctrl+shift+l" {
                     self.toggle_profile_menu(cx);
                     self.trigger_island_hud(cx);
                     return;
                 }
                 // Direct Profile Tab Launchers:
-                if chord == "ctrl+alt+1" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_POWERSHELL) || chord == "ctrl+alt+1" {
                     self.new_tab(Profile::PowerShell, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "ctrl+alt+2" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_WSL) || chord == "ctrl+alt+2" {
                     self.new_tab(Profile::Wsl, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "ctrl+alt+3" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_CMD) || chord == "ctrl+alt+3" {
                     self.new_tab(Profile::Cmd, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "ctrl+alt+4" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_GITBASH) || chord == "ctrl+alt+4" {
                     self.new_tab(Profile::GitBash, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "ctrl+alt+5" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_OPENCODE) || chord == "ctrl+alt+5" {
                     self.new_tab(Profile::OpenCode, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);

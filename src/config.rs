@@ -31,10 +31,16 @@ pub const ACTION_TOGGLE_THEME: &str = "toggle_theme";
 pub const ACTION_TOGGLE_MAXIMIZE: &str = "toggle_maximize";
 pub const ACTION_FIND: &str = "find";
 pub const ACTION_TOGGLE_SIDEBAR: &str = "toggle_sidebar";
+pub const ACTION_PROFILE_MENU: &str = "profile_menu";
+pub const ACTION_NEW_TAB_WSL: &str = "new_tab_wsl";
+pub const ACTION_NEW_TAB_POWERSHELL: &str = "new_tab_powershell";
+pub const ACTION_NEW_TAB_CMD: &str = "new_tab_cmd";
+pub const ACTION_NEW_TAB_GITBASH: &str = "new_tab_gitbash";
+pub const ACTION_NEW_TAB_OPENCODE: &str = "new_tab_opencode";
 
 pub fn action_display_name(action: &str) -> &'static str {
     match action {
-        ACTION_NEW_TAB => "New Tab",
+        ACTION_NEW_TAB => "New Tab (Default)",
         ACTION_CLOSE_TAB => "Close Tab / Pane",
         ACTION_SPLIT_HORIZONTAL => "Split Horizontal (Rows)",
         ACTION_SPLIT_VERTICAL => "Split Vertical (Columns)",
@@ -61,6 +67,12 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_TOGGLE_THEME => "Toggle Dark / Light Theme",
         ACTION_TOGGLE_MAXIMIZE => "Toggle Pane Zoom / Maximize",
         ACTION_TOGGLE_SIDEBAR => "Toggle Sidebar / Tab Bar",
+        ACTION_PROFILE_MENU => "Open Shell / Profile Menu",
+        ACTION_NEW_TAB_WSL => "New WSL (Linux) Tab",
+        ACTION_NEW_TAB_POWERSHELL => "New PowerShell Tab",
+        ACTION_NEW_TAB_CMD => "New Command Prompt Tab",
+        ACTION_NEW_TAB_GITBASH => "New Git Bash Tab",
+        ACTION_NEW_TAB_OPENCODE => "New OpenCode Tab",
         _ => "Custom Action",
     }
 }
@@ -94,6 +106,12 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "ctrl+shift+m".to_string());
     m.insert(ACTION_FIND.to_string(), "ctrl+f".to_string());
     m.insert(ACTION_TOGGLE_SIDEBAR.to_string(), "ctrl+b".to_string());
+    m.insert(ACTION_PROFILE_MENU.to_string(), "ctrl+alt+t".to_string());
+    m.insert(ACTION_NEW_TAB_WSL.to_string(), "ctrl+alt+2".to_string());
+    m.insert(ACTION_NEW_TAB_POWERSHELL.to_string(), "ctrl+alt+1".to_string());
+    m.insert(ACTION_NEW_TAB_CMD.to_string(), "ctrl+alt+3".to_string());
+    m.insert(ACTION_NEW_TAB_GITBASH.to_string(), "ctrl+alt+4".to_string());
+    m.insert(ACTION_NEW_TAB_OPENCODE.to_string(), "ctrl+alt+5".to_string());
     m
 }
 
