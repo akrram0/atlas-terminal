@@ -452,12 +452,12 @@ impl AtlasView {
                     self.focus_main(window);
                     return;
                 }
-                if chord == "ctrl+shift+t" || chord == "ctrl+shift+l" || chord == "alt+shift+t" || chord == self.get_shortcut(ACTION_TOGGLE_THEME) {
+                if chord == "alt+t" || chord == "ctrl+shift+t" || chord == "ctrl+shift+l" || chord == self.get_shortcut(ACTION_TOGGLE_THEME) {
                     self.toggle_theme(cx);
                     self.trigger_island_hud(cx);
                     return;
                 }
-                if chord == "ctrl+shift+w" || chord == "alt+w" || chord == "alt+q" || chord == self.get_shortcut(ACTION_CLOSE_TAB) {
+                if chord == "ctrl+w" || chord == "ctrl+shift+w" || chord == "alt+w" || chord == "alt+q" || chord == self.get_shortcut(ACTION_CLOSE_TAB) {
                     self.close_pane(cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
@@ -573,44 +573,44 @@ impl AtlasView {
                         }
                     }
                 }
-                // Tiling pane zoom / maximize (Alt+F / Alt+M / Ctrl+Shift+M):
-                if chord == "alt+f" || chord == "alt+m" || chord == "ctrl+shift+m" || chord == self.get_shortcut(ACTION_TOGGLE_MAXIMIZE) {
+                // Tiling pane zoom / maximize (Alt+Z / Alt+F / Alt+M / Ctrl+Shift+M):
+                if chord == "alt+z" || chord == "alt+f" || chord == "alt+m" || chord == "ctrl+shift+m" || chord == self.get_shortcut(ACTION_TOGGLE_MAXIMIZE) {
                     self.toggle_maximize(cx);
                     self.focus_main(window);
                     return;
                 }
                 // Shell / Profile Switcher shortcuts:
-                if chord == self.get_shortcut(ACTION_PROFILE_MENU) || chord == "ctrl+alt+t" {
+                if chord == self.get_shortcut(ACTION_PROFILE_MENU) || chord == "ctrl+shift+p" || chord == "ctrl+alt+t" {
                     self.toggle_profile_menu(cx);
                     self.trigger_island_hud(cx);
                     return;
                 }
                 // Direct Profile Tab Launchers:
-                if chord == self.get_shortcut(ACTION_NEW_TAB_POWERSHELL) || chord == "ctrl+alt+1" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_POWERSHELL) || chord == "ctrl+shift+1" || chord == "ctrl+alt+1" {
                     self.new_tab(Profile::PowerShell, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_WSL) || chord == "ctrl+alt+2" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_WSL) || chord == "ctrl+shift+2" || chord == "ctrl+alt+2" {
                     self.new_tab(Profile::Wsl, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_CMD) || chord == "ctrl+alt+3" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_CMD) || chord == "ctrl+shift+3" || chord == "ctrl+alt+3" {
                     self.new_tab(Profile::Cmd, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_GITBASH) || chord == "ctrl+alt+4" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_GITBASH) || chord == "ctrl+shift+4" || chord == "ctrl+alt+4" {
                     self.new_tab(Profile::GitBash, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_OPENCODE) || chord == "ctrl+alt+5" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_OPENCODE) || chord == "ctrl+shift+5" || chord == "ctrl+alt+5" {
                     self.new_tab(Profile::OpenCode, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);

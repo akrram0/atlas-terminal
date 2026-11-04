@@ -80,9 +80,9 @@ pub fn action_display_name(action: &str) -> &'static str {
 pub fn default_shortcuts() -> HashMap<String, String> {
     let mut m = HashMap::new();
     m.insert(ACTION_NEW_TAB.to_string(), "ctrl+t".to_string());
-    m.insert(ACTION_CLOSE_TAB.to_string(), "ctrl+shift+w".to_string());
+    m.insert(ACTION_CLOSE_TAB.to_string(), "alt+w".to_string());
+    m.insert(ACTION_SPLIT_VERTICAL.to_string(), "alt+enter".to_string());
     m.insert(ACTION_SPLIT_HORIZONTAL.to_string(), "alt+d".to_string());
-    m.insert(ACTION_SPLIT_VERTICAL.to_string(), "alt+v".to_string());
     m.insert(ACTION_NEXT_TAB.to_string(), "ctrl+tab".to_string());
     m.insert(ACTION_PREV_TAB.to_string(), "ctrl+shift+tab".to_string());
     m.insert(ACTION_COPY.to_string(), "ctrl+shift+c".to_string());
@@ -96,22 +96,22 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_SCROLL_PAGE_DOWN.to_string(), "shift+pagedown".to_string());
     m.insert(ACTION_SCROLL_TO_TOP.to_string(), "shift+home".to_string());
     m.insert(ACTION_SCROLL_TO_BOTTOM.to_string(), "shift+end".to_string());
-    m.insert(ACTION_OPEN_URL_PICKER.to_string(), "ctrl+shift+o".to_string());
+    m.insert(ACTION_OPEN_URL_PICKER.to_string(), "ctrl+shift+u".to_string());
     m.insert(ACTION_PALETTE.to_string(), "ctrl+k".to_string());
     m.insert(ACTION_FULLSCREEN.to_string(), "f11".to_string());
     m.insert(ACTION_CLEAR_SCROLLBACK.to_string(), "ctrl+shift+k".to_string());
     m.insert(ACTION_FOCUS_NEXT_PANE.to_string(), "alt+right".to_string());
     m.insert(ACTION_FOCUS_PREV_PANE.to_string(), "alt+left".to_string());
-    m.insert(ACTION_TOGGLE_THEME.to_string(), "ctrl+shift+t".to_string());
-    m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "alt+f".to_string());
+    m.insert(ACTION_TOGGLE_THEME.to_string(), "alt+t".to_string());
+    m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "alt+z".to_string());
     m.insert(ACTION_FIND.to_string(), "ctrl+f".to_string());
     m.insert(ACTION_TOGGLE_SIDEBAR.to_string(), "ctrl+b".to_string());
-    m.insert(ACTION_PROFILE_MENU.to_string(), "ctrl+alt+t".to_string());
-    m.insert(ACTION_NEW_TAB_WSL.to_string(), "ctrl+alt+2".to_string());
-    m.insert(ACTION_NEW_TAB_POWERSHELL.to_string(), "ctrl+alt+1".to_string());
-    m.insert(ACTION_NEW_TAB_CMD.to_string(), "ctrl+alt+3".to_string());
-    m.insert(ACTION_NEW_TAB_GITBASH.to_string(), "ctrl+alt+4".to_string());
-    m.insert(ACTION_NEW_TAB_OPENCODE.to_string(), "ctrl+alt+5".to_string());
+    m.insert(ACTION_PROFILE_MENU.to_string(), "ctrl+shift+p".to_string());
+    m.insert(ACTION_NEW_TAB_POWERSHELL.to_string(), "ctrl+shift+1".to_string());
+    m.insert(ACTION_NEW_TAB_WSL.to_string(), "ctrl+shift+2".to_string());
+    m.insert(ACTION_NEW_TAB_CMD.to_string(), "ctrl+shift+3".to_string());
+    m.insert(ACTION_NEW_TAB_GITBASH.to_string(), "ctrl+shift+4".to_string());
+    m.insert(ACTION_NEW_TAB_OPENCODE.to_string(), "ctrl+shift+5".to_string());
     m
 }
 
@@ -206,6 +206,9 @@ pub struct AppSettingsFile {
     pub cursor_blink: bool,
     #[serde(default = "default_tab_bar_position")]
     pub tab_bar_position: String,
+
+    #[serde(default)]
+    pub shortcut_schema: u32,
 
     #[serde(default = "default_shortcuts")]
     pub shortcuts: HashMap<String, String>,
@@ -329,6 +332,7 @@ impl Default for AppSettingsFile {
             cursor_shape: default_cursor_shape(),
             cursor_blink: default_cursor_blink(),
             tab_bar_position: default_tab_bar_position(),
+            shortcut_schema: 2,
             shortcuts: default_shortcuts(),
             default_shell: default_shell(),
             start_directory: default_start_dir(),
@@ -354,9 +358,15 @@ pub fn load_app_settings() -> AppSettingsFile {
     let settings_path = crate::user_data_dir().join("settings.json");
     if let Ok(content) = std::fs::read_to_string(&settings_path) {
         if let Ok(mut s) = serde_json::from_str::<AppSettingsFile>(&content) {
-            let defaults = default_shortcuts();
-            for (action, chord) in defaults {
-                s.shortcuts.entry(action).or_insert(chord);
+            if s.shortcut_schema < 2 {
+                s.shortcuts = default_shortcuts();
+                s.shortcut_schema = 2;
+                save_app_settings(&s);
+            } else {
+                let defaults = default_shortcuts();
+                for (action, chord) in defaults {
+                    s.shortcuts.entry(action).or_insert(chord);
+                }
             }
             return s;
         }

@@ -1280,19 +1280,21 @@ impl AtlasView {
         };
 
         let mut built_in_card = card().child(section_header("BUILT-IN SHORTCUTS & LINUX TILING"));
-        let built_in_list: [(&'static str, &'static str); 12] = [
-            ("Cycle / Change Themes", "Ctrl+Shift+T"),
-            ("New Tab (Default Shell)", "Ctrl+T / Ctrl+Shift+N"),
-            ("Linux Tiling: Split Vertical", "Alt+Enter / Alt+V / Ctrl+Shift+E"),
-            ("Linux Tiling: Split Horizontal", "Alt+D / Ctrl+Shift+D"),
-            ("Linux Tiling: Resize Panes (Narrow / Widen)", "Alt+Ctrl+Left / Alt+Ctrl+Right / Drag Divider"),
-            ("Linux Tiling: Resize Panes (Shorter / Taller)", "Alt+Ctrl+Up / Alt+Ctrl+Down / Drag Divider"),
-            ("Linux Tiling: Spatial Navigate Panes", "Alt+H,J,K,L / Alt+Arrows"),
-            ("Linux Tiling: Toggle Layout (Cols ↔ Rows)", "Alt+Space / Alt+S"),
-            ("Linux Tiling: Zoom / Maximize Pane", "Alt+F / Alt+M / Ctrl+Shift+M"),
-            ("Linux Tiling: Close Pane", "Alt+W / Ctrl+Shift+W"),
-            ("Cycle Tabs Forward / Backward", "Ctrl+Tab / Ctrl+Shift+Tab"),
-            ("Command Palette & Shell Catalog", "Ctrl+K / Ctrl+Shift+P"),
+        let built_in_list: [(&'static str, &'static str); 14] = [
+            ("New Tab (Default Shell)", "Ctrl+T"),
+            ("Close Tab / Pane", "Alt+W / Ctrl+W"),
+            ("New WSL (Linux) Tab", "Ctrl+Shift+2"),
+            ("New PowerShell Tab", "Ctrl+Shift+1"),
+            ("Command Palette / Shell Switcher", "Ctrl+K / Ctrl+Shift+P"),
+            ("Cycle / Switch Themes", "Alt+T"),
+            ("Tiling: Split Vertical (Columns)", "Alt+Enter"),
+            ("Tiling: Split Horizontal (Rows)", "Alt+D"),
+            ("Tiling: Toggle Layout (Cols ↔ Rows)", "Alt+Space"),
+            ("Tiling: Spatial Navigate Panes", "Alt+Left / Right / Up / Down (or H,J,K,L)"),
+            ("Tiling: Resize Active Pane (5%)", "Alt+Shift+Arrows (or drag divider)"),
+            ("Tiling: Zoom / Maximize Pane", "Alt+Z"),
+            ("Next / Previous Tab", "Ctrl+Tab / Ctrl+Shift+Tab"),
+            ("Find / Search in Buffer", "Ctrl+F"),
         ];
         for (label, keycap) in built_in_list {
             built_in_card = built_in_card.child(render_reference_row(label, keycap));
