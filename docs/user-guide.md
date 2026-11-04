@@ -76,21 +76,28 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 
 | Category | Shortcut | Action | Description |
 | :--- | :--- | :--- | :--- |
-| **Command Palette & Search** | `Ctrl+K` / `Ctrl+Shift+P` | **Open Palette** | Open Command Palette with multi-word search |
-| | `Ctrl+F` | **Find in Terminal** | Floating search pill with live buffer match highlighting |
-| | `Enter` / `Shift+Enter` | **Next / Prev Match** | Cycle through search matches in active buffer |
-| **Tabs** | `Ctrl+Shift+N` | **New Tab** | Open a new tab with the default shell profile |
-| | `Ctrl+B` | **Toggle Sidebar** | Toggle vertical sidebar / tab bar layout |
-| | `Ctrl+Shift+W` | **Close Tab / Pane** | Close active pane (or tab if single pane) |
+| **Tabs & Workspace** | `Ctrl+T` | **New Tab** | Open a new tab with the default shell profile |
+| | `Alt+W` / `Ctrl+W` | **Close Tab / Pane** | Close active pane (or tab if single pane) |
 | | `Ctrl+Tab` / `Ctrl+PageDown` | **Next Tab** | Cycle focus to the next tab |
 | | `Ctrl+Shift+Tab` / `Ctrl+PageUp` | **Previous Tab** | Cycle focus to the previous tab |
-| | `Ctrl+1` … `Ctrl+8` | **Switch Tab** | Jump directly to tab index 1 through 8 |
-| | `Ctrl+9` | **Last Tab** | Jump directly to the last tab |
-| **Split Panes** | `Ctrl+Shift+E` | **Split Vertical** | Divide active pane into side-by-side columns |
-| | `Ctrl+Shift+D` | **Split Horizontal** | Divide active pane into top-and-bottom rows |
-| | `Alt+Right` | **Focus Next Pane** | Move keyboard focus to the adjacent pane |
-| | `Alt+Left` | **Focus Prev Pane** | Move keyboard focus to the previous pane |
-| | `Ctrl+Shift+M` | **Toggle Maximize** | Temporarily maximize active pane (toggle) |
+| | `Ctrl+1` … `Ctrl+9` | **Switch Tab** | Jump directly to tab index 1 through 9 |
+| | `Ctrl+B` | **Toggle Sidebar** | Toggle vertical sidebar / tab bar layout |
+| **Shell Profiles** | `Ctrl+Shift+1` | **New PowerShell Tab** | Instantly launch a PowerShell tab |
+| | `Ctrl+Shift+2` | **New WSL Tab** | Instantly launch a WSL (Linux/Ubuntu) tab |
+| | `Ctrl+Shift+3` | **New CMD Tab** | Instantly launch a Command Prompt tab |
+| | `Ctrl+Shift+4` | **New Git Bash Tab** | Instantly launch a Git Bash tab |
+| | `Ctrl+Shift+5` | **New OpenCode Tab** | Instantly launch an OpenCode tab |
+| | `Ctrl+Shift+P` | **Profile Switcher** | Open interactive visual shell profile selector |
+| **Command Palette & Search** | `Ctrl+K` | **Open Palette** | Open Command Palette with multi-word search |
+| | `Ctrl+F` | **Find in Terminal** | Floating search pill with live buffer match highlighting |
+| | `Enter` / `Shift+Enter` | **Next / Prev Match** | Cycle through search matches in active buffer |
+| **Hyprland Linux Tiling** | `Alt+Enter` | **Split Vertical** | Divide active pane into side-by-side columns |
+| | `Alt+D` | **Split Horizontal** | Divide active pane into top-and-bottom rows |
+| | `Alt+Space` | **Toggle Split Axis** | Switch split layout between columns and rows |
+| | `Alt+Arrows` / `Alt+H,J,K,L` | **Spatial Navigation** | Move keyboard focus spatially to adjacent pane |
+| | `Alt+Shift+Arrows` | **Resize Pane (5%)** | Adjust split ratio (or click & drag the 6px divider) |
+| | `Alt+Z` | **Toggle Maximize** | Temporarily maximize active pane (toggle) |
+| | `Alt+W` / `Alt+Q` | **Close Active Pane** | Instant 2-finger pane close |
 | **Scrolling** | `Shift+PageUp` | **Page Up** | Smooth kinetic scroll up 15 lines |
 | | `Shift+PageDown` | **Page Down** | Smooth kinetic scroll down 15 lines |
 | | `Ctrl+Shift+Up` | **Scroll 1 Line Up** | Fine-grained scroll up by single line |
@@ -104,12 +111,12 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 | | `Shift + Mouse Drag` | **Bypass Mouse** | Force text selection in mouse-aware TUI apps |
 | **Zoom & Sizing** | `Ctrl+=` / `Ctrl++` | **Zoom In** | Increase font size by 1px |
 | | `Ctrl+-` | **Zoom Out** | Decrease font size by 1px |
-| | `Ctrl+0` | **Reset Zoom** | Reset font size to default (13px) |
+| | `Ctrl+0` | **Reset Zoom** | Reset font size to default (13.5px) |
 | **Links & Code Jumps** | `Ctrl + Click` | **Open Link / Jump to Code** | Open URL in browser, or jump to `file:line:col` in editor |
-| | `Ctrl+Shift+O` | **Link Picker** | Pre-filter Command Palette with visible URLs |
+| | `Ctrl+Shift+U` | **Link Picker** | Pre-filter Command Palette with visible URLs |
 | **Window & Shell** | `F11` | **Fullscreen** | Toggle borderless fullscreen |
 | | `Ctrl+,` | **Settings** | Open Atlas settings dashboard |
-| | `Ctrl+Shift+T` | **Toggle Theme** | Toggle Dark / Light theme preset |
+| | `Alt+T` | **Toggle Theme** | Cycle next theme preset with Dynamic Island toast |
 | | `R` | **Restart Process** | Restart an exited process or dead shell pane |
 
 ---
@@ -118,13 +125,15 @@ Atlas Terminal is designed from the ground up to be completely operable from the
 
 Organize multiple concurrent tasks, builds, and long-running services in a single window:
 
-- **New Tabs**: Press `Ctrl+Shift+N` or click the `+` button in the top bar. New tabs inherit the directory or default profile configured in settings.
-- **Split Panes**:
-  - `Ctrl+Shift+E` splits vertically into side-by-side columns.
-  - `Ctrl+Shift+D` splits horizontally into rows.
-  - Press `Alt+Arrows` (e.g. `Alt+Right` / `Alt+Left`) to navigate between active panes.
-- **Maximize Active Pane**: Press `Ctrl+Shift+M` to temporarily expand the active pane to fill the entire window canvas. Press `Ctrl+Shift+M` again to restore the split layout without interrupting running processes.
-- **Close Pane vs Tab**: `Ctrl+Shift+W` closes the active focused pane. When only one pane remains, `Ctrl+Shift+W` closes the tab. If only one tab remains, closing it gracefully closes the window.
+- **New Tabs**: Press `Ctrl+T` or click the `+` button in the top bar.
+- **Hyprland-Style Split Panes**:
+  - `Alt+Enter` splits vertically into side-by-side columns.
+  - `Alt+D` splits horizontally into rows.
+  - `Alt+Space` toggles the active split orientation between columns and rows.
+  - Press `Alt+Arrows` (or `Alt+H/J/K/L`) to navigate spatially between active panes.
+  - Press `Alt+Shift+Arrows` or drag the 6px divider with your mouse to resize splits.
+- **Maximize Active Pane**: Press `Alt+Z` to temporarily expand the active pane to fill the entire window canvas. Press `Alt+Z` again to restore the split layout without interrupting running processes.
+- **Close Pane vs Tab**: `Alt+W` closes the active focused pane. When only one pane remains, it closes the tab. If only one tab remains, closing it gracefully closes the window.
 
 ---
 

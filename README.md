@@ -84,8 +84,8 @@ Comprehensive guides and architecture specifications are available in the [`docs
 - `Ctrl + Click` to open any visible URL directly in your browser.
 
 ### 📑 Workspaces, Tabs & Split Panes
-- Organize complex workflows with horizontal (`Ctrl+Shift+D`) and vertical (`Ctrl+Shift+E`) split panes.
-- Temporary pane maximization (`Ctrl+Shift+M`) to focus on single tasks without breaking split layouts.
+- Organize complex workflows with horizontal (`Alt+D`) and vertical (`Alt+Enter`) Hyprland-style split panes.
+- Instant pane maximization (`Alt+Z`) to focus on single tasks without breaking split layouts.
 - Auto-detected WSL Linux distributions (`Ubuntu`, `Debian`, `Arch`, `Fedora`, etc.) with native vector marks.
 
 ### 🔍 Find in Terminal (`Ctrl+F`)
@@ -137,18 +137,23 @@ powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1
 
 | Shortcut | Action |
 | :--- | :--- |
-| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette |
+| `Ctrl+T` | New Tab (Default Shell) |
+| `Alt+W` / `Ctrl+W` | Close Active Pane / Tab |
+| `Alt+Enter` | Split Pane Vertically (Columns) |
+| `Alt+D` | Split Pane Horizontally (Rows) |
+| `Alt+Space` | Toggle Split Orientation (Columns ↔ Rows) |
+| `Alt+Arrows` / `Alt+H,J,K,L` | Spatial Directional Navigation |
+| `Alt+Shift+Arrows` | Resize Active Split (5%) |
+| `Alt+Z` | Toggle Maximize / Restore Active Pane |
+| `Alt+T` | Cycle Theme Preset |
+| `Ctrl+Shift+1` … `5` | Quick Launch PowerShell / WSL / CMD / Git Bash / OpenCode |
+| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette / Shell Switcher |
 | `Ctrl+F` | Find in Terminal (Search & Match Navigation) |
 | `Ctrl+B` | Toggle Sidebar / Tab Bar |
-| `Ctrl+Shift+N` | New Tab (Default Shell) |
-| `Ctrl+Shift+W` | Close Active Pane / Tab |
-| `Ctrl+Shift+E` | Split Pane Vertically (Columns) |
-| `Ctrl+Shift+D` | Split Pane Horizontally (Rows) |
-| `Ctrl+Shift+M` | Toggle Maximize / Restore Active Pane |
-| `Ctrl+Shift+T` | Switch Theme (Dark / Light) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / Previous Tab |
+| `Ctrl+1` … `Ctrl+9` | Direct Jump to Tab 1 … 9 |
 | `Ctrl + Click` | Open Hovered URL or Click-to-Code File Jump |
-| `Ctrl+Shift+O` | Keyboard Link Picker |
+| `Ctrl+Shift+U` | Keyboard Link Picker |
 | `Ctrl+,` | Open Settings Dashboard |
 | `F11` | Toggle Borderless Fullscreen |
 
