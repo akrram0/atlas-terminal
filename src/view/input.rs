@@ -290,6 +290,58 @@ impl AtlasView {
         )
     }
 
+    /// Format mouse escape sequences according to current terminal mode.
+    /// Supports SGR mouse reporting mode (\x1b[<btn;col;rowM / \x1b[<btn;col;rowm)
+    /// and standard xterm mouse mode fallback (\x1b[M{cb}{cx}{cy}).
+    pub(crate) fn format_mouse_sequence(
+        mode: TermMode,
+        btn: u8,
+        col: usize,
+        row: usize,
+        is_release: bool,
+        modifiers: gpui::Modifiers,
+    ) -> Vec<u8> {
+        let is_sgr = mode.contains(TermMode::SGR_MOUSE);
+
+        let mut mod_flags = 0;
+        if modifiers.alt {
+            mod_flags += 8;
+        }
+        if modifiers.control {
+            mod_flags += 16;
+        }
+
+        if is_sgr {
+            let final_btn = btn.saturating_add(mod_flags);
+            let suffix = if is_release { 'm' } else { 'M' };
+            format!("\x1b[<{final_btn};{col};{row}{suffix}").into_bytes()
+        } else {
+            let cb = if is_release {
+                3 + mod_flags
+            } else {
+                btn + mod_flags
+            };
+            let b = 32u8.saturating_add(cb);
+            let cx = 32u8.saturating_add((col as u8).min(223));
+            let cy = 32u8.saturating_add((row as u8).min(223));
+            vec![b'\x1b', b'[', b'M', b, cx, cy]
+        }
+    }
+
+    /// Format and transmit mouse events to the PTY session.
+    pub(crate) fn report_mouse_event(
+        pane: &Pane,
+        btn: u8,
+        col: usize,
+        row: usize,
+        is_release: bool,
+        modifiers: gpui::Modifiers,
+    ) {
+        let mode = *pane.session.borrow().term.mode();
+        let bytes = Self::format_mouse_sequence(mode, btn, col, row, is_release, modifiers);
+        pane.session.borrow_mut().write_bytes(&bytes);
+    }
+
     pub(crate) fn detect_pane_bg(pane: &Pane, theme: &Theme) -> Rgba {
         let sess = pane.session.borrow();
         let over = *sess.term.colors();

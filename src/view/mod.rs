@@ -2192,6 +2192,8 @@ impl Render for AtlasView {
 #[cfg(test)]
 mod tests {
     use super::normalize_opacity;
+    use crate::view::AtlasView;
+    use alacritty_terminal::term::TermMode;
 
     #[test]
     fn saved_full_opacity_survives_load() {
@@ -2203,5 +2205,36 @@ mod tests {
         assert!((normalize_opacity(67.0) - 0.67).abs() < 1e-4);
         assert!((normalize_opacity(66.0) - 0.66).abs() < 1e-4);
         assert_eq!(normalize_opacity(100.0), 1.0);
+    }
+
+    #[test]
+    fn mouse_reporting_sgr_and_normal_modes() {
+        let empty_mods = gpui::Modifiers::default();
+
+        // SGR mode: Mouse down on Left button at (10, 5) -> \x1b[<0;10;5M
+        let sgr_mode = TermMode::SGR_MOUSE | TermMode::MOUSE_REPORT_CLICK;
+        let down_seq = AtlasView::format_mouse_sequence(sgr_mode, 0, 10, 5, false, empty_mods);
+        assert_eq!(String::from_utf8(down_seq).unwrap(), "\x1b[<0;10;5M");
+
+        // SGR mode: Mouse UP on Left button at (10, 5) -> \x1b[<0;10;5m (lowercase 'm')
+        let up_seq = AtlasView::format_mouse_sequence(sgr_mode, 0, 10, 5, true, empty_mods);
+        assert_eq!(String::from_utf8(up_seq).unwrap(), "\x1b[<0;10;5m");
+
+        // SGR mode: Mouse drag / motion at (12, 6) -> \x1b[<32;12;6M
+        let drag_seq = AtlasView::format_mouse_sequence(sgr_mode, 32, 12, 6, false, empty_mods);
+        assert_eq!(String::from_utf8(drag_seq).unwrap(), "\x1b[<32;12;6M");
+
+        // SGR mode: Scroll wheel up (btn 64) -> \x1b[<64;10;5M
+        let scroll_seq = AtlasView::format_mouse_sequence(sgr_mode, 64, 10, 5, false, empty_mods);
+        assert_eq!(String::from_utf8(scroll_seq).unwrap(), "\x1b[<64;10;5M");
+
+        // Normal xterm mode: Press Left button at (1, 1) -> \x1b[M 32+0 32+1 32+1
+        let normal_mode = TermMode::MOUSE_REPORT_CLICK;
+        let norm_down = AtlasView::format_mouse_sequence(normal_mode, 0, 1, 1, false, empty_mods);
+        assert_eq!(norm_down, vec![0x1b, b'[', b'M', 32, 33, 33]);
+
+        // Normal xterm mode: Release at (1, 1) -> button 3 (32+3 = 35)
+        let norm_up = AtlasView::format_mouse_sequence(normal_mode, 0, 1, 1, true, empty_mods);
+        assert_eq!(norm_up, vec![0x1b, b'[', b'M', 35, 33, 33]);
     }
 }

@@ -294,7 +294,8 @@ impl Session {
                              } else { \
                                  opencode upgrade \
                              } \
-                         };"
+                         }; \
+                         $env:OPENCODE_DISABLE_AUTOUPDATE = 'true';"
                     );
                 }
                 Profile::Cmd => {}
@@ -349,6 +350,14 @@ impl Session {
             cmd.env("WT_SESSION", "1");
             cmd.env("TERM_PROGRAM", "Atlas");
             cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+            if matches!(profile, Profile::OpenCode) {
+                // OpenCode's update detection has a known Windows bug (anomalyco/opencode#17295)
+                // where Node child_process.spawn() fails to resolve npm.cmd/pnpm.cmd without shell:true,
+                // causing a noisy "Could not detect the installation method" popup on startup.
+                // Setting OPENCODE_DISABLE_AUTOUPDATE suppresses the broken check; users can update
+                // with `pnpm update -g @opencode/cli` or Atlas's `update-opencode` command.
+                cmd.env("OPENCODE_DISABLE_AUTOUPDATE", "true");
+            }
             if matches!(profile, Profile::Wsl) {
                 // wsl.exe starts a Linux process from a Windows one; only
                 // variables listed in WSLENV are copied into the distro. Without

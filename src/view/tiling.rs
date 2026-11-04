@@ -399,15 +399,14 @@ impl AtlasView {
                                     if let Some((col, row)) =
                                         view.grid_coords_from_mouse(event.position, pane_down)
                                     {
-                                        let mut btn = 0;
-                                        if event.modifiers.alt {
-                                            btn += 8;
-                                        }
-                                        if event.modifiers.control {
-                                            btn += 16;
-                                        }
-                                        let seq = format!("\x1b[<{btn};{col};{row}M");
-                                        pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        Self::report_mouse_event(
+                                            pane,
+                                            0,
+                                            col,
+                                            row,
+                                            false,
+                                            event.modifiers,
+                                        );
                                         view.last_mouse_btn = Some(0);
                                         view.last_mouse_cell = Some((col, row));
                                     }
@@ -494,15 +493,14 @@ impl AtlasView {
                                     if let Some((col, row)) =
                                         view.grid_coords_from_mouse(event.position, pane_down)
                                     {
-                                        let mut btn = 1;
-                                        if event.modifiers.alt {
-                                            btn += 8;
-                                        }
-                                        if event.modifiers.control {
-                                            btn += 16;
-                                        }
-                                        let seq = format!("\x1b[<{btn};{col};{row}M");
-                                        pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        Self::report_mouse_event(
+                                            pane,
+                                            1,
+                                            col,
+                                            row,
+                                            false,
+                                            event.modifiers,
+                                        );
                                         view.last_mouse_btn = Some(1);
                                         view.last_mouse_cell = Some((col, row));
                                     }
@@ -531,15 +529,14 @@ impl AtlasView {
                                     if let Some((col, row)) =
                                         view.grid_coords_from_mouse(event.position, pane_rc)
                                     {
-                                        let mut btn = 2;
-                                        if event.modifiers.alt {
-                                            btn += 8;
-                                        }
-                                        if event.modifiers.control {
-                                            btn += 16;
-                                        }
-                                        let seq = format!("\x1b[<{btn};{col};{row}M");
-                                        pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        Self::report_mouse_event(
+                                            pane,
+                                            2,
+                                            col,
+                                            row,
+                                            false,
+                                            event.modifiers,
+                                        );
                                         view.last_mouse_btn = Some(2);
                                         view.last_mouse_cell = Some((col, row));
                                     }
@@ -570,6 +567,37 @@ impl AtlasView {
                 }),
             )
             .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(move |view, event: &MouseUpEvent, _window, cx| {
+                    view.last_mouse_btn = None;
+                    view.last_mouse_cell = None;
+                    view.mouse_down_pane = None;
+                    view.mouse_down_point = None;
+                    if !event.modifiers.shift {
+                        if let Some(tab) = view.tabs.get(view.active) {
+                            if let Some(pane) = tab.panes.get(pane_up) {
+                                if Self::is_mouse_reporting(pane) {
+                                    if let Some((col, row)) =
+                                        view.grid_coords_from_mouse(event.position, pane_up)
+                                    {
+                                        Self::report_mouse_event(
+                                            pane,
+                                            0,
+                                            col,
+                                            row,
+                                            true,
+                                            event.modifiers,
+                                        );
+                                    }
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    cx.notify();
+                }),
+            )
+            .on_mouse_up(
                 MouseButton::Middle,
                 cx.listener(move |view, event: &MouseUpEvent, _window, _cx| {
                     view.last_mouse_btn = None;
@@ -581,15 +609,14 @@ impl AtlasView {
                                     if let Some((col, row)) =
                                         view.grid_coords_from_mouse(event.position, pane_up)
                                     {
-                                        let mut btn = 1;
-                                        if event.modifiers.alt {
-                                            btn += 8;
-                                        }
-                                        if event.modifiers.control {
-                                            btn += 16;
-                                        }
-                                        let seq = format!("\x1b[<{btn};{col};{row}m");
-                                        pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        Self::report_mouse_event(
+                                            pane,
+                                            1,
+                                            col,
+                                            row,
+                                            true,
+                                            event.modifiers,
+                                        );
                                     }
                                 }
                             }
@@ -609,15 +636,14 @@ impl AtlasView {
                                     if let Some((col, row)) =
                                         view.grid_coords_from_mouse(event.position, pane_up)
                                     {
-                                        let mut btn = 2;
-                                        if event.modifiers.alt {
-                                            btn += 8;
-                                        }
-                                        if event.modifiers.control {
-                                            btn += 16;
-                                        }
-                                        let seq = format!("\x1b[<{btn};{col};{row}m");
-                                        pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                        Self::report_mouse_event(
+                                            pane,
+                                            2,
+                                            col,
+                                            row,
+                                            true,
+                                            event.modifiers,
+                                        );
                                     }
                                 }
                             }
@@ -639,16 +665,15 @@ impl AtlasView {
                                     {
                                         if view.last_mouse_cell != Some((col, row)) {
                                             view.last_mouse_cell = Some((col, row));
-                                            let mut btn = view.last_mouse_btn.unwrap_or(3);
-                                            btn += 32;
-                                            if event.modifiers.alt {
-                                                btn += 8;
-                                            }
-                                            if event.modifiers.control {
-                                                btn += 16;
-                                            }
-                                            let seq = format!("\x1b[<{btn};{col};{row}M");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            let btn = view.last_mouse_btn.unwrap_or(3).saturating_add(32);
+                                            Self::report_mouse_event(
+                                                pane,
+                                                btn,
+                                                col,
+                                                row,
+                                                false,
+                                                event.modifiers,
+                                            );
                                         }
                                     }
                                 }
@@ -737,8 +762,14 @@ impl AtlasView {
                                     if delta_y != 0.0 {
                                         if let Some((col, row)) = coords {
                                             let btn = if delta_y > 0.0 { 64 } else { 65 };
-                                            let seq = format!("\x1b[<{btn};{col};{row}M");
-                                            pane.session.borrow_mut().write_bytes(seq.as_bytes());
+                                            Self::report_mouse_event(
+                                                pane,
+                                                btn,
+                                                col,
+                                                row,
+                                                false,
+                                                event.modifiers,
+                                            );
                                         }
                                     }
                                     return;
