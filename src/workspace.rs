@@ -8,14 +8,8 @@ use crate::icons;
 use crate::session::{Profile, Session};
 use crate::wsl;
 
-/// How a tab's panes tile the sheet.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum SplitAxis {
-    /// Side by side, divided by a vertical hairline.
-    Columns,
-    /// Stacked, divided by a horizontal hairline.
-    Rows,
-}
+#[allow(unused_imports)]
+pub use crate::tiling::{Direction, SplitAxis, TileNode, TileTree};
 
 /// One shell inside a tab (a tab is one or more panes side by side).
 pub struct Pane {
@@ -55,6 +49,8 @@ pub struct Tab {
     pub active_pane: usize,
     /// Direction the panes are tiled in (the last split decides).
     pub axis: SplitAxis,
+    /// Hyprland-style binary split tree for arbitrary vertical and horizontal compositions.
+    pub tile_tree: TileTree,
     /// While true only the active pane is shown (header maximize action).
     pub maximized: bool,
     /// Smooth width collapse on close.
@@ -346,14 +342,14 @@ pub fn format_dropped_paths(paths: &[PathBuf], is_wsl: bool) -> String {
     format!("{} ", parts.join(" "))
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct SavedSession {
     #[serde(default)]
     pub active_tab: usize,
     pub tabs: Vec<SavedTab>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct SavedTab {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_title: Option<String>,
@@ -361,6 +357,8 @@ pub struct SavedTab {
     pub active_pane: usize,
     #[serde(default = "default_axis")]
     pub axis: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tile_tree: Option<TileTree>,
     pub panes: Vec<SavedPane>,
 }
 
@@ -406,6 +404,7 @@ mod tests {
                     custom_title: Some("Project A".into()),
                     active_pane: 0,
                     axis: "columns".into(),
+                    tile_tree: None,
                     panes: vec![SavedPane {
                         profile: "powershell".into(),
                         cwd: Some(PathBuf::from(r"C:\Users\test")),
@@ -415,6 +414,7 @@ mod tests {
                     custom_title: None,
                     active_pane: 1,
                     axis: "rows".into(),
+                    tile_tree: None,
                     panes: vec![
                         SavedPane {
                             profile: "wsl".into(),

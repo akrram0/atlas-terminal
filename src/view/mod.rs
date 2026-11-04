@@ -4,6 +4,7 @@ pub mod actions;
 pub mod input;
 pub mod scroll;
 pub mod sidebar;
+pub mod tiling;
 pub mod update;
 
 use std::cell::RefCell;
@@ -12,22 +13,20 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use alacritty_terminal::grid::Scroll;
-use alacritty_terminal::index::{Point, Side};
-use alacritty_terminal::selection::{Selection, SelectionType};
-use alacritty_terminal::term::TermMode;
+use alacritty_terminal::index::Point;
+use alacritty_terminal::selection::SelectionType;
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, ClipboardItem, Context,
+    Animation, AnimationExt, AnyElement, ClickEvent, Context,
     ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Rgba, ScrollHandle,
-    ScrollWheelEvent, SharedString, Window, div, px, relative, rgb, rgba,
+    SharedString, Window, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{load_app_settings, AppSettingsFile, SettingsTab};
 use crate::icons;
 use crate::session::Session;
-use crate::terminal::TerminalElement;
 use crate::theme::{Theme, ThemeRegistry};
 use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, EASE_OUT};
 use crate::ui::overlay::{
@@ -37,7 +36,7 @@ use crate::ui::overlay::{
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
     format_tab_title, git_branch, git_cwd, home_dir, session_icon,
-    SplitAxis, Tab,
+    Tab,
 };
 
 #[derive(Debug, Clone)]
@@ -175,6 +174,7 @@ pub struct AtlasView {
     pub(crate) sidebar_width: f32,
     pub(crate) sidebar_current_width: f32,
     pub(crate) sidebar_is_resizing: bool,
+    pub(crate) active_split_resize: Option<(u64, crate::tiling::SplitAxis, f32, f32)>,
     pub(crate) last_settings_mtime: Option<std::time::SystemTime>,
 }
 
@@ -341,6 +341,7 @@ impl AtlasView {
             sidebar_width: 210.0,
             sidebar_current_width: 210.0,
             sidebar_is_resizing: false,
+            active_split_resize: None,
             last_settings_mtime: std::fs::metadata(crate::user_data_dir().join("settings.json")).and_then(|m| m.modified()).ok(),
         };
         crate::rounded_corners::set_dark_mode(is_dark);
@@ -369,6 +370,7 @@ impl AtlasView {
             });
             view.new_tab_with_cwd(default_shell_prof, startup_cwd, cx);
         }
+        window.focus(&view.focus);
 
         // Window close is interruptible while shells are still alive and the
         // user asked for confirmation. Confirming calls `remove_window()`,
@@ -613,6 +615,7 @@ impl AtlasView {
                         }
                         for &p_ix in panes_to_remove.iter().rev() {
                             tab.panes.remove(p_ix);
+                            tab.tile_tree.remove_pane(p_ix);
                             if p_ix < tab.active_pane {
                                 tab.active_pane = tab.active_pane.saturating_sub(1);
                             }
@@ -1779,672 +1782,7 @@ impl Render for AtlasView {
             }
 
             let tab = &self.tabs[index];
-            let axis = tab.axis;
-
-            let mut area = div()
-                .id(ElementId::named_usize("terminal-area", 0))
-                .flex()
-                .flex_1()
-                .min_w(px(0.0))
-                .min_h(px(0.0))
-                .track_focus(&self.focus)
-                .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
-                    let keystroke = event.keystroke.clone();
-                    view.handle_key(&keystroke, window, cx);
-                }))
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(|view, _: &MouseDownEvent, window, _cx| {
-                        window.focus(&view.focus);
-                    }),
-                );
-            let is_tiled = tab.panes.len() > 1 && !tab.maximized;
-
-            area = match axis {
-                SplitAxis::Columns => area.flex_row(),
-                SplitAxis::Rows => area.flex_col(),
-            };
-
-            // Linux-style tiling gaps:
-            if is_tiled {
-                area = area.p(px(6.0)).gap(px(6.0));
-            }
-
-            // Visible panes:
-            let visible: Vec<usize> = if tab.maximized && tab.panes.len() > 1 {
-                vec![tab.active_pane]
-            } else {
-                (0..tab.panes.len()).collect()
-            };
-            for &pane_ix in &visible {
-                let pane = &tab.panes[pane_ix];
-
-                let pane_down = pane_ix;
-                let pane_move = pane_ix;
-                let pane_up = pane_ix;
-                let pane_rc = pane_ix;
-
-                let pane_is_tui = Self::is_pane_tui(pane, &theme);
-                let pane_bg = if pane_is_tui {
-                    Self::detect_pane_bg(pane, &theme)
-                } else if is_translucent {
-                    rgba(0x00000000)
-                } else {
-                    active_bg
-                };
-
-                let is_focused_pane = pane_ix == tab.active_pane;
-                let mut cell = div()
-                    .id(ElementId::named_usize("pane-cell", pane_ix))
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .min_h(px(0.0))
-                    .opacity(pane.pane_expansion)
-                    .overflow_hidden();
-
-                if is_tiled {
-                    cell = cell
-                        .rounded(px(8.0))
-                        .border_1()
-                        .border_color(if is_focused_pane {
-                            theme.accent
-                        } else {
-                            theme.hairline
-                        })
-                        .shadow_md()
-                        .bg(if pane_is_tui {
-                            pane_bg
-                        } else if is_translucent {
-                            Rgba { a: 0.18, ..theme.panel_bg }
-                        } else if is_focused_pane {
-                            theme.elevated_bg
-                        } else {
-                            theme.panel_bg
-                        });
-
-                    let p_title = crate::workspace::tab_name(&pane.title, &crate::workspace::profile_title(pane.profile));
-                    let p_icon = crate::workspace::session_icon(&p_title, pane.profile);
-                    let tb_v = theme.clone();
-                    let p_idx = pane_ix;
-
-                    let mini_split_v = div()
-                        .id(ElementId::named_usize("mini-split-v", p_idx))
-                        .w(px(20.0))
-                        .h(px(18.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(3.0))
-                        .cursor_pointer()
-                        .hover(move |s| s.bg(tb_v.card_hover))
-                        .child(icons::icon(icons::SPLIT_COLUMNS).size(px(11.0)).text_color(theme.chrome_fg))
-                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                tab.active_pane = p_idx;
-                            }
-                            view.split_active(SplitAxis::Columns, cx);
-                            window.focus(&view.focus);
-                        }));
-
-                    let tb_h = theme.clone();
-                    let mini_split_h = div()
-                        .id(ElementId::named_usize("mini-split-h", p_idx))
-                        .w(px(20.0))
-                        .h(px(18.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(3.0))
-                        .cursor_pointer()
-                        .hover(move |s| s.bg(tb_h.card_hover))
-                        .child(icons::icon(icons::SPLIT_ROWS).size(px(11.0)).text_color(theme.chrome_fg))
-                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                tab.active_pane = p_idx;
-                            }
-                            view.split_active(SplitAxis::Rows, cx);
-                            window.focus(&view.focus);
-                        }));
-
-                    let tb_m = theme.clone();
-                    let mini_max = div()
-                        .id(ElementId::named_usize("mini-max", p_idx))
-                        .w(px(20.0))
-                        .h(px(18.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(3.0))
-                        .cursor_pointer()
-                        .hover(move |s| s.bg(tb_m.card_hover))
-                        .child(icons::icon(icons::WINDOW_MAXIMIZE).size(px(10.0)).text_color(theme.chrome_fg))
-                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                tab.active_pane = p_idx;
-                            }
-                            view.toggle_maximize(cx);
-                            window.focus(&view.focus);
-                        }));
-
-                    let mini_close = div()
-                        .id(ElementId::named_usize("mini-close", p_idx))
-                        .w(px(20.0))
-                        .h(px(18.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(3.0))
-                        .cursor_pointer()
-                        .hover(move |s| s.bg(rgba(0xE0525225)))
-                        .child(icons::icon(icons::CLOSE).size(px(10.0)).text_color(theme.chrome_fg))
-                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                            view.close_pane_at(view.active, p_idx, cx);
-                            window.focus(&view.focus);
-                        }));
-
-                    let pane_bar = div()
-                        .id(ElementId::named_usize("pane-bar", p_idx))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .h(px(24.0))
-                        .px(px(8.0))
-                        .bg(if is_focused_pane {
-                            Rgba { a: 0.14, ..theme.accent }
-                        } else {
-                            Rgba { a: 0.05, ..theme.hairline }
-                        })
-                        .border_b_1()
-                        .border_color(if is_focused_pane {
-                            Rgba { a: 0.28, ..theme.accent }
-                        } else {
-                            theme.hairline
-                        })
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(6.0))
-                                .child(icons::icon(p_icon).size(px(12.0)).text_color(if is_focused_pane { theme.accent } else { theme.chrome_fg }))
-                                .child(
-                                    div()
-                                        .text_size(px(11.0))
-                                        .font_weight(if is_focused_pane { FontWeight::MEDIUM } else { FontWeight::NORMAL })
-                                        .text_color(if is_focused_pane { theme.fg } else { theme.chrome_fg })
-                                        .child(format!("[{}] {}", p_idx + 1, p_title)),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(2.0))
-                                .child(mini_split_v)
-                                .child(mini_split_h)
-                                .child(mini_max)
-                                .child(mini_close),
-                        );
-
-                    cell = cell.child(pane_bar);
-                } else {
-                    cell = cell.bg(if pane_is_tui {
-                        pane_bg
-                    } else {
-                        rgba(0x00000000)
-                    });
-                }
-                if self.hovered_link.as_ref().map_or(false, |(p, _)| *p == pane_ix) {
-                    cell = cell.cursor_pointer();
-                }
-                let pane_drop = pane_ix;
-                cell = cell
-                    .on_drop::<gpui::ExternalPaths>(cx.listener(
-                        move |view, paths: &gpui::ExternalPaths, window, cx| {
-                            window.focus(&view.focus);
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                tab.active_pane = pane_drop;
-                            }
-                            view.handle_file_drop(paths.paths(), cx);
-                        },
-                    ))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |view, event: &MouseDownEvent, window, cx| {
-                            view.mouse_down_pane = Some(pane_down);
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                if tab.active_pane != pane_down {
-                                    tab.active_pane = pane_down;
-                                    cx.notify();
-                                }
-                            }
-                            window.focus(&view.focus);
-
-                            // Ctrl+Click opens URL at clicked grid point
-                            if event.modifiers.control {
-                                if let Some((pt, _)) = view.point_from_mouse(event.position, pane_down) {
-                                    if let Some(tab) = view.tabs.get(view.active) {
-                                        if let Some(pane) = tab.panes.get(pane_down) {
-                                            let term = &pane.session.borrow().term;
-                                            if let Some(detected) = crate::url::find_url_at_point(term, pt) {
-                                                crate::url::open_target(&detected.url, &view.app_settings.default_editor, pane.cwd.as_deref());
-                                                view.mouse_down_pane = None;
-                                                return;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if !event.modifiers.shift {
-                                if let Some(tab) = view.tabs.get(view.active) {
-                                    if let Some(pane) = tab.panes.get(pane_down) {
-                                        if Self::is_mouse_reporting(pane) {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
-                                                let mut btn = 0;
-                                                if event.modifiers.alt { btn += 8; }
-                                                if event.modifiers.control { btn += 16; }
-                                                let seq = format!("\x1b[<{btn};{col};{row}M");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                                view.last_mouse_btn = Some(0);
-                                                view.last_mouse_cell = Some((col, row));
-                                            }
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                if let Some(p) = tab.panes.get_mut(pane_down) {
-                                    let is_in_void = {
-                                        let s = p.session.borrow();
-                                        let is_alt = s.term.mode().contains(TermMode::ALT_SCREEN);
-                                        let is_scrolled = s.term.renderable_content().display_offset > 0;
-                                        if let Some((_, top, _, cell_h)) = s.grid_bounds {
-                                            let raw = ((f32::from(event.position.y) - top) / cell_h).floor() as isize;
-                                            !is_alt && !is_scrolled && s.max_active_row > 0 && raw >= s.max_active_row as isize
-                                        } else {
-                                            false
-                                        }
-                                    };
-                                    if is_in_void {
-                                        p.session.borrow_mut().clear_selection();
-                                        view.mouse_down_point = None;
-                                        view.mouse_down_pane = None;
-                                        cx.notify();
-                                        return;
-                                    }
-                                }
-                            }
-                            if let Some((pt, _side)) = view.point_from_mouse(event.position, pane_down) {
-                                if let Some(tab) = view.tabs.get_mut(view.active) {
-                                    if let Some(p) = tab.panes.get_mut(pane_down) {
-                                        let sel_type = match event.click_count {
-                                            2 => SelectionType::Semantic,
-                                            3.. => SelectionType::Lines,
-                                            _ => SelectionType::Simple,
-                                        };
-                                        view.mouse_down_pane = Some(pane_down);
-                                        view.mouse_down_point = Some(pt);
-                                        view.mouse_down_sel_type = sel_type;
-                                        let mut sess = p.session.borrow_mut();
-                                        if sel_type != SelectionType::Simple {
-                                            sess.term.selection =
-                                                Some(Selection::new(sel_type, pt, Side::Left));
-                                        } else {
-                                            sess.clear_selection();
-                                        }
-                                        cx.notify();
-                                    }
-                                }
-                            }
-                        }),
-                    )
-                    .on_mouse_down(
-                        MouseButton::Middle,
-                        cx.listener(move |view, event: &MouseDownEvent, window, cx| {
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                if tab.active_pane != pane_down {
-                                    tab.active_pane = pane_down;
-                                    cx.notify();
-                                }
-                            }
-                            window.focus(&view.focus);
-                            if !event.modifiers.shift {
-                                if let Some(tab) = view.tabs.get(view.active) {
-                                    if let Some(pane) = tab.panes.get(pane_down) {
-                                        if Self::is_mouse_reporting(pane) {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_down) {
-                                                let mut btn = 1;
-                                                if event.modifiers.alt { btn += 8; }
-                                                if event.modifiers.control { btn += 16; }
-                                                let seq = format!("\x1b[<{btn};{col};{row}M");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                                view.last_mouse_btn = Some(1);
-                                                view.last_mouse_cell = Some((col, row));
-                                            }
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                            view.paste(cx);
-                        }),
-                    )
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(move |view, event: &MouseDownEvent, window, cx| {
-                            if let Some(tab) = view.tabs.get_mut(view.active) {
-                                if tab.active_pane != pane_rc {
-                                    tab.active_pane = pane_rc;
-                                    cx.notify();
-                                }
-                            }
-                            window.focus(&view.focus);
-                            if !event.modifiers.shift {
-                                if let Some(tab) = view.tabs.get(view.active) {
-                                    if let Some(pane) = tab.panes.get(pane_rc) {
-                                        if Self::is_mouse_reporting(pane) {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_rc) {
-                                                let mut btn = 2;
-                                                if event.modifiers.alt { btn += 8; }
-                                                if event.modifiers.control { btn += 16; }
-                                                let seq = format!("\x1b[<{btn};{col};{row}M");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                                view.last_mouse_btn = Some(2);
-                                                view.last_mouse_cell = Some((col, row));
-                                            }
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                            view.handle_terminal_right_click(window, cx);
-                        }),
-                    )
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(move |view, event: &MouseUpEvent, window, cx| {
-                            view.mouse_down_pane = None;
-                            view.mouse_down_point = None;
-                            view.last_mouse_btn = None;
-                            view.last_mouse_cell = None;
-                            if !event.modifiers.shift {
-                                if let Some(tab) = view.tabs.get(view.active) {
-                                    if let Some(pane) = tab.panes.get(pane_up) {
-                                        if Self::is_mouse_reporting(pane) {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
-                                                let mut btn = 0;
-                                                if event.modifiers.alt { btn += 8; }
-                                                if event.modifiers.control { btn += 16; }
-                                                let seq = format!("\x1b[<{btn};{col};{row}m");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            }
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_up) {
-                                    let selected_text = {
-                                        let sess = pane.session.borrow();
-                                        sess.term.selection_to_string()
-                                    };
-                                    if let Some(text) = selected_text {
-                                        if !text.is_empty() && view.app_settings.copy_on_select {
-                                            cx.write_to_clipboard(ClipboardItem::new_string(text));
-                                        }
-                                    }
-                                }
-                            }
-                            window.focus(&view.focus);
-                            cx.notify();
-                        }),
-                    )
-                    .on_mouse_up(
-                        MouseButton::Middle,
-                        cx.listener(move |view, event: &MouseUpEvent, _window, _cx| {
-                            view.last_mouse_btn = None;
-                            view.last_mouse_cell = None;
-                            if !event.modifiers.shift {
-                                if let Some(tab) = view.tabs.get(view.active) {
-                                    if let Some(pane) = tab.panes.get(pane_up) {
-                                        if Self::is_mouse_reporting(pane) {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
-                                                let mut btn = 1;
-                                                if event.modifiers.alt { btn += 8; }
-                                                if event.modifiers.control { btn += 16; }
-                                                let seq = format!("\x1b[<{btn};{col};{row}m");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }),
-                    )
-                    .on_mouse_up(
-                        MouseButton::Right,
-                        cx.listener(move |view, event: &MouseUpEvent, _window, _cx| {
-                            view.last_mouse_btn = None;
-                            view.last_mouse_cell = None;
-                            if !event.modifiers.shift {
-                                if let Some(tab) = view.tabs.get(view.active) {
-                                    if let Some(pane) = tab.panes.get(pane_up) {
-                                        if Self::is_mouse_reporting(pane) {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_up) {
-                                                let mut btn = 2;
-                                                if event.modifiers.alt { btn += 8; }
-                                                if event.modifiers.control { btn += 16; }
-                                                let seq = format!("\x1b[<{btn};{col};{row}m");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }),
-                    )
-                    .on_mouse_move(cx.listener(move |view, event: &MouseMoveEvent, _window, cx| {
-                        if !event.modifiers.shift {
-                            if let Some(tab) = view.tabs.get(view.active) {
-                                if let Some(pane) = tab.panes.get(pane_move) {
-                                    if Self::is_mouse_reporting(pane) {
-                                        let mode = *pane.session.borrow().term.mode();
-                                        let is_motion = mode.contains(TermMode::MOUSE_MOTION);
-                                        let is_drag = mode.contains(TermMode::MOUSE_DRAG);
-                                        if is_motion || (is_drag && view.last_mouse_btn.is_some()) {
-                                            if let Some((col, row)) = view.grid_coords_from_mouse(event.position, pane_move) {
-                                                if view.last_mouse_cell == Some((col, row)) {
-                                                    return;
-                                                }
-                                                view.last_mouse_cell = Some((col, row));
-
-                                                let btn_val = view.last_mouse_btn.unwrap_or(3);
-                                                let mut cb = btn_val + 32;
-                                                if event.modifiers.alt { cb += 8; }
-                                                if event.modifiers.control { cb += 16; }
-                                                let seq = format!("\x1b[<{cb};{col};{row}M");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            }
-                                        }
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                        if event.modifiers.control {
-                            let mut found = None;
-                            if let Some((pt, _)) = view.point_from_mouse(event.position, pane_move) {
-                                if let Some(tab) = view.tabs.get(view.active) {
-                                    if let Some(pane) = tab.panes.get(pane_move) {
-                                        let term = &pane.session.borrow().term;
-                                        if let Some(detected) = crate::url::find_url_at_point(term, pt) {
-                                            found = Some((pane_move, detected));
-                                        }
-                                    }
-                                }
-                            }
-                            if view.hovered_link != found {
-                                view.hovered_link = found;
-                                cx.notify();
-                            }
-                        } else if view.hovered_link.is_some() {
-                            view.hovered_link = None;
-                            cx.notify();
-                        }
-                        if view.mouse_down_pane == Some(pane_move) {
-                            if let Some((pt, side)) = view.point_from_mouse(event.position, pane_move) {
-                                if let Some(tab) = view.tabs.get_mut(view.active) {
-                                    if let Some(p) = tab.panes.get_mut(pane_move) {
-                                        if let Some(start_pt) = view.mouse_down_point {
-                                            let sel_type = view.mouse_down_sel_type;
-                                            let mut sess = p.session.borrow_mut();
-                                            if pt >= start_pt {
-                                                let mut sel = Selection::new(sel_type, start_pt, Side::Left);
-                                                sel.update(pt, side);
-                                                sess.term.selection = Some(sel);
-                                            } else {
-                                                let mut sel = Selection::new(sel_type, start_pt, Side::Right);
-                                                sel.update(pt, side);
-                                                sess.term.selection = Some(sel);
-                                            }
-                                            cx.notify();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }))
-                    .on_scroll_wheel(cx.listener(move |view, event: &ScrollWheelEvent, _window, cx| {
-                        if event.modifiers.control {
-                            let delta = match event.delta {
-                                gpui::ScrollDelta::Lines(d) => d.y,
-                                gpui::ScrollDelta::Pixels(d) => f32::from(d.y),
-                            };
-                            let cur = view.active_font_size();
-                            if delta > 0.0 {
-                                view.adjust_font_size(cur + 1.0, cx);
-                            } else if delta < 0.0 {
-                                view.adjust_font_size(cur - 1.0, cx);
-                            }
-                            return;
-                        }
-                        if !event.modifiers.shift {
-                            let is_reporting = view.tabs.get(view.active)
-                                .and_then(|tab| tab.panes.get(pane_down))
-                                .map_or(false, Self::is_mouse_reporting);
-                            if is_reporting {
-                                let coords = view.grid_coords_from_mouse(event.position, pane_down);
-                                if let Some(tab) = view.tabs.get_mut(view.active) {
-                                    if let Some(pane) = tab.panes.get_mut(pane_down) {
-                                        pane.cursor_pos = Some(pane.cursor_target);
-                                        let delta_y = match event.delta {
-                                            gpui::ScrollDelta::Lines(delta) => delta.y,
-                                            gpui::ScrollDelta::Pixels(delta) => {
-                                                let dy = f32::from(delta.y);
-                                                if dy.abs() < 0.1 { 0.0 } else if dy > 0.0 { 1.0 } else { -1.0 }
-                                            }
-                                        };
-                                        if delta_y != 0.0 {
-                                            if let Some((col, row)) = coords {
-                                                let btn = if delta_y > 0.0 { 64 } else { 65 };
-                                                let mut cb = btn;
-                                                if event.modifiers.alt { cb += 8; }
-                                                if event.modifiers.control { cb += 16; }
-                                                let seq = format!("\x1b[<{cb};{col};{row}M");
-                                                pane.session.borrow_mut().write_bytes(seq.as_bytes());
-                                            }
-                                        }
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                        let lines = match event.delta {
-                            gpui::ScrollDelta::Lines(delta) => delta.y as f32,
-                            gpui::ScrollDelta::Pixels(delta) => f32::from(delta.y) / 18.0,
-                        };
-                        view.scroll_smooth(lines, cx);
-                    }));
-                cell = match axis {
-                    SplitAxis::Columns => cell.h(relative(1.0)),
-                    SplitAxis::Rows => cell.w(relative(1.0)),
-                };
-                if pane.exited {
-                    cell = cell
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            div()
-                                .text_size(px(13.0))
-                                .text_color(theme.fg)
-                                .child("Process exited"),
-                        )
-                        .child(
-                            div()
-                                .mt(px(6.0))
-                                .text_size(px(11.5))
-                                .text_color(theme.chrome_fg)
-                                .child("Press R to restart this pane"),
-                        );
-                } else {
-                    let tab_font = tab.font_size.unwrap_or(self.font_size);
-                    let cell_height = (tab_font * self.line_height).round().max(1.0);
-                    let subpixel_y = if let Some((bound, pos, _)) = &self.scroll_anim {
-                        if Rc::ptr_eq(bound, &pane.session) {
-                            (pos - pos.ceil()) * cell_height
-                        } else {
-                            0.0
-                        }
-                    } else {
-                        0.0
-                    };
-
-                    let typing_recent = self.cursor_last_typing.elapsed().as_millis() < 450;
-                    let cursor_alpha = if !self.cursor_blink || typing_recent {
-                        1.0
-                    } else {
-                        0.25 + 0.75 * (self.cursor_breath_phase.sin() * 0.5 + 0.5)
-                    };
-
-                    cell = cell.child(TerminalElement {
-                        session: pane.session.clone(),
-                        theme: theme.clone(),
-                        // In translucent mode, keep active_bg transparent so TUI apps like OpenCode
-                        // paint their solid backgrounds with rounded edge quads rather than becoming transparent blur.
-                        active_bg: if is_translucent && !pane_is_tui { rgba(0x00000000) } else { pane_bg },
-                        font: self.font.clone(),
-                        font_size: tab_font,
-                        line_height: self.line_height,
-                        cursor_on: self.cursor_on,
-                        cursor_override: self.cursor_style,
-                        cursor_pos: pane.cursor_pos,
-                        cursor_alpha,
-                        subpixel_y,
-                        scrollbar_opacity: self.scrollbar_opacity,
-                        hovered_link: self.hovered_link.as_ref().and_then(|(p, hl)| {
-                            if *p == pane_ix {
-                                Some(hl.clone())
-                            } else {
-                                None
-                            }
-                        }),
-                        search_matches: if self.search_open { self.search_matches.clone() } else { Vec::new() },
-                        active_search_match: if self.search_open { Some(self.search_index) } else { None },
-                    });
-                }
-                area = area.child(cell.with_animation(
-                    ElementId::named_usize("pane-in", pane.epoch as usize),
-                    Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
-                    |el, delta| el.opacity(delta),
-                ));
-            }
-
+            let area = self.render_tiled_workspace(tab, index, &theme, is_translucent, active_bg, cx);
             let mut container = div().flex().flex_col().flex_1().relative().child(area);
             if tab.maximized && tab.panes.len() > 1 {
                 let tb_z = theme.clone();
@@ -2734,6 +2072,7 @@ impl Render for AtlasView {
         };
 
         let mut root = div()
+            .id("root-window")
             .relative()
             .flex()
             .flex_col()
@@ -2741,6 +2080,46 @@ impl Render for AtlasView {
             .h(relative(1.0))
             .font_family("Segoe UI")
             .text_color(tb.chrome_fg_active)
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                let keystroke = event.keystroke.clone();
+                view.handle_key(&keystroke, window, cx);
+            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|view, _: &MouseDownEvent, window, _cx| {
+                    if !view.settings_open && !view.palette_open && !view.profile_menu {
+                        window.focus(&view.focus);
+                    }
+                }),
+            )
+            .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
+                if let Some((split_id, axis, start_coord, start_ratio)) = view.active_split_resize {
+                    let current_coord = match axis {
+                        crate::tiling::SplitAxis::Columns => f32::from(event.position.x),
+                        crate::tiling::SplitAxis::Rows => f32::from(event.position.y),
+                    };
+                    let total_span = match axis {
+                        crate::tiling::SplitAxis::Columns => 1000.0,
+                        crate::tiling::SplitAxis::Rows => 650.0,
+                    };
+                    let delta = (current_coord - start_coord) / total_span;
+                    let new_ratio = (start_ratio + delta).clamp(0.15, 0.85);
+                    if let Some(tab) = view.tabs.get_mut(view.active) {
+                        tab.tile_tree.set_split_ratio(split_id, new_ratio);
+                        cx.notify();
+                    }
+                }
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|view, _: &MouseUpEvent, _window, cx| {
+                    if view.active_split_resize.is_some() {
+                        view.active_split_resize = None;
+                        cx.notify();
+                    }
+                }),
+            )
             .child(container);
 
         if self.app_settings.tab_bar_position == "borderless" {

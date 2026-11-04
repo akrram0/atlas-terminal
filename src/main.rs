@@ -10,6 +10,7 @@ mod keymap;
 mod session;
 mod terminal;
 mod theme;
+pub mod tiling;
 mod ui;
 pub mod updater;
 pub mod url;

@@ -114,6 +114,7 @@ impl AtlasView {
                     }],
                     active_pane: 0,
                     axis: SplitAxis::Columns,
+                    tile_tree: crate::tiling::TileTree::new(0),
                     maximized: false,
                     closing: false,
                     close_progress: 0.0,
@@ -297,6 +298,8 @@ impl AtlasView {
                 let session = Rc::new(RefCell::new(session));
                 let cwd = session.borrow().pid.and_then(crate::cwd::process_cwd).or(spawn_cwd);
                 if let Some(tab) = self.tabs.get_mut(self.active) {
+                    let target_pane = tab.active_pane;
+                    let new_pane_ix = tab.panes.len();
                     tab.panes.push(Pane {
                         epoch,
                         profile,
@@ -312,7 +315,8 @@ impl AtlasView {
                         cmd_start: None,
                         running_cmd: None,
                     });
-                    tab.active_pane = tab.panes.len() - 1;
+                    tab.tile_tree.split(target_pane, new_pane_ix, axis);
+                    tab.active_pane = new_pane_ix;
                     tab.axis = axis;
                     tab.maximized = false;
                 }
@@ -371,6 +375,7 @@ impl AtlasView {
     pub(crate) fn toggle_split_axis(&mut self, cx: &mut Context<Self>) {
         if let Some(tab) = self.tabs.get_mut(self.active) {
             if tab.panes.len() > 1 {
+                tab.tile_tree.toggle_active_axis(tab.active_pane);
                 tab.axis = match tab.axis {
                     SplitAxis::Columns => SplitAxis::Rows,
                     SplitAxis::Rows => SplitAxis::Columns,
@@ -787,6 +792,7 @@ impl AtlasView {
                     custom_title: t.custom_title.clone(),
                     active_pane: t.active_pane,
                     axis,
+                    tile_tree: Some(t.tile_tree.clone()),
                     panes,
                 }
             })
@@ -873,12 +879,23 @@ impl AtlasView {
                     SplitAxis::Columns
                 };
                 let active_pane = saved_tab.active_pane.min(restored_panes.len().saturating_sub(1));
+                let tile_tree = match saved_tab.tile_tree {
+                    Some(tree) if tree.root.pane_count() == restored_panes.len() => tree,
+                    _ => {
+                        let mut tree = crate::tiling::TileTree::new(0);
+                        for idx in 1..restored_panes.len() {
+                            tree.split(idx - 1, idx, axis);
+                        }
+                        tree
+                    }
+                };
                 restored_tabs.push(Tab {
                     id: tab_id,
                     custom_title: saved_tab.custom_title,
                     panes: restored_panes,
                     active_pane,
                     axis,
+                    tile_tree,
                     maximized: false,
                     closing: false,
                     close_progress: 0.0,

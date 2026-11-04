@@ -1280,12 +1280,14 @@ impl AtlasView {
         };
 
         let mut built_in_card = card().child(section_header("BUILT-IN SHORTCUTS & LINUX TILING"));
-        let built_in_list: [(&'static str, &'static str); 10] = [
+        let built_in_list: [(&'static str, &'static str); 12] = [
             ("Cycle / Change Themes", "Ctrl+Shift+T"),
             ("New Tab (Default Shell)", "Ctrl+T / Ctrl+Shift+N"),
             ("Linux Tiling: Split Vertical", "Alt+Enter / Alt+V / Ctrl+Shift+E"),
             ("Linux Tiling: Split Horizontal", "Alt+D / Ctrl+Shift+D"),
-            ("Linux Tiling: Navigate Panes", "Alt+H,J,K,L / Alt+Arrows"),
+            ("Linux Tiling: Resize Panes (Narrow / Widen)", "Alt+Ctrl+Left / Alt+Ctrl+Right / Drag Divider"),
+            ("Linux Tiling: Resize Panes (Shorter / Taller)", "Alt+Ctrl+Up / Alt+Ctrl+Down / Drag Divider"),
+            ("Linux Tiling: Spatial Navigate Panes", "Alt+H,J,K,L / Alt+Arrows"),
             ("Linux Tiling: Toggle Layout (Cols ↔ Rows)", "Alt+Space / Alt+S"),
             ("Linux Tiling: Zoom / Maximize Pane", "Alt+F / Alt+M / Ctrl+Shift+M"),
             ("Linux Tiling: Close Pane", "Alt+W / Ctrl+Shift+W"),

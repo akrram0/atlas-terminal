@@ -481,24 +481,91 @@ impl AtlasView {
                     self.focus_main(window);
                     return;
                 }
-                // Tiling pane directional navigation (Vim Alt+H/J/K/L + Alt+Arrows):
-                if chord == "alt+l" || chord == "alt+right" || chord == "alt+j" || chord == "alt+down" || chord == self.get_shortcut(ACTION_FOCUS_NEXT_PANE) {
+                // Tiling pane directional navigation (Hyprland spatial: Alt+H/J/K/L + Alt+Arrows):
+                if chord == "alt+l" || chord == "alt+right" || chord == self.get_shortcut(ACTION_FOCUS_NEXT_PANE) {
                     if let Some(tab) = self.tabs.get_mut(self.active) {
                         if tab.panes.len() > 1 {
-                            tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
+                            if let Some(next) = tab.tile_tree.find_neighbor(tab.active_pane, crate::tiling::Direction::Right) {
+                                tab.active_pane = next;
+                            } else {
+                                tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
+                            }
                             cx.notify();
                             return;
                         }
                     }
                 }
-                if chord == "alt+h" || chord == "alt+left" || chord == "alt+k" || chord == "alt+up" || chord == self.get_shortcut(ACTION_FOCUS_PREV_PANE) {
+                if chord == "alt+h" || chord == "alt+left" || chord == self.get_shortcut(ACTION_FOCUS_PREV_PANE) {
                     if let Some(tab) = self.tabs.get_mut(self.active) {
                         if tab.panes.len() > 1 {
-                            tab.active_pane = if tab.active_pane == 0 {
-                                tab.panes.len() - 1
+                            if let Some(prev) = tab.tile_tree.find_neighbor(tab.active_pane, crate::tiling::Direction::Left) {
+                                tab.active_pane = prev;
                             } else {
-                                tab.active_pane - 1
-                            };
+                                tab.active_pane = if tab.active_pane == 0 { tab.panes.len() - 1 } else { tab.active_pane - 1 };
+                            }
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                if chord == "alt+k" || chord == "alt+up" {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            if let Some(up) = tab.tile_tree.find_neighbor(tab.active_pane, crate::tiling::Direction::Up) {
+                                tab.active_pane = up;
+                                cx.notify();
+                                return;
+                            }
+                        }
+                    }
+                }
+                if chord == "alt+j" || chord == "alt+down" {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            if let Some(down) = tab.tile_tree.find_neighbor(tab.active_pane, crate::tiling::Direction::Down) {
+                                tab.active_pane = down;
+                                cx.notify();
+                                return;
+                            }
+                        }
+                    }
+                }
+                // Tiling pane resizing (Alt+Ctrl+Arrows, Alt+Ctrl+H/J/K/L, Alt+Shift+Arrows):
+                if chord == "ctrl+alt+left" || chord == "ctrl+alt+h" || chord == "alt+shift+left" {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.tile_tree.adjust_active_ratio(tab.active_pane, -0.05);
+                            self.trigger_island_hud(cx);
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                if chord == "ctrl+alt+right" || chord == "ctrl+alt+l" || chord == "alt+shift+right" {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.tile_tree.adjust_active_ratio(tab.active_pane, 0.05);
+                            self.trigger_island_hud(cx);
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                if chord == "ctrl+alt+up" || chord == "ctrl+alt+k" || chord == "alt+shift+up" {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.tile_tree.adjust_active_ratio(tab.active_pane, -0.05);
+                            self.trigger_island_hud(cx);
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                if chord == "ctrl+alt+down" || chord == "ctrl+alt+j" || chord == "alt+shift+down" {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.tile_tree.adjust_active_ratio(tab.active_pane, 0.05);
+                            self.trigger_island_hud(cx);
                             cx.notify();
                             return;
                         }
