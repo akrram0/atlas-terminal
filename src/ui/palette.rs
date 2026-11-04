@@ -27,6 +27,8 @@ pub enum Command {
     NewTabOpenCode,
     SplitPane,
     SplitPaneDown,
+    SplitPaneWsl,
+    SplitPaneDownWsl,
     FocusNextPane,
     FocusPrevPane,
     MaximizePane,
@@ -64,16 +66,18 @@ pub enum PaletteAction {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 33] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 35] = [
     (Command::ToggleSidebar, icons::SIDEBAR_LEFT, "Toggle Sidebar / Tab Bar", "Ctrl B"),
     (Command::FindInTerminal, icons::SEARCH, "Find in terminal...", "Ctrl F"),
-    (Command::NewTab, icons::PLUS, "New tab (PowerShell)", "Ctrl Shift N"),
-    (Command::NewTabWsl, icons::LINUX, "New WSL tab", ""),
-    (Command::NewTabCmd, icons::CMD, "New Command Prompt tab", ""),
-    (Command::NewTabGitBash, icons::GIT, "New Git Bash tab", ""),
-    (Command::NewTabOpenCode, icons::OPENCODE_MARK, "New OpenCode tab", ""),
+    (Command::NewTab, icons::PLUS, "New tab (PowerShell)", "Ctrl T / Ctrl Alt 1"),
+    (Command::NewTabWsl, icons::LINUX, "New WSL tab", "Ctrl Alt 2"),
+    (Command::NewTabCmd, icons::CMD, "New Command Prompt tab", "Ctrl Alt 3"),
+    (Command::NewTabGitBash, icons::GIT, "New Git Bash tab", "Ctrl Alt 4"),
+    (Command::NewTabOpenCode, icons::OPENCODE_MARK, "New OpenCode tab", "Ctrl Alt 5"),
     (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right (columns)", "Ctrl Shift E"),
     (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down (rows)", "Ctrl Shift D"),
+    (Command::SplitPaneWsl, icons::SPLIT_COLUMNS, "Split pane right with WSL", ""),
+    (Command::SplitPaneDownWsl, icons::SPLIT_ROWS, "Split pane down with WSL", ""),
     (Command::FocusNextPane, icons::CHEVRON_RIGHT, "Focus next split pane", "Alt Right"),
     (Command::FocusPrevPane, icons::CHEVRON_LEFT, "Focus previous split pane", "Alt Left"),
     (
@@ -201,10 +205,22 @@ impl AtlasView {
         let mut items = Vec::new();
         for (cmd, icon, label, _) in &COMMANDS {
             let shortcut = self.shortcut_for_palette_command(*cmd);
-            if matches!(cmd, Command::NewTabWsl) {
-                let (icon, label) = match wsl::default_distro() {
-                    Some(distro) => (distro.icon, format!("New {} (WSL) tab", distro.title)),
-                    None => (icons::LINUX, "New WSL tab".to_string()),
+            if matches!(cmd, Command::NewTabWsl | Command::SplitPaneWsl | Command::SplitPaneDownWsl) {
+                let distro_title = wsl::default_distro().map(|d| d.title.clone()).unwrap_or_else(|| "WSL".to_string());
+                let (icon, label) = match cmd {
+                    Command::NewTabWsl => (
+                        wsl::default_distro().map(|d| d.icon).unwrap_or(icons::LINUX),
+                        format!("New {} (WSL) tab", distro_title),
+                    ),
+                    Command::SplitPaneWsl => (
+                        icons::SPLIT_COLUMNS,
+                        format!("Split right with {} (WSL)", distro_title),
+                    ),
+                    Command::SplitPaneDownWsl => (
+                        icons::SPLIT_ROWS,
+                        format!("Split down with {} (WSL)", distro_title),
+                    ),
+                    _ => (icons::LINUX, "WSL".to_string()),
                 };
                 items.push((PaletteAction::Command(*cmd), icon, label, shortcut));
             } else {
@@ -352,6 +368,16 @@ impl AtlasView {
             Command::SplitPaneDown => {
                 self.settings_open = false;
                 self.split_active(SplitAxis::Rows, cx);
+                window.focus(&self.focus);
+            }
+            Command::SplitPaneWsl => {
+                self.settings_open = false;
+                self.split_active_profile(SplitAxis::Columns, Profile::Wsl, cx);
+                window.focus(&self.focus);
+            }
+            Command::SplitPaneDownWsl => {
+                self.settings_open = false;
+                self.split_active_profile(SplitAxis::Rows, Profile::Wsl, cx);
                 window.focus(&self.focus);
             }
             Command::FocusNextPane => {

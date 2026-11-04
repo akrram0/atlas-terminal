@@ -196,7 +196,23 @@ impl AtlasView {
             self.hover_tab = None;
         }
         if index == self.active {
-            if let Some(next_active) = self.tabs.iter().enumerate().position(|(i, t)| i != index && !t.closing) {
+            // Prefer the adjacent tab to the right; if closing the rightmost tab, choose the adjacent tab to the left.
+            let next_to_right = self
+                .tabs
+                .iter()
+                .enumerate()
+                .skip(index + 1)
+                .find(|(_, t)| !t.closing)
+                .map(|(i, _)| i);
+            let prev_to_left = self
+                .tabs
+                .iter()
+                .enumerate()
+                .take(index)
+                .rfind(|(_, t)| !t.closing)
+                .map(|(i, _)| i);
+
+            if let Some(next_active) = next_to_right.or(prev_to_left) {
                 self.active = next_active;
             }
         }
@@ -269,18 +285,17 @@ impl AtlasView {
         cx.notify();
     }
 
-    /// Split the active tab: a new pane running the active pane's profile is
-    /// spawned in `axis` and takes focus. The whole tab re-tiles to that axis.
-    pub(crate) fn split_active(&mut self, axis: SplitAxis, cx: &mut Context<Self>) {
+    /// Split the active tab with a specific profile in `axis`.
+    pub(crate) fn split_active_profile(&mut self, axis: SplitAxis, profile: Profile, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(self.active) else {
             return;
         };
-        let (profile, inherit_cwd) = match tab.panes.get(tab.active_pane) {
+        let inherit_cwd = match tab.panes.get(tab.active_pane) {
             Some(pane) => {
                 let live_cwd = pane.session.borrow().pid.and_then(crate::cwd::process_cwd);
-                (pane.profile, live_cwd.or_else(|| pane.cwd.clone()))
+                live_cwd.or_else(|| pane.cwd.clone())
             }
-            None => return,
+            None => None,
         };
         let epoch = self.next_epoch;
         self.next_epoch += 1;
@@ -333,6 +348,19 @@ impl AtlasView {
         cx.notify();
     }
 
+    /// Split the active tab: a new pane running the active pane's profile is
+    /// spawned in `axis` and takes focus. The whole tab re-tiles to that axis.
+    pub(crate) fn split_active(&mut self, axis: SplitAxis, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let profile = match tab.panes.get(tab.active_pane) {
+            Some(pane) => pane.profile,
+            None => self.get_default_profile(),
+        };
+        self.split_active_profile(axis, profile, cx);
+    }
+
     /// Close the active pane; the tab itself goes when its last pane does.
     pub(crate) fn close_pane(&mut self, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get_mut(self.active) else {
@@ -362,7 +390,23 @@ impl AtlasView {
             pane.closing = true;
         }
         if tab.active_pane == pane_ix {
-            if let Some(next_active) = tab.panes.iter().enumerate().position(|(i, p)| i != pane_ix && !p.closing) {
+            // Prefer the adjacent pane to the right; if closing the rightmost pane, choose the adjacent pane to the left.
+            let next_to_right = tab
+                .panes
+                .iter()
+                .enumerate()
+                .skip(pane_ix + 1)
+                .find(|(_, p)| !p.closing)
+                .map(|(i, _)| i);
+            let prev_to_left = tab
+                .panes
+                .iter()
+                .enumerate()
+                .take(pane_ix)
+                .rfind(|(_, p)| !p.closing)
+                .map(|(i, _)| i);
+
+            if let Some(next_active) = next_to_right.or(prev_to_left) {
                 tab.active_pane = next_active;
             }
         }
