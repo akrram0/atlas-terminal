@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::{
     div, px, relative, rgba, ClickEvent, Context, ElementId, FontWeight,
-    IntoElement, MouseButton, MouseDownEvent, Rgba,
+    IntoElement, MouseButton, MouseDownEvent, MouseUpEvent, Rgba,
 };
 use crate::icons;
 use crate::theme::Theme;
@@ -462,11 +462,23 @@ impl AtlasView {
                 .text_color(pill_fg)
                 .cursor_pointer();
 
+            let is_dragged = self.tab_drag_origin == Some(ix);
+            if is_dragged {
+                tab_row = tab_row.opacity(0.80).shadow_md();
+            }
+
             if !tab.closing {
                 tab_row = tab_row
                     .hover(move |s| s.bg(pill_hover).text_color(tb.chrome_fg_active))
                     .active(|s| s.opacity(0.82))
                     .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
+                        if *hovered {
+                            if let Some(source_ix) = view.tab_drag_origin {
+                                if source_ix != ix {
+                                    view.reorder_tab(source_ix, ix, cx);
+                                }
+                            }
+                        }
                         if !*hovered && view.hover_tab == Some(ix) {
                             view.hover_tab = None;
                             cx.notify();
@@ -475,6 +487,22 @@ impl AtlasView {
                             cx.notify();
                         }
                     }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |view, _: &MouseDownEvent, _window, cx| {
+                            view.tab_drag_origin = Some(ix);
+                            cx.notify();
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(|view, _: &MouseUpEvent, _window, cx| {
+                            if view.tab_drag_origin.is_some() {
+                                view.tab_drag_origin = None;
+                                cx.notify();
+                            }
+                        }),
+                    )
                     .on_mouse_down(
                         MouseButton::Middle,
                         cx.listener(move |view, _: &MouseDownEvent, window, cx| {

@@ -108,6 +108,7 @@ impl AtlasView {
                         cursor_pos: None,
                         cursor_target: (0.0, 0.0),
                         pane_expansion: 1.0,
+                        focus_progress: 1.0,
                         closing: false,
                         cmd_start: None,
                         running_cmd: None,
@@ -220,6 +221,25 @@ impl AtlasView {
         cx.notify();
     }
 
+    /// Reorder tab from slot `from` to slot `to` smoothly via drag.
+    pub(crate) fn reorder_tab(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        if from == to || from >= self.tabs.len() || to >= self.tabs.len() {
+            return;
+        }
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        if self.active == from {
+            self.active = to;
+        } else if from < self.active && to >= self.active {
+            self.active = self.active.saturating_sub(1);
+        } else if from > self.active && to <= self.active {
+            self.active = (self.active + 1).min(self.tabs.len() - 1);
+        }
+        self.tab_drag_origin = Some(to);
+        self.save_session();
+        cx.notify();
+    }
+
     /// Answer "yes" to the close-confirmation dialog.
     pub(crate) fn confirm_pending_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.pending_close_window {
@@ -326,6 +346,7 @@ impl AtlasView {
                         cursor_pos: None,
                         cursor_target: (0.0, 0.0),
                         pane_expansion: 0.05,
+                        focus_progress: 1.0,
                         closing: false,
                         cmd_start: None,
                         running_cmd: None,
@@ -905,6 +926,7 @@ impl AtlasView {
                             cursor_pos: None,
                             cursor_target: (0.0, 0.0),
                             pane_expansion: 1.0,
+                            focus_progress: 1.0,
                             closing: false,
                             cmd_start: None,
                             running_cmd: None,

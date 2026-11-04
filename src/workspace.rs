@@ -31,6 +31,8 @@ pub struct Pane {
     pub cursor_target: (f32, f32),
     /// Smooth split expansion progress (0.0 .. 1.0).
     pub pane_expansion: f32,
+    /// Smooth focus transition progress (0.0 .. 1.0).
+    pub focus_progress: f32,
     /// Smooth pane collapse on close.
     pub closing: bool,
     /// Timestamp when a foreground command started running (for background job notifications).

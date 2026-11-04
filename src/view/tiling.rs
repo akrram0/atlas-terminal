@@ -319,14 +319,11 @@ impl AtlasView {
         if is_tiled {
             let gap = self.app_settings.tiling_gap.clamp(0.0, 16.0);
             let corner = if gap <= 1.0 { px(0.0) } else { px(8.0) };
+            let border_color = crate::theme::lerp_color(theme.hairline, theme.accent, pane.focus_progress);
             cell = cell
                 .rounded(corner)
                 .border_1()
-                .border_color(if is_focused_pane {
-                    theme.accent
-                } else {
-                    theme.hairline
-                })
+                .border_color(border_color)
                 .shadow_md()
                 .bg(if pane_is_tui {
                     pane_bg

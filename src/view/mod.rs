@@ -4,8 +4,10 @@ pub mod actions;
 pub mod input;
 pub mod scroll;
 pub mod sidebar;
+pub mod tab_bar;
 pub mod tiling;
 pub mod update;
+pub mod window_frame;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -19,7 +21,7 @@ use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context,
-    ElementId, FocusHandle, Font, FontFallbacks, FontWeight, IntoElement, KeyDownEvent,
+    ElementId, FocusHandle, Font, FontFallbacks, IntoElement, KeyDownEvent,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Render, Rgba, ScrollHandle,
     SharedString, Window, div, px, relative, rgb, rgba,
 };
@@ -31,11 +33,11 @@ use crate::theme::{Theme, ThemeRegistry};
 use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, EASE_OUT};
 use crate::ui::overlay::{
     caption_spacer, overlay_backdrop, profile_menu, set_hover_mark,
-    HOVER_MARK_CAPSULE_CHEVRON, HOVER_MARK_CAPSULE_PLUS, HOVER_MARK_WINDOW,
+    HOVER_MARK_WINDOW,
 };
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
-    format_tab_title, git_branch, git_cwd, home_dir, session_icon,
+    git_branch, git_cwd, home_dir,
     Tab,
 };
 
@@ -135,6 +137,8 @@ pub struct AtlasView {
     pub(crate) last_island_hud_time: std::time::Instant,
     /// Tab pill currently under the pointer: its hover-only close mark.
     pub(crate) hover_tab: Option<usize>,
+    /// Tab being dragged with the mouse to reorder slots.
+    pub(crate) tab_drag_origin: Option<usize>,
     /// Geometric chrome mark under the pointer (new-tab plus, pane actions).
     /// Painted quads can't inherit hover text colour, so the view tracks it.
     pub(crate) hover_mark: Option<u64>,
@@ -294,6 +298,7 @@ impl AtlasView {
             island_hud_hovered: false,
             last_island_hud_time: std::time::Instant::now().checked_sub(std::time::Duration::from_secs(10)).unwrap_or_else(std::time::Instant::now),
             hover_tab: None,
+            tab_drag_origin: None,
             hover_mark: None,
             updater_settings: UpdaterSettings {
                 auto_check_updates: app_settings.auto_check_updates,
@@ -613,6 +618,15 @@ impl AtlasView {
                                 pane.pane_expansion = (pane.pane_expansion + dt * 10.0).min(1.0);
                                 needs_paint = true;
                             }
+
+                            let target_focus = if p_ix == tab.active_pane { 1.0 } else { 0.0 };
+                            if (pane.focus_progress - target_focus).abs() > 0.01 {
+                                active_motion = true;
+                                pane.focus_progress = (pane.focus_progress + (target_focus - pane.focus_progress) * (dt * 18.0).min(1.0)).clamp(0.0, 1.0);
+                                needs_paint = true;
+                            } else if pane.focus_progress != target_focus {
+                                pane.focus_progress = target_focus;
+                            }
                         }
                         for &p_ix in panes_to_remove.iter().rev() {
                             tab.panes.remove(p_ix);
@@ -792,337 +806,6 @@ impl AtlasView {
         cx.notify();
     }
 
-    pub(crate) fn render_island_hud(
-        &self,
-        theme: &Theme,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        if self.app_settings.tab_bar_position != "borderless" {
-            return div().into_any_element();
-        }
-
-        let opacity = self.island_hud_opacity;
-        if opacity <= 0.005 {
-            return div().into_any_element();
-        }
-
-        let active_tab_ix = self.active;
-        let total_tabs = self.tabs.len();
-        let active_pane = self.tabs.get(active_tab_ix).and_then(|t| t.panes.get(t.active_pane));
-        let shell_icon = active_pane.map(|p| session_icon(&p.title, p.profile)).unwrap_or(icons::TERMINAL);
-        let active_title = if let Some(tab) = self.tabs.get(active_tab_ix) {
-            if let Some(pane) = tab.panes.get(tab.active_pane) {
-                tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))
-            } else {
-                "Tab".to_string()
-            }
-        } else {
-            "Tab".to_string()
-        };
-
-        let tb = theme.clone();
-        // Apple Dynamic Island dark glass style:
-        let bg_color = Rgba { r: 0.09, g: 0.10, b: 0.14, a: 0.96 };
-        let border_color = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.18 };
-        let text_color = tb.fg;
-        let chrome_fg = tb.chrome_fg;
-        let accent_color = tb.accent;
-
-        // Slide down offset: -60px when hidden, 0px when fully open
-        let slide_y = (1.0 - opacity) * -60.0;
-
-        let mut hud = div()
-            .id(ElementId::named_usize("dynamic-island-hud", 0))
-            .mt(px(8.0 + slide_y))
-            .w(px(720.0))
-            .h(px(46.0))
-            .opacity(opacity)
-            .rounded(px(23.0))
-            .bg(bg_color)
-            .border_1()
-            .border_color(border_color)
-            .shadow_xl()
-            .px(px(14.0))
-            .flex()
-            .items_center()
-            .justify_between()
-            .cursor_default()
-            .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
-                if view.island_hud_opacity > 0.5 {
-                    view.island_hud_hovered = *hovered;
-                    if *hovered {
-                        view.last_island_hud_time = std::time::Instant::now();
-                    }
-                    cx.notify();
-                }
-            }));
-
-            // 1. Left side: Active shell icon + position badge (e.g. "2 / 4") + title
-            let left_section = div()
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .child(
-                    icons::icon(shell_icon)
-                        .size(px(16.0))
-                        .text_color(accent_color),
-                )
-                .child(
-                    div()
-                        .px(px(6.0))
-                        .py(px(2.0))
-                        .rounded(px(6.0))
-                        .bg(Rgba { a: 0.18, ..accent_color })
-                        .text_size(px(11.0))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(accent_color)
-                        .child(format!("{}/{}", active_tab_ix + 1, total_tabs.max(1))),
-                )
-                .child(
-                    div()
-                        .max_w(px(120.0))
-                        .overflow_hidden()
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(text_color)
-                        .child(active_title),
-                );
-
-            // 2. Center section: 1-Click Tab Switcher Pills
-            let mut tab_dots = div()
-                .flex()
-                .items_center()
-                .gap(px(4.0));
-
-            for i in 0..total_tabs.min(6) {
-                let is_current = i == active_tab_ix;
-                let dot_theme = theme.clone();
-                let dot = div()
-                    .id(ElementId::named_usize("island-tab-pill", i))
-                    .px(px(8.0))
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(6.0))
-                    .bg(if is_current { accent_color } else { Rgba { a: 0.12, ..dot_theme.card_hover } })
-                    .text_color(if is_current { dot_theme.elevated_bg } else { text_color })
-                    .text_size(px(11.5))
-                    .font_weight(if is_current { FontWeight::BOLD } else { FontWeight::MEDIUM })
-                    .cursor_pointer()
-                    .hover(move |s| s.opacity(0.85))
-                    .child(format!("Tab {}", i + 1))
-                    .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                        view.active = i;
-                        view.trigger_island_hud(cx);
-                        cx.notify();
-                    }));
-                tab_dots = tab_dots.child(dot);
-            }
-
-            // 3. Right section: 1-Click Quick Actions (WSL, pwsh, Update/Restart, Split, Close)
-            let tb2 = theme.clone();
-            let mut right_section = div()
-                .flex()
-                .items_center()
-                .gap(px(4.0));
-
-            // 1-Click WSL Launcher
-            right_section = right_section.child(
-                div()
-                    .id(ElementId::named_usize("island-add-wsl", 0))
-                    .px(px(8.0))
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .rounded(px(6.0))
-                    .bg(Rgba { a: 0.14, ..accent_color })
-                    .border_1()
-                    .border_color(Rgba { a: 0.28, ..accent_color })
-                    .text_size(px(11.5))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(accent_color)
-                    .cursor_pointer()
-                    .hover(|s| s.opacity(0.80))
-                    .child("+ WSL")
-                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        view.new_tab(crate::session::Profile::Wsl, cx);
-                        view.trigger_island_hud(cx);
-                    })),
-            );
-
-            // 1-Click PowerShell Launcher
-            right_section = right_section.child(
-                div()
-                    .id(ElementId::named_usize("island-add-pwsh", 0))
-                    .px(px(8.0))
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .rounded(px(6.0))
-                    .bg(Rgba { a: 0.08, ..chrome_fg })
-                    .border_1()
-                    .border_color(Rgba { a: 0.16, ..chrome_fg })
-                    .text_size(px(11.5))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(chrome_fg)
-                    .cursor_pointer()
-                    .hover(|s| s.opacity(0.80))
-                    .child("+ pwsh")
-                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        view.new_tab(crate::session::Profile::PowerShell, cx);
-                        view.trigger_island_hud(cx);
-                    })),
-            );
-
-            // 1-Click Update / Restart Button
-            if matches!(self.update_download_state, UpdateDownloadState::ReadyToRestart { .. }) {
-                right_section = right_section.child(
-                    div()
-                        .id(ElementId::named_usize("island-restart-btn", 0))
-                        .px(px(9.0))
-                        .h(px(26.0))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .rounded(px(6.0))
-                        .bg(rgb(0x107C41))
-                        .text_color(rgb(0xFFFFFF))
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::BOLD)
-                        .cursor_pointer()
-                        .hover(|s| s.opacity(0.85))
-                        .child("🔄 Restart")
-                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                            view.apply_update_and_restart(cx);
-                        })),
-                );
-            } else if let UpdateDownloadState::Downloading { percent, .. } = self.update_download_state {
-                right_section = right_section.child(
-                    div()
-                        .id(ElementId::named_usize("island-downloading-btn", 0))
-                        .px(px(9.0))
-                        .h(px(26.0))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .rounded(px(6.0))
-                        .bg(accent_color)
-                        .text_color(tb2.elevated_bg)
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::BOLD)
-                        .child(format!("⏳ {percent}%")),
-                );
-            } else if self.available_update.is_some() {
-                right_section = right_section.child(
-                    div()
-                        .id(ElementId::named_usize("island-update-btn", 0))
-                        .px(px(9.0))
-                        .h(px(26.0))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.0))
-                        .rounded(px(6.0))
-                        .bg(accent_color)
-                        .text_color(tb2.elevated_bg)
-                        .text_size(px(11.5))
-                        .font_weight(FontWeight::BOLD)
-                        .cursor_pointer()
-                        .hover(|s| s.opacity(0.85))
-                        .child("⚡ Update")
-                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                            view.start_download_update(cx);
-                        })),
-                );
-            }
-
-            // Split Pane Button
-            let split_btn = div()
-                .id(ElementId::named_usize("island-split-pane", 0))
-                .w(px(26.0))
-                .h(px(26.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .bg(rgba(0x00000000))
-                .hover(move |s| s.bg(tb2.card_hover))
-                .cursor_pointer()
-                .child(
-                    icons::icon(icons::SPLIT_COLUMNS)
-                        .size(px(13.0))
-                        .text_color(chrome_fg),
-                )
-                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                    view.split_active(crate::workspace::SplitAxis::Columns, cx);
-                    view.trigger_island_hud(cx);
-                }));
-
-            // Close Tab Button
-            let tb3 = theme.clone();
-            let close_btn = div()
-                .id(ElementId::named_usize("island-close-tab", 0))
-                .w(px(26.0))
-                .h(px(26.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .bg(rgba(0x00000000))
-                .hover(move |s| s.bg(tb3.card_hover))
-                .cursor_pointer()
-                .child(
-                    icons::icon(icons::CLOSE)
-                        .size(px(13.0))
-                        .text_color(chrome_fg),
-                )
-                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                    view.close_pane(cx);
-                    view.trigger_island_hud(cx);
-                }));
-
-            // 1-Click Settings Button
-            let tb4 = theme.clone();
-            let settings_btn = div()
-                .id(ElementId::named_usize("island-settings", 0))
-                .w(px(26.0))
-                .h(px(26.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(6.0))
-                .bg(rgba(0x00000000))
-                .hover(move |s| s.bg(tb4.card_hover))
-                .cursor_pointer()
-                .child(
-                    icons::icon(icons::SETTINGS)
-                        .size(px(13.0))
-                        .text_color(chrome_fg),
-                )
-                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                    view.toggle_settings(window, cx);
-                }));
-
-            right_section = right_section.child(split_btn).child(close_btn).child(settings_btn);
-
-            hud = hud
-                .child(left_section)
-                .child(tab_dots)
-                .child(right_section);
-
-            div()
-                .id(ElementId::named_usize("island-hud-container", 0))
-                .absolute()
-                .top(px(0.0))
-                .left(px(0.0))
-                .right(px(0.0))
-                .flex()
-                .flex_col()
-                .items_center()
-                .child(hud)
-                .into_any_element()
-    }
-
     pub(crate) fn check_settings_reload(&mut self, cx: &mut Context<Self>) {
         let path = crate::user_data_dir().join("settings.json");
         if let Ok(m) = std::fs::metadata(&path) {
@@ -1226,531 +909,7 @@ impl Render for AtlasView {
             (tb.panel_bg, term_base, tb.panel_bg)
         };
 
-        // Ghostty-style minimalist top bar:
-        // Ultra-compact 32px (36px when zoomed) for maximum vertical terminal lines
-        let bar_h = if is_sidebar_visible {
-            if zoomed { px(36.0) } else { px(32.0) }
-        } else {
-            if zoomed { px(48.0) } else { px(40.0) }
-        };
-        let bar_pt = if zoomed { px(4.0) } else { px(0.0) };
-        let bar_pl = if is_sidebar_visible { px(10.0) } else if zoomed { px(14.0) } else { px(10.0) };
-
-        let mut bar = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(6.0))
-            .w(relative(1.0))
-            .h(bar_h)
-            .pt(bar_pt)
-            .pl(bar_pl)
-            .bg(chrome_bg)
-            .border_b_1()
-            .border_color(tb.hairline);
-
-        // Left Anchor: Unified Split Capsule ( + │ ▾ )
-        let default_prof = self.get_default_profile();
-        let is_menu_open = self.profile_menu;
-        let capsule_bg = tb.elevated_bg;
-        let capsule_border = if is_menu_open { tb.accent } else { tb.elevated_border };
-
-        let plus_hovered = self.hover_mark == Some(HOVER_MARK_CAPSULE_PLUS);
-        let chevron_hovered = self.hover_mark == Some(HOVER_MARK_CAPSULE_CHEVRON);
-
-        let plus_ink = if plus_hovered {
-            tb.fg
-        } else {
-            tb.chrome_fg_active
-        };
-
-        let chevron_ink = if is_menu_open || chevron_hovered {
-            tb.fg
-        } else {
-            tb.chrome_fg_active
-        };
-
-        let plus_btn = div()
-            .id(ElementId::named_usize("capsule-plus", 0))
-            .w(px(30.0))
-            .h(px(32.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_l_full()
-            .hover(move |s| s.bg(tb.card_hover))
-            .active(move |s| s.opacity(0.75))
-            .cursor_pointer()
-            .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                set_hover_mark(view, HOVER_MARK_CAPSULE_PLUS, *hovered, cx);
-            }))
-            .child(
-                icons::icon(icons::PLUS)
-                    .size(px(15.5))
-                    .text_color(plus_ink),
-            )
-            .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                view.new_tab(default_prof, cx);
-                window.focus(&view.focus);
-            }));
-
-        let divider = div()
-            .w(px(1.0))
-            .h(px(16.0))
-            .bg(tb.elevated_border);
-
-        let chevron_btn = div()
-            .id(ElementId::named_usize("capsule-chevron", 0))
-            .w(px(26.0))
-            .h(px(32.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_r_full()
-            .bg(if is_menu_open { tb.card_hover } else { rgba(0x00000000) })
-            .hover(move |s| s.bg(tb.card_hover))
-            .active(move |s| s.opacity(0.75))
-            .cursor_pointer()
-            .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                set_hover_mark(view, HOVER_MARK_CAPSULE_CHEVRON, *hovered, cx);
-            }))
-            .child(
-                icons::icon(icons::CHEVRON_DOWN)
-                    .size(px(13.5))
-                    .text_color(chevron_ink),
-            )
-            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                view.toggle_profile_menu(cx);
-                window.focus(&view.focus);
-            }));
-
-        let capsule = div()
-            .id(ElementId::named_usize("topbar-launch-capsule", 0))
-            .h(px(32.0))
-            .flex()
-            .flex_row()
-            .items_center()
-            .rounded_full()
-            .bg(capsule_bg)
-            .border_1()
-            .border_color(capsule_border)
-            .shadow_sm()
-            .child(plus_btn)
-            .child(divider)
-            .child(chevron_btn);
-
-        if let Some(tab) = self.tabs.get(self.active) {
-            let pane = tab.panes.get(tab.active_pane);
-            let label = match pane {
-                Some(pane) => tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane)),
-                None => "Terminal".to_string(),
-            };
-            let win_title = if label == "Terminal" || label.is_empty() {
-                "Atlas Terminal".to_string()
-            } else {
-                format!("{label} — Atlas Terminal")
-            };
-            crate::rounded_corners::set_window_title(&win_title);
-        }
-
-        bar = bar.child(capsule);
-        bar = bar.child(div().w(px(6.0)));
-
-        // Horizontal tabs: active tab is a clean rounded rect (elevated bg + subtle border)
-        // carrying the running process's own mark; inactive tabs are quiet with folder icon.
-        // Tab close is visible on active and hover.
-        for ix in 0..self.tabs.len() {
-            let active = ix == self.active && !self.settings_open;
-            let tab = &self.tabs[ix];
-            let pane = tab.panes.get(tab.active_pane);
-            let label = match pane {
-                Some(pane) => tab.custom_title.clone().unwrap_or_else(|| {
-                    format_tab_title(pane)
-                }),
-                None => "Terminal".to_string(),
-            };
-            if active {
-                let win_title = if label == "Terminal" || label.is_empty() {
-                    "Atlas Terminal".to_string()
-                } else {
-                    format!("{label} — Atlas Terminal")
-                };
-                crate::rounded_corners::set_window_title(&win_title);
-            }
-            let icon = match pane {
-                Some(pane) => session_icon(&pane.title, pane.profile),
-                None => icons::TERMINAL,
-            };
-            let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
-                (
-                    tb.elevated_bg,
-                    tb.elevated_border,
-                    tb.chrome_fg_active,
-                    tb.accent,
-                )
-            } else {
-                (rgba(0x00000000), rgba(0x00000000), chrome_ink, chrome_ink)
-            };
-            // The active pill must stay an opaque fill on hover: card_hover is
-            // a translucent wash that would drop the title over a bright
-            // blurred wallpaper in translucent mode.
-            let pill_hover = if active {
-                crate::theme::lerp_color(tb.elevated_bg, tb.accent, 0.10)
-            } else {
-                tb.card_hover
-            };
-            let pill_hot = tb.chrome_fg_active;
-
-            let (max_w, min_w, px_pad, opacity) = if tab.closing {
-                let scale = (1.0 - EASE_OUT.eval(tab.close_progress)).max(0.0);
-                (240.0 * scale, 0.0, 12.0 * scale, scale)
-            } else {
-                (240.0, 48.0, 12.0, 1.0)
-            };
-
-            let mut pill = div()
-                .id(ElementId::named_usize("tab-pill", ix))
-                .h(px(32.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(9.0))
-                .px(px(px_pad))
-                .max_w(px(max_w))
-                .min_w(px(min_w))
-                .opacity(opacity)
-                .overflow_hidden()
-                .flex_shrink()
-                .rounded(px(7.0))
-                .bg(pill_bg)
-                .border_1()
-                .border_color(pill_border)
-                .text_color(pill_fg);
-
-            if !tab.closing {
-                pill = pill
-                    .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
-                    .active(move |style| style.opacity(0.82))
-                    .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                        if !*hovered && view.hover_tab == Some(ix) {
-                            view.hover_tab = None;
-                            cx.notify();
-                        } else if *hovered && view.hover_tab != Some(ix) {
-                            view.hover_tab = Some(ix);
-                            cx.notify();
-                        }
-                    }))
-                    .on_mouse_down(
-                        MouseButton::Middle,
-                        cx.listener(move |view, _: &MouseDownEvent, window, cx| {
-                            view.close_tab(ix, cx);
-                            window.focus(&view.focus);
-                        }),
-                    )
-                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                        view.active = ix;
-                        view.settings_open = false;
-                        window.focus(&view.focus);
-                        cx.notify();
-                    }));
-            }
-
-            pill = pill
-                .child(
-                    div()
-                        .text_color(pill_icon)
-                        .child(icons::icon(icon).size(px(16.5)).text_color(pill_icon)),
-                )
-                .child(
-                    div()
-                        .text_size(px(13.5))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .truncate()
-                        .child(label),
-                );
-
-            let close_alpha = tab.close_hover_progress.clamp(0.0, 1.0);
-            if !tab.closing {
-                pill = pill.child(
-                    div()
-                        .id(ElementId::named_usize("tab-close", ix))
-                        .w(px(18.0))
-                        .h(px(18.0))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(4.0))
-                        .opacity(close_alpha)
-                        .hover(move |style| style.bg(tb.card_hover))
-                        .active(move |style| style.opacity(0.75))
-                        .child(
-                            icons::icon(icons::CLOSE)
-                                .size(px(11.0))
-                                .text_color(tb.faint_fg),
-                        )
-                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                            view.close_tab(ix, cx);
-                            window.focus(&view.focus);
-                        })),
-                );
-            }
-            bar = bar.child(pill.with_animation(
-                ElementId::named_usize("tab-pill-in", tab.id as usize),
-                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
-                |el, delta| el.opacity(delta),
-            ));
-        }
-
-        // Settings tab pill: stays mounted on the tab bar until the user explicitly closes it.
-        // If settings_open is true: renders in the active tab state (elevated bg, accent icon).
-        // If settings_open is false: renders in the inactive tab state (quiet transparent, clickable to reopen).
-        if self.settings_tab_open {
-            let active = self.settings_open;
-            let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
-                (
-                    tb.elevated_bg,
-                    tb.elevated_border,
-                    tb.chrome_fg_active,
-                    tb.accent,
-                )
-            } else {
-                (rgba(0x00000000), rgba(0x00000000), chrome_ink, chrome_ink)
-            };
-            // The active pill must stay an opaque fill on hover: card_hover is
-            // a translucent wash that would drop the title over a bright
-            // blurred wallpaper in translucent mode.
-            let pill_hover = if active {
-                crate::theme::lerp_color(tb.elevated_bg, tb.accent, 0.10)
-            } else {
-                tb.card_hover
-            };
-            let pill_hot = tb.chrome_fg_active;
-
-            let mut settings_pill = div()
-                .id(ElementId::named_usize("tab-pill-settings", 0))
-                .h(px(32.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(9.0))
-                .px(px(12.0))
-                .max_w(px(240.0))
-                .min_w(px(80.0))
-                .overflow_hidden()
-                .flex_shrink()
-                .rounded(px(7.0))
-                .bg(pill_bg)
-                .border_1()
-                .border_color(pill_border)
-                .text_color(pill_fg);
-
-            if !active {
-                settings_pill = settings_pill
-                    .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
-                    .active(move |style| style.opacity(0.82))
-                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                        view.settings_open = true;
-                        window.focus(&view.settings_focus);
-                        cx.notify();
-                    }));
-            }
-
-            settings_pill = settings_pill
-                .on_mouse_down(
-                    MouseButton::Middle,
-                    cx.listener(|view, _: &MouseDownEvent, window, cx| {
-                        view.settings_tab_open = false;
-                        view.settings_open = false;
-                        window.focus(&view.focus);
-                        cx.notify();
-                    }),
-                )
-                .child(
-                    div()
-                        .text_color(pill_icon)
-                        .child(icons::icon(icons::SETTINGS).size(px(16.5)).text_color(pill_icon)),
-                )
-                .child(
-                    div()
-                        .text_size(px(13.5))
-                        .font_weight(if active {
-                            FontWeight::MEDIUM
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .truncate()
-                        .child("Settings"),
-                )
-                .child(
-                    div()
-                        .id(ElementId::named_usize("tab-close-settings", 0))
-                        .w(px(20.0))
-                        .h(px(20.0))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(5.0))
-                        .hover(move |style| style.bg(tb.card_hover))
-                        .active(move |style| style.opacity(0.75))
-                        .child(
-                            icons::icon(icons::CLOSE)
-                                .size(px(12.0))
-                                .text_color(tb.faint_fg),
-                        )
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            cx.stop_propagation();
-                            view.settings_tab_open = false;
-                            view.settings_open = false;
-                            window.focus(&view.focus);
-                            cx.notify();
-                        })),
-                );
-
-            bar = bar.child(settings_pill);
-        }
-
-        bar = bar.child(caption_spacer(0));
-
-        if let Some(ref update) = self.available_update {
-            let badge_ink = tb.accent;
-            let badge_bg = Rgba {
-                a: 0.16,
-                ..tb.accent
-            };
-            let badge_border = Rgba {
-                a: 0.28,
-                ..tb.accent
-            };
-            let (label, show_dot) = match &self.update_download_state {
-                UpdateDownloadState::Downloading { percent, .. } => {
-                    (format!("Downloading {}%", (percent * 100.0) as u32), false)
-                }
-                UpdateDownloadState::Verifying { .. } => {
-                    ("Verifying…".to_string(), false)
-                }
-                UpdateDownloadState::ReadyToRestart { .. } => {
-                    ("Restart to Apply".to_string(), true)
-                }
-                UpdateDownloadState::Failed { .. } => {
-                    ("Update Error".to_string(), true)
-                }
-                _ => (format!("v{}", update.version), true),
-            };
-            let mut badge = div()
-                .id(ElementId::named_usize("topbar-update-badge", 0))
-                .h(px(28.0))
-                .px(px(9.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .rounded(px(6.0))
-                .bg(badge_bg)
-                .border_1()
-                .border_color(badge_border)
-                .text_color(badge_ink)
-                .hover(move |s| s.opacity(0.85))
-                .active(move |s| s.opacity(0.75));
-
-            if show_dot {
-                badge = badge.child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(badge_ink));
-            }
-
-            badge = badge
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(label),
-                )
-                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                    if let Some(ref info) = view.available_update {
-                        let msg = format!("Atlas Terminal v{} is available!", info.version);
-                        view.show_update_toast(msg, true, cx);
-                    } else {
-                        view.check_updates_manual(cx);
-                    }
-                }));
-
-            bar = bar.child(badge);
-        } else if self.is_checking_updates {
-            bar = bar.child(
-                div()
-                    .h(px(28.0))
-                    .px(px(9.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .rounded(px(6.0))
-                    .text_color(tb.faint_fg)
-                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb.faint_fg))
-                    .child(div().text_size(px(12.0)).child("Checking...")),
-            );
-        }
-
-        bar = bar.child(div().w(px(6.0)));
-
-        // Window controls: clean 44px wide native vector controls filling top bar height
-        let controls = [
-            (icons::WINDOW_MINIMIZE, false),
-            (
-                if zoomed {
-                    icons::WINDOW_RESTORE
-                } else {
-                    icons::WINDOW_MAXIMIZE
-                },
-                false,
-            ),
-            (icons::CLOSE, true),
-        ];
-        for (index, (icon_path, is_close)) in controls.into_iter().enumerate() {
-            let button_theme = theme.clone();
-            let hover_id = HOVER_MARK_WINDOW + index as u64;
-            let is_hovered = self.hover_mark == Some(hover_id);
-            let hover_bg = if is_close {
-                rgb(0xC42B1C)
-            } else {
-                button_theme.card_hover
-            };
-            let ink = if is_hovered {
-                if is_close {
-                    rgb(0xFFFFFF)
-                } else {
-                    button_theme.chrome_fg_active
-                }
-            } else {
-                chrome_ink
-            };
-            let btn = div()
-                .id(ElementId::named_usize("window-control", index))
-                .w(if is_sidebar_visible { px(38.0) } else { px(46.0) })
-                .h(relative(1.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .hover(move |style| style.bg(hover_bg))
-                .active(move |style| style.opacity(0.80));
-            let btn = btn
-                .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                    set_hover_mark(view, hover_id, *hovered, cx);
-                }))
-                .child(
-                    icons::icon(icon_path)
-                        .size(px(14.5))
-                        .text_color(ink),
-                )
-                .on_click(cx.listener(move |_view, _: &ClickEvent, _window, cx| {
-                    crate::rounded_corners::window_button(index);
-                    cx.notify();
-                }));
-            bar = bar.child(btn);
-        }
+        let bar = self.render_top_bar(&theme, is_sidebar_visible, chrome_bg, zoomed, cx);
 
         // Active terminal color overrides (OSC 11 etc.) define the sheet surface.
         let _over = self
@@ -2237,5 +1396,45 @@ mod tests {
         // Normal xterm mode: Release at (1, 1) -> button 3 (32+3 = 35)
         let norm_up = AtlasView::format_mouse_sequence(normal_mode, 0, 1, 1, true, empty_mods);
         assert_eq!(norm_up, vec![0x1b, b'[', b'M', 35, 33, 33]);
+    }
+
+    #[test]
+    fn test_tab_reordering_invariants() {
+        let mut items = vec!["Tab 0", "Tab 1", "Tab 2", "Tab 3"];
+        let mut active = 0;
+
+        // Reorder slot 0 -> slot 2
+        let from = 0;
+        let to = 2;
+        let item = items.remove(from);
+        items.insert(to, item);
+        if active == from {
+            active = to;
+        } else if from < active && to >= active {
+            active = active.saturating_sub(1);
+        } else if from > active && to <= active {
+            active = (active + 1).min(items.len() - 1);
+        }
+
+        assert_eq!(items, vec!["Tab 1", "Tab 2", "Tab 0", "Tab 3"]);
+        assert_eq!(active, 2);
+
+        // Reorder slot 3 -> slot 1
+        let from = 3;
+        let to = 1;
+        let item = items.remove(from);
+        items.insert(to, item);
+        if active == from {
+            active = to;
+        } else if from < active && to >= active {
+            active = active.saturating_sub(1);
+        } else if from > active && to <= active {
+            active = (active + 1).min(items.len() - 1);
+        }
+
+        assert_eq!(items, vec!["Tab 1", "Tab 3", "Tab 2", "Tab 0"]);
+        // Since active was 2 ("Tab 0" was at 2), and from=3 to=1, active was >= to and < from, so active increments: 2 -> 3 ("Tab 0" is now at index 3)
+        assert_eq!(active, 3);
+        assert_eq!(items[active], "Tab 0");
     }
 }
