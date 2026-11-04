@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "atlas-terminal"
-version = "0.1.97"
+version = "0.1.98"
 dependencies = [
  "alacritty_terminal",
  "anyhow",

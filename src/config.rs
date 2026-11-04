@@ -135,6 +135,12 @@ pub fn format_keystroke_chord(ks: &Keystroke) -> Option<String> {
     }
     let key_clean = match key.as_str() {
         "+" => "=",
+        "arrowleft" => "left",
+        "arrowright" => "right",
+        "arrowup" => "up",
+        "arrowdown" => "down",
+        "return" => "enter",
+        "esc" => "escape",
         other => other,
     };
     parts.push(key_clean);

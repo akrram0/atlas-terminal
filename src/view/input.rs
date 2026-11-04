@@ -454,30 +454,32 @@ impl AtlasView {
                 }
                 if chord == "ctrl+shift+t" || chord == "ctrl+shift+l" || chord == "alt+shift+t" || chord == self.get_shortcut(ACTION_TOGGLE_THEME) {
                     self.toggle_theme(cx);
+                    self.trigger_island_hud(cx);
                     return;
                 }
-                if chord == "ctrl+shift+w" || chord == "alt+w" || chord == self.get_shortcut(ACTION_CLOSE_TAB) {
+                if chord == "ctrl+shift+w" || chord == "alt+w" || chord == "alt+q" || chord == self.get_shortcut(ACTION_CLOSE_TAB) {
                     self.close_pane(cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                // Linux Tiling & Kitty split pane chords (Alt+Enter / Alt+V / Alt+D):
+                // Linux Tiling & Kitty split pane chords (Alt+Enter / Alt+V / Ctrl+Shift+E):
                 if chord == "alt+enter" || chord == "alt+v" || chord == "ctrl+shift+enter" || chord == "ctrl+shift+e" || chord == self.get_shortcut(ACTION_SPLIT_VERTICAL) {
                     self.split_active(SplitAxis::Columns, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "alt+d" || chord == "ctrl+shift+d" || chord == "alt+shift+h" || chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL) {
+                if chord == "alt+d" || chord == "ctrl+shift+d" || chord == "ctrl+shift+o" || chord == "alt+shift+h" || chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL) {
                     self.split_active(SplitAxis::Rows, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
                 // Tiling layout axis toggle (Columns ↔ Rows):
-                if chord == "alt+space" || chord == "alt+s" {
+                if chord == "alt+space" || chord == "alt+s" || chord == "ctrl+shift+\\" || chord == "ctrl+\\" {
                     self.toggle_split_axis(cx);
+                    self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
@@ -733,8 +735,8 @@ impl AtlasView {
             }
         }
 
-        // Mouseless shortcut: Alt+Arrows (and Ctrl+Alt+Arrows) to cycle focus between split panes
-        if (modifiers.alt || (modifiers.control && modifiers.alt)) && !modifiers.shift {
+        // Mouseless shortcut: Alt+Arrows (only when Ctrl is NOT held) to cycle focus between split panes
+        if modifiers.alt && !modifiers.control && !modifiers.shift {
             match key {
                 "arrowright" | "arrowdown" | "right" | "down" => {
                     if let Some(tab) = self.tabs.get_mut(self.active) {
