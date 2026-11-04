@@ -39,6 +39,7 @@ use crate::workspace::{
     Tab,
 };
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum UpdateDownloadState {
     Idle,

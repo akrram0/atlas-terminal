@@ -622,6 +622,7 @@ impl Theme {
     }
 }
 
+#[allow(dead_code)]
 pub struct Preset {
     pub id: &'static str,
     pub name: &'static str,
@@ -630,6 +631,7 @@ pub struct Preset {
     pub light: Theme,
 }
 
+#[allow(dead_code)]
 impl Preset {
     /// Legacy theme reference for code expecting `preset.theme`.
     pub fn theme(&self) -> &Theme {

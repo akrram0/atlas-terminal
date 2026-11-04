@@ -1933,6 +1933,7 @@ fn launch_installer_and_exit(installer_path: &Path) -> Result<(), String> {
 // GitHub Release JSON Parser
 // =====================================================================
 
+#[allow(dead_code)]
 pub(crate) fn parse_github_release(
     json_str: &str,
     current_version: &str,

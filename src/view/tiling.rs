@@ -65,13 +65,14 @@ impl AtlasView {
                 ))
                 .into_any_element()
         } else {
-            // Hyprland binary tiling workspace with 6px gaps
+            // Hyprland binary tiling workspace with configurable gaps
+            let gap = self.app_settings.tiling_gap.clamp(0.0, 16.0);
             div()
                 .flex()
                 .flex_1()
                 .min_w(px(0.0))
                 .min_h(px(0.0))
-                .p(px(6.0))
+                .p(px(gap))
                 .child(self.render_tile_node(
                     &tab.tile_tree.root,
                     tab,
@@ -125,18 +126,21 @@ impl AtlasView {
                 let split_ratio = *ratio;
                 let tb_divider = theme.clone();
 
+                let gap = self.app_settings.tiling_gap.clamp(0.0, 16.0);
+                let div_size = gap.max(2.0);
+
                 match split_axis {
                     SplitAxis::Columns => {
                         let divider = div()
                             .id(ElementId::named_usize("split-divider-v", split_id as usize))
-                            .w(px(6.0))
+                            .w(px(div_size))
                             .h(relative(1.0))
                             .flex_none()
                             .cursor_col_resize()
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(3.0))
+                            .rounded(px(div_size * 0.5))
                             .hover(move |s| s.bg(Rgba { a: 0.60, ..tb_divider.accent }))
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -199,14 +203,14 @@ impl AtlasView {
                     SplitAxis::Rows => {
                         let divider = div()
                             .id(ElementId::named_usize("split-divider-h", split_id as usize))
-                            .h(px(6.0))
+                            .h(px(div_size))
                             .w(relative(1.0))
                             .flex_none()
                             .cursor_row_resize()
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(3.0))
+                            .rounded(px(div_size * 0.5))
                             .hover(move |s| s.bg(Rgba { a: 0.60, ..tb_divider.accent }))
                             .on_mouse_down(
                                 MouseButton::Left,
@@ -313,8 +317,10 @@ impl AtlasView {
             .overflow_hidden();
 
         if is_tiled {
+            let gap = self.app_settings.tiling_gap.clamp(0.0, 16.0);
+            let corner = if gap <= 1.0 { px(0.0) } else { px(8.0) };
             cell = cell
-                .rounded(px(8.0))
+                .rounded(corner)
                 .border_1()
                 .border_color(if is_focused_pane {
                     theme.accent

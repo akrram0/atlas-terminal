@@ -206,6 +206,8 @@ pub struct AppSettingsFile {
     pub cursor_blink: bool,
     #[serde(default = "default_tab_bar_position")]
     pub tab_bar_position: String,
+    #[serde(default = "default_tiling_gap")]
+    pub tiling_gap: f32,
 
     #[serde(default)]
     pub shortcut_schema: u32,
@@ -281,6 +283,9 @@ fn default_cursor_blink() -> bool {
 fn default_tab_bar_position() -> String {
     "top".to_string()
 }
+fn default_tiling_gap() -> f32 {
+    6.0
+}
 fn default_shell() -> String {
     "PowerShell".to_string()
 }
@@ -332,6 +337,7 @@ impl Default for AppSettingsFile {
             cursor_shape: default_cursor_shape(),
             cursor_blink: default_cursor_blink(),
             tab_bar_position: default_tab_bar_position(),
+            tiling_gap: default_tiling_gap(),
             shortcut_schema: 2,
             shortcuts: default_shortcuts(),
             default_shell: default_shell(),

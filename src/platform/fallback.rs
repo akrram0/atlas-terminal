@@ -1,4 +1,5 @@
 //! Platform fallback implementation for non-Windows environments.
+#![allow(dead_code)]
 
 pub fn apply() {}
 pub fn is_zoomed() -> bool {

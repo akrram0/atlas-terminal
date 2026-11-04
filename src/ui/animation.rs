@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Animation easing curves and motion timings.
 //!
 //! Adopted from Zeron motion system (CubicBezier + exponential decay).

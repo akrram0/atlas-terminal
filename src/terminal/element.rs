@@ -134,8 +134,15 @@ impl Element for TerminalElement {
         };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
 
-        let avail_w = (f32::from(bounds.size.width) - Self::PAD_X * 2.0).max(cell_width);
-        let avail_h = (f32::from(bounds.size.height) - Self::PAD_Y * 2.0).max(cell_height);
+        let is_tui = self.session.borrow().term.mode().contains(TermMode::ALT_SCREEN);
+        let (pad_x, pad_y) = if is_tui {
+            (0.0, 0.0)
+        } else {
+            (Self::PAD_X, Self::PAD_Y)
+        };
+
+        let avail_w = (f32::from(bounds.size.width) - pad_x * 2.0).max(cell_width);
+        let avail_h = (f32::from(bounds.size.height) - pad_y * 2.0).max(cell_height);
         let cols = (avail_w / cell_width).floor().max(1.0) as usize;
         let rows = (avail_h / cell_height).floor().max(1.0) as usize;
         self.session.borrow_mut().resize(cols, rows, cell_width, cell_height);
@@ -182,14 +189,20 @@ impl Element for TerminalElement {
                 .max(1.0)
         };
         let cell_height = (f32::from(font_size) * self.line_height).round().max(1.0);
-        let avail_w = (f32::from(bounds.size.width) - Self::PAD_X * 2.0).max(cell_width);
+        let is_tui = self.session.borrow().term.mode().contains(TermMode::ALT_SCREEN);
+        let (pad_x, pad_y) = if is_tui {
+            (0.0, 0.0)
+        } else {
+            (Self::PAD_X, Self::PAD_Y)
+        };
+        let avail_w = (f32::from(bounds.size.width) - pad_x * 2.0).max(cell_width);
         let cols = (avail_w / cell_width).floor().max(1.0) as usize;
-        let avail_h = (f32::from(bounds.size.height) - Self::PAD_Y * 2.0).max(cell_height);
+        let avail_h = (f32::from(bounds.size.height) - pad_y * 2.0).max(cell_height);
         let max_rows = (avail_h / cell_height).floor().max(1.0) as usize;
 
         // Integer pixel snapping: rounded cell sizes + whole-pixel origin with padding
-        let left = (f32::from(bounds.left()) + Self::PAD_X).round();
-        let top = (f32::from(bounds.top()) + Self::PAD_Y).round();
+        let left = (f32::from(bounds.left()) + pad_x).round();
+        let top = (f32::from(bounds.top()) + pad_y).round();
 
         // Store active grid dimensions for mouse selection hit testing
         self.session.borrow_mut().grid_bounds = Some((left, top, cell_width, cell_height));
@@ -198,15 +211,16 @@ impl Element for TerminalElement {
         let (rows, cursor_cell, cursor_shape, selection_range, max_active_row, offset, placed_images, cur_history, is_alt_screen) = {
             let session = self.session.borrow();
             let is_alt_screen = session.term.mode().contains(TermMode::ALT_SCREEN);
+            let show_cursor = session.term.mode().contains(TermMode::SHOW_CURSOR);
             let content = session.term.renderable_content();
             let offset = content.display_offset as i32;
             let cursor_shape = self.cursor_override.unwrap_or(content.cursor.shape);
             let cursor_row = content.cursor.point.line.0 + offset;
             let cursor_col = content.cursor.point.column.0;
             // The cursor is logically linked to the input field / prompt line.
-            // When the user scrolls up into history, the input line moves below the visible
-            // viewport (cursor_row >= max_rows), so the cursor must NOT be drawn over history text.
-            let cursor_cell = if cursor_row >= 0 && (cursor_row as usize) < max_rows {
+            // If the application hides the cursor (\x1b[?25l) or scrolls into history,
+            // the hardware cursor must NOT be drawn over UI elements, tabs, or history text.
+            let cursor_cell = if show_cursor && cursor_row >= 0 && (cursor_row as usize) < max_rows {
                 Some((cursor_row as usize, cursor_col))
             } else {
                 None
@@ -363,6 +377,9 @@ impl Element for TerminalElement {
         self.session.borrow_mut().max_active_row = max_active_row;
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
+            if is_alt_screen && self.active_bg.a > 0.05 {
+                window.paint_quad(fill(bounds, self.active_bg));
+            }
             for (row_index, row) in rows.iter().enumerate() {
                 let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
                 let y1 = y0 + cell_height;

@@ -565,6 +565,7 @@ impl AtlasView {
         .detach();
     }
 
+    #[allow(dead_code)]
     pub(crate) fn active_tab(&self) -> Option<&Tab> {
         self.tabs.get(self.active)
     }

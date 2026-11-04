@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Default WSL distribution detection and brand mapping.
 //!
 //! The distribution is read straight from the per-user Lxss registry hive via

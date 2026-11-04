@@ -19,6 +19,7 @@ use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 
 /// Commands offered by the palette.
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum Command {
     NewTab,
     NewTabWsl,

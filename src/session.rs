@@ -20,6 +20,7 @@ use crate::image_osc::{compute_image_grid_size, Osc1337Scanner, OscScannerEvent}
 /// An inline graphic placed on the terminal grid.
 #[derive(Clone)]
 pub struct PlacedImage {
+    #[allow(dead_code)]
     pub id: usize,
     pub image: Arc<gpui::RenderImage>,
     pub anchor_line: i32,
@@ -166,6 +167,7 @@ pub struct Session {
     pty_rows: usize,
     /// Shell executable that was actually spawned ("pwsh" or
     /// "powershell.exe"), for the sidebar/status-bar labels.
+    #[allow(dead_code)]
     pub shell: String,
     /// PID of the shell process; lets the UI poll its working directory
     /// (see `crate::cwd`).
@@ -291,11 +293,16 @@ impl Session {
                                  pnpm update -g @opencode/cli \
                              } elseif (Get-Command npm -ErrorAction SilentlyContinue) { \
                                  npm update -g @opencode/cli \
+                             } elseif (Get-Command bun -ErrorAction SilentlyContinue) { \
+                                 bun update -g @opencode/cli \
+                             } elseif (Get-Command scoop -ErrorAction SilentlyContinue) { \
+                                 scoop update opencode \
+                             } elseif (Get-Command winget -ErrorAction SilentlyContinue) { \
+                                 winget upgrade opencode \
                              } else { \
                                  opencode upgrade \
                              } \
-                         }; \
-                         $env:OPENCODE_DISABLE_AUTOUPDATE = 'true';"
+                         };"
                     );
                 }
                 Profile::Cmd => {}
@@ -321,9 +328,19 @@ impl Session {
                 let mut paths = std::env::split_paths(&path).collect::<Vec<_>>();
                 let mut added = false;
                 if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-                    let pnpm_bin = PathBuf::from(local_app_data).join("pnpm").join("bin");
+                    let pnpm_bin = PathBuf::from(&local_app_data).join("pnpm").join("bin");
                     if pnpm_bin.is_dir() && !paths.contains(&pnpm_bin) {
                         paths.insert(0, pnpm_bin);
+                        added = true;
+                    }
+                    let pnpm_root = PathBuf::from(&local_app_data).join("pnpm");
+                    if pnpm_root.is_dir() && !paths.contains(&pnpm_root) {
+                        paths.insert(0, pnpm_root);
+                        added = true;
+                    }
+                    let winget_links = PathBuf::from(&local_app_data).join("Microsoft").join("WinGet").join("Links");
+                    if winget_links.is_dir() && !paths.contains(&winget_links) {
+                        paths.insert(0, winget_links);
                         added = true;
                     }
                 }
@@ -334,11 +351,26 @@ impl Session {
                         added = true;
                     }
                 }
+                if let Some(user_profile) = std::env::var_os("USERPROFILE") {
+                    let bun_bin = PathBuf::from(&user_profile).join(".bun").join("bin");
+                    if bun_bin.is_dir() && !paths.contains(&bun_bin) {
+                        paths.insert(0, bun_bin);
+                        added = true;
+                    }
+                    let scoop_shims = PathBuf::from(&user_profile).join("scoop").join("shims");
+                    if scoop_shims.is_dir() && !paths.contains(&scoop_shims) {
+                        paths.insert(0, scoop_shims);
+                        added = true;
+                    }
+                }
                 if added {
                     if let Ok(new_path) = std::env::join_paths(paths) {
                         cmd.env("PATH", new_path);
                     }
                 }
+            }
+            if let Some(comspec) = std::env::var_os("COMSPEC") {
+                cmd.env("COMSPEC", comspec);
             }
             // Terminal identity every CLI tool reads for colour, locale and
             // capability detection. Without these, native tools fall back to
@@ -350,14 +382,6 @@ impl Session {
             cmd.env("WT_SESSION", "1");
             cmd.env("TERM_PROGRAM", "Atlas");
             cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
-            if matches!(profile, Profile::OpenCode) {
-                // OpenCode's update detection has a known Windows bug (anomalyco/opencode#17295)
-                // where Node child_process.spawn() fails to resolve npm.cmd/pnpm.cmd without shell:true,
-                // causing a noisy "Could not detect the installation method" popup on startup.
-                // Setting OPENCODE_DISABLE_AUTOUPDATE suppresses the broken check; users can update
-                // with `pnpm update -g @opencode/cli` or Atlas's `update-opencode` command.
-                cmd.env("OPENCODE_DISABLE_AUTOUPDATE", "true");
-            }
             if matches!(profile, Profile::Wsl) {
                 // wsl.exe starts a Linux process from a Windows one; only
                 // variables listed in WSLENV are copied into the distro. Without
@@ -608,6 +632,7 @@ impl Session {
         self.term.selection = None;
     }
 
+    #[allow(dead_code)]
     pub fn kill(&mut self) {
         let _ = self.child.kill();
     }

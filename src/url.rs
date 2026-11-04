@@ -485,6 +485,7 @@ fn resolve_editor_path(name: &str) -> Option<std::path::PathBuf> {
     }
 }
 
+#[allow(dead_code)]
 fn is_cmd_available(name: &str) -> bool {
     resolve_editor_path(name).is_some()
 }

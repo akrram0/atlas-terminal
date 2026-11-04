@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Typography and font resolution for grid and UI iconography.
 
 use gpui::{Font, FontFallbacks, Window};

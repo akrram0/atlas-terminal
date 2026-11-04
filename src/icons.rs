@@ -6,7 +6,7 @@ use gpui::{AssetSource, Result, SharedString, Styled, Svg, svg};
 
 macro_rules! icon_assets {
     ($(($const_name:ident, $path:literal)),+ $(,)?) => {
-        $(pub const $const_name: &str = concat!("icons/", $path, ".svg");)+
+        $(#[allow(dead_code)] pub const $const_name: &str = concat!("icons/", $path, ".svg");)+
 
         pub struct IconsAssets;
 

@@ -570,6 +570,29 @@ impl AtlasView {
             cx,
         );
 
+        // Tiling Gap Stepper: 0px to 16px in 2px increments
+        let gap_val = self.app_settings.tiling_gap.round() as i32;
+        let tiling_gap_ctrl = stepper(
+            115,
+            format!("{}px", gap_val),
+            theme,
+            |view, cx| {
+                let cur = view.app_settings.tiling_gap.round() as i32;
+                let next = (cur - 2).clamp(0, 16);
+                view.app_settings.tiling_gap = next as f32;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            |view, cx| {
+                let cur = view.app_settings.tiling_gap.round() as i32;
+                let next = (cur + 2).clamp(0, 16);
+                view.app_settings.tiling_gap = next as f32;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         let appearance_view = div()
             .flex()
             .flex_col()
@@ -600,6 +623,16 @@ impl AtlasView {
                         "Tab Bar Layout",
                         Some("Choose between top horizontal bar or left vertical sidebar"),
                         tab_layout_ctrl,
+                        true,
+                    )),
+            )
+            .child(
+                card()
+                    .child(section_header("TILING & SPLITS"))
+                    .child(setting_row(
+                        "Split Window Gaps",
+                        Some("Hyprland-style pane gaps (0px = seamless full-bleed, 6px = default)"),
+                        tiling_gap_ctrl,
                         true,
                     )),
             )

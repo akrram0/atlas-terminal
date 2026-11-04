@@ -260,6 +260,7 @@ impl AtlasView {
         Some((Point::new(line, Column(col)), side))
     }
 
+    #[allow(dead_code)]
     pub fn handle_terminal_right_click(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let copy_text = if let Some(pane) = self.active_pane() {
             let session = pane.session.borrow();
@@ -426,9 +427,11 @@ impl AtlasView {
             cx.notify();
         }
 
-        if key == "escape"
-            && (self.settings_open || self.profile_menu || self.update_panel_open)
-        {
+        if key == "escape" {
+            if self.search_open {
+                self.close_search(window, cx);
+                return;
+            }
             if self.recording_shortcut.is_some() {
                 self.recording_shortcut = None;
                 cx.notify();

@@ -106,6 +106,7 @@ pub fn title_path(raw: &str) -> Option<String> {
 /// Directory label for a quiet tab pill: the basename of the shell's working
 /// directory — `~` while it sits in the home folder — so the folder mark and
 /// the words agree (never the raw shell name like "PowerShell").
+#[allow(dead_code)]
 pub fn dir_label(pane: &Pane) -> Option<String> {
     let raw = if matches!(pane.profile, Profile::Wsl) {
         title_path(&pane.title).or_else(|| pane.cwd.as_ref().map(|dir| dir.display().to_string()))

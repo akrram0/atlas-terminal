@@ -334,6 +334,7 @@ impl AtlasView {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     pub(crate) fn toggle_update_panel(&mut self, cx: &mut Context<Self>) {
         if let Some(ref info) = self.available_update {
             let msg = format!("Atlas Terminal v{} is available!", info.version);
