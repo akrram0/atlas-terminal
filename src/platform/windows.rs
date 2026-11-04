@@ -258,7 +258,7 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
             };
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                accent_flags: 0,
+                accent_flags: 2,
                 gradient_color: (alpha.max(1) << 24) | rgb,
                 animation_id: 0,
             }
@@ -615,6 +615,28 @@ unsafe extern "system" fn window_proc(
         WM_NCCALCSIZE => {
             // Full client area coverage: 100% of window rect is client area so
             // DWM DirectComposition acrylic blur extends smoothly to every screen edge.
+            // When maximized, pin client rect strictly to the monitor work area to eliminate
+            // the 8px thickframe overhang that causes DWM sampling edge noise and clipped bands.
+            if unsafe { IsZoomed(hwnd) } != 0 {
+                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+                if !monitor.is_null() {
+                    let mut mi = MonitorInfo {
+                        cb_size: core::mem::size_of::<MonitorInfo>() as u32,
+                        rc_monitor: Rect::default(),
+                        rc_work: Rect::default(),
+                        dw_flags: 0,
+                    };
+                    if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
+                        if wparam != 0 {
+                            let params = unsafe { &mut *(lparam as *mut NcCalcSizeParams) };
+                            params.rgrc[0] = mi.rc_work;
+                        } else {
+                            let rect = unsafe { &mut *(lparam as *mut Rect) };
+                            *rect = mi.rc_work;
+                        }
+                    }
+                }
+            }
             0
         }
         WM_NCHITTEST => {

@@ -340,15 +340,45 @@ impl AtlasView {
             self.close_tab(index, cx);
             return;
         }
-        if let Some(pane) = tab.panes.get_mut(tab.active_pane) {
+        let pane_to_close = tab.active_pane;
+        self.close_pane_at(self.active, pane_to_close, cx);
+    }
+
+    /// Close a specific pane in a tab.
+    pub(crate) fn close_pane_at(&mut self, tab_ix: usize, pane_ix: usize, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get_mut(tab_ix) else {
+            return;
+        };
+        let open_panes = tab.panes.iter().filter(|p| !p.closing).count();
+        if open_panes <= 1 {
+            self.close_tab(tab_ix, cx);
+            return;
+        }
+        if let Some(pane) = tab.panes.get_mut(pane_ix) {
             pane.closing = true;
         }
-        if let Some(next_active) = tab.panes.iter().enumerate().position(|(i, p)| i != tab.active_pane && !p.closing) {
-            tab.active_pane = next_active;
+        if tab.active_pane == pane_ix {
+            if let Some(next_active) = tab.panes.iter().enumerate().position(|(i, p)| i != pane_ix && !p.closing) {
+                tab.active_pane = next_active;
+            }
         }
         self.trigger_island_hud(cx);
         self.save_session();
         cx.notify();
+    }
+
+    /// Toggle tiling layout axis between Columns and Rows.
+    pub(crate) fn toggle_split_axis(&mut self, cx: &mut Context<Self>) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            if tab.panes.len() > 1 {
+                tab.axis = match tab.axis {
+                    SplitAxis::Columns => SplitAxis::Rows,
+                    SplitAxis::Rows => SplitAxis::Columns,
+                };
+                self.trigger_island_hud(cx);
+                cx.notify();
+            }
+        }
     }
 
     /// Toggle zoom on the active pane: the sheet shows only it while the

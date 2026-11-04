@@ -499,6 +499,50 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
+                    // 4c. Settings kinetic smooth inertia scroll
+                    if view.settings_open {
+                        let max_y = f32::from(view.settings_scroll_handle.max_offset().height);
+                        if max_y > 0.0 {
+                            view.settings_scroll_target = view.settings_scroll_target.clamp(-max_y, 0.0);
+                        } else {
+                            view.settings_scroll_target = 0.0;
+                        }
+                        let diff = view.settings_scroll_target - view.settings_scroll_pos;
+                        if diff.abs() > 0.5 {
+                            active_motion = true;
+                            let factor = (1.0 - (-16.0 * dt).exp()).clamp(0.0, 1.0);
+                            view.settings_scroll_pos += diff * factor;
+                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(view.settings_scroll_pos)));
+                            needs_paint = true;
+                        } else if (view.settings_scroll_pos - view.settings_scroll_target).abs() > 0.01 {
+                            view.settings_scroll_pos = view.settings_scroll_target;
+                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(view.settings_scroll_pos)));
+                            needs_paint = true;
+                        }
+                    }
+
+                    // 4d. Tab close button smooth hover fade (constant tab width)
+                    for (t_ix, tab) in view.tabs.iter_mut().enumerate() {
+                        let is_hovered = view.hover_tab == Some(t_ix);
+                        let target = if is_hovered {
+                            1.0
+                        } else if t_ix == view.active {
+                            0.50
+                        } else {
+                            0.0
+                        };
+                        let diff = target - tab.close_hover_progress;
+                        if diff.abs() > 0.005 {
+                            active_motion = true;
+                            let factor = (1.0 - (-18.0 * dt).exp()).clamp(0.0, 1.0);
+                            tab.close_hover_progress += diff * factor;
+                            needs_paint = true;
+                        } else if tab.close_hover_progress != target {
+                            tab.close_hover_progress = target;
+                            needs_paint = true;
+                        }
+                    }
+
                     // 5. Smooth tab collapse on close
                     let mut tabs_to_remove = Vec::new();
                     for (i, tab) in view.tabs.iter_mut().enumerate() {
@@ -1166,7 +1210,7 @@ impl Render for AtlasView {
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             let alpha = self.opacity.clamp(0.0, 1.0);
             let chrome = Rgba {
-                a: (alpha * 0.90).clamp(0.15, 0.85),
+                a: alpha * 0.90,
                 ..tb.panel_bg
             };
             let sheet = Rgba {
@@ -1425,23 +1469,24 @@ impl Render for AtlasView {
                         .child(label),
                 );
 
-            let show_close = (active || self.hover_tab == Some(ix)) && !tab.closing;
-            if show_close {
+            let close_alpha = tab.close_hover_progress.clamp(0.0, 1.0);
+            if !tab.closing {
                 pill = pill.child(
                     div()
                         .id(ElementId::named_usize("tab-close", ix))
-                        .w(px(20.0))
-                        .h(px(20.0))
+                        .w(px(18.0))
+                        .h(px(18.0))
                         .flex_none()
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(5.0))
+                        .rounded(px(4.0))
+                        .opacity(close_alpha)
                         .hover(move |style| style.bg(tb.card_hover))
                         .active(move |style| style.opacity(0.75))
                         .child(
                             icons::icon(icons::CLOSE)
-                                .size(px(12.0))
+                                .size(px(11.0))
                                 .text_color(tb.faint_fg),
                         )
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
@@ -1753,34 +1798,26 @@ impl Render for AtlasView {
                         window.focus(&view.focus);
                     }),
                 );
+            let is_tiled = tab.panes.len() > 1 && !tab.maximized;
+
             area = match axis {
                 SplitAxis::Columns => area.flex_row(),
                 SplitAxis::Rows => area.flex_col(),
             };
 
-            // One cell per visible pane with a hairline divider between;
-            // maximizing hides the inactive panes without killing their shells.
+            // Linux-style tiling gaps:
+            if is_tiled {
+                area = area.p(px(6.0)).gap(px(6.0));
+            }
+
+            // Visible panes:
             let visible: Vec<usize> = if tab.maximized && tab.panes.len() > 1 {
                 vec![tab.active_pane]
             } else {
                 (0..tab.panes.len()).collect()
             };
-            for (slot, &pane_ix) in visible.iter().enumerate() {
+            for &pane_ix in &visible {
                 let pane = &tab.panes[pane_ix];
-                if slot > 0 {
-                    area = area.child(match axis {
-                        SplitAxis::Columns => div()
-                            .w(px(1.0))
-                            .h(relative(1.0))
-                            .flex_shrink_0()
-                            .bg(theme.hairline),
-                        SplitAxis::Rows => div()
-                            .h(px(1.0))
-                            .w(relative(1.0))
-                            .flex_shrink_0()
-                            .bg(theme.hairline),
-                    });
-                }
 
                 let pane_down = pane_ix;
                 let pane_move = pane_ix;
@@ -1796,7 +1833,7 @@ impl Render for AtlasView {
                     active_bg
                 };
 
-                let is_focused_pane = pane_ix == tab.active_pane && tab.panes.len() > 1;
+                let is_focused_pane = pane_ix == tab.active_pane;
                 let mut cell = div()
                     .id(ElementId::named_usize("pane-cell", pane_ix))
                     .flex()
@@ -1805,22 +1842,161 @@ impl Render for AtlasView {
                     .min_w(px(0.0))
                     .min_h(px(0.0))
                     .opacity(pane.pane_expansion)
-                    .overflow_hidden()
-                    .bg(if pane_is_tui {
-                        pane_bg
-                    } else if tab.panes.len() > 1 && !is_focused_pane {
-                        Rgba { a: 0.05, ..theme.chrome_fg }
-                    } else {
-                        rgba(0x00000000)
-                    });
-                if tab.panes.len() > 1 {
+                    .overflow_hidden();
+
+                if is_tiled {
                     cell = cell
+                        .rounded(px(8.0))
                         .border_1()
+                        .border_color(if is_focused_pane {
+                            theme.accent
+                        } else {
+                            theme.hairline
+                        })
+                        .shadow_md()
+                        .bg(if pane_is_tui {
+                            pane_bg
+                        } else if is_translucent {
+                            Rgba { a: 0.18, ..theme.panel_bg }
+                        } else if is_focused_pane {
+                            theme.elevated_bg
+                        } else {
+                            theme.panel_bg
+                        });
+
+                    let p_title = crate::workspace::tab_name(&pane.title, &crate::workspace::profile_title(pane.profile));
+                    let p_icon = crate::workspace::session_icon(&p_title, pane.profile);
+                    let tb_v = theme.clone();
+                    let p_idx = pane_ix;
+
+                    let mini_split_v = div()
+                        .id(ElementId::named_usize("mini-split-v", p_idx))
+                        .w(px(20.0))
+                        .h(px(18.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(tb_v.card_hover))
+                        .child(icons::icon(icons::SPLIT_COLUMNS).size(px(11.0)).text_color(theme.chrome_fg))
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                tab.active_pane = p_idx;
+                            }
+                            view.split_active(SplitAxis::Columns, cx);
+                            window.focus(&view.focus);
+                        }));
+
+                    let tb_h = theme.clone();
+                    let mini_split_h = div()
+                        .id(ElementId::named_usize("mini-split-h", p_idx))
+                        .w(px(20.0))
+                        .h(px(18.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(tb_h.card_hover))
+                        .child(icons::icon(icons::SPLIT_ROWS).size(px(11.0)).text_color(theme.chrome_fg))
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                tab.active_pane = p_idx;
+                            }
+                            view.split_active(SplitAxis::Rows, cx);
+                            window.focus(&view.focus);
+                        }));
+
+                    let tb_m = theme.clone();
+                    let mini_max = div()
+                        .id(ElementId::named_usize("mini-max", p_idx))
+                        .w(px(20.0))
+                        .h(px(18.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(tb_m.card_hover))
+                        .child(icons::icon(icons::WINDOW_MAXIMIZE).size(px(10.0)).text_color(theme.chrome_fg))
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            if let Some(tab) = view.tabs.get_mut(view.active) {
+                                tab.active_pane = p_idx;
+                            }
+                            view.toggle_maximize(cx);
+                            window.focus(&view.focus);
+                        }));
+
+                    let mini_close = div()
+                        .id(ElementId::named_usize("mini-close", p_idx))
+                        .w(px(20.0))
+                        .h(px(18.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(rgba(0xE0525225)))
+                        .child(icons::icon(icons::CLOSE).size(px(10.0)).text_color(theme.chrome_fg))
+                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                            view.close_pane_at(view.active, p_idx, cx);
+                            window.focus(&view.focus);
+                        }));
+
+                    let pane_bar = div()
+                        .id(ElementId::named_usize("pane-bar", p_idx))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .h(px(24.0))
+                        .px(px(8.0))
+                        .bg(if is_focused_pane {
+                            Rgba { a: 0.14, ..theme.accent }
+                        } else {
+                            Rgba { a: 0.05, ..theme.hairline }
+                        })
+                        .border_b_1()
                         .border_color(if is_focused_pane {
                             Rgba { a: 0.28, ..theme.accent }
                         } else {
-                            rgba(0x00000000)
-                        });
+                            theme.hairline
+                        })
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(icons::icon(p_icon).size(px(12.0)).text_color(if is_focused_pane { theme.accent } else { theme.chrome_fg }))
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .font_weight(if is_focused_pane { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                                        .text_color(if is_focused_pane { theme.fg } else { theme.chrome_fg })
+                                        .child(format!("[{}] {}", p_idx + 1, p_title)),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(2.0))
+                                .child(mini_split_v)
+                                .child(mini_split_h)
+                                .child(mini_max)
+                                .child(mini_close),
+                        );
+
+                    cell = cell.child(pane_bar);
+                } else {
+                    cell = cell.bg(if pane_is_tui {
+                        pane_bg
+                    } else {
+                        rgba(0x00000000)
+                    });
                 }
                 if self.hovered_link.as_ref().map_or(false, |(p, _)| *p == pane_ix) {
                     cell = cell.cursor_pointer();
@@ -2269,7 +2445,45 @@ impl Render for AtlasView {
                 ));
             }
 
-            area.into_any_element()
+            let mut container = div().flex().flex_col().flex_1().relative().child(area);
+            if tab.maximized && tab.panes.len() > 1 {
+                let tb_z = theme.clone();
+                let unzoom_banner = div()
+                    .id("unzoom-banner")
+                    .absolute()
+                    .top(px(10.0))
+                    .right(px(16.0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .px(px(12.0))
+                    .py(px(5.0))
+                    .rounded(px(16.0))
+                    .bg(Rgba { a: 0.88, ..tb_z.panel_bg })
+                    .border_1()
+                    .border_color(tb_z.hairline)
+                    .shadow_md()
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(tb_z.card_hover))
+                    .child(
+                        icons::icon(icons::WINDOW_RESTORE)
+                            .size(px(12.0))
+                            .text_color(theme.accent),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .text_color(theme.fg)
+                            .child(format!("Pane {} of {} (Zoomed) • Alt+F to restore", tab.active_pane + 1, tab.panes.len())),
+                    )
+                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                        view.toggle_maximize(cx);
+                        window.focus(&view.focus);
+                    }));
+                container = container.child(unzoom_banner);
+            }
+            container.into_any_element()
         };
 
         // Swap the body through a quick fade: the settings page slides in over

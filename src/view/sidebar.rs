@@ -30,7 +30,7 @@ impl AtlasView {
 
         let sidebar_bg = if is_translucent {
             Rgba {
-                a: (self.opacity * 0.90).clamp(0.15, 0.85),
+                a: (self.opacity * 0.90).clamp(0.0, 1.0),
                 ..tb.panel_bg
             }
         } else {
@@ -446,8 +446,6 @@ impl AtlasView {
                 tb.card_hover
             };
 
-            let is_hovered = self.hover_tab == Some(ix);
-
             let mut tab_row = div()
                 .id(ElementId::named_usize("sidebar-tab-row", ix))
                 .h(px(32.0))
@@ -519,16 +517,19 @@ impl AtlasView {
                         .child(label),
                 );
 
-            if (active || is_hovered) && !tab.closing {
+            if !tab.closing {
+                let close_alpha = tab.close_hover_progress.clamp(0.0, 1.0);
                 tab_row = tab_row.child(
                     div()
                         .id(ElementId::named_usize("sidebar-tab-close", ix))
                         .w(px(18.0))
                         .h(px(18.0))
+                        .flex_none()
                         .flex()
                         .items_center()
                         .justify_center()
                         .rounded(px(4.0))
+                        .opacity(close_alpha)
                         .hover(move |s| s.bg(tb.card_hover))
                         .active(|s| s.opacity(0.75))
                         .child(icons::icon(icons::CLOSE).size(px(11.0)).text_color(tb.faint_fg))

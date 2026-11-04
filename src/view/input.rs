@@ -444,30 +444,69 @@ impl AtlasView {
                     cx.notify();
                     return;
                 }
-                // Browser & Kitty new tab / close tab:
-                if chord == "ctrl+shift+t" || chord == "ctrl+shift+n" || chord == self.get_shortcut(ACTION_NEW_TAB) {
+                // Browser & Terminal new tab (Ctrl+T) / Theme toggle (Ctrl+Shift+T):
+                if chord == "ctrl+t" || chord == "ctrl+shift+n" || chord == self.get_shortcut(ACTION_NEW_TAB) {
                     let prof = self.get_default_profile();
                     self.new_tab(prof, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "ctrl+shift+w" || chord == self.get_shortcut(ACTION_CLOSE_TAB) {
+                if chord == "ctrl+shift+t" || chord == "ctrl+shift+l" || chord == "alt+shift+t" || chord == self.get_shortcut(ACTION_TOGGLE_THEME) {
+                    self.toggle_theme(cx);
+                    return;
+                }
+                if chord == "ctrl+shift+w" || chord == "alt+w" || chord == self.get_shortcut(ACTION_CLOSE_TAB) {
                     self.close_pane(cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                // Kitty & Tiling window manager split pane chords:
-                if chord == "ctrl+shift+enter" || chord == "ctrl+shift+d" || chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL) {
+                // Linux Tiling & Kitty split pane chords (Alt+Enter / Alt+V / Alt+D):
+                if chord == "alt+enter" || chord == "alt+v" || chord == "ctrl+shift+enter" || chord == "ctrl+shift+e" || chord == self.get_shortcut(ACTION_SPLIT_VERTICAL) {
+                    self.split_active(SplitAxis::Columns, cx);
+                    self.trigger_island_hud(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                if chord == "alt+d" || chord == "ctrl+shift+d" || chord == "alt+shift+h" || chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL) {
                     self.split_active(SplitAxis::Rows, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "ctrl+shift+e" || chord == self.get_shortcut(ACTION_SPLIT_VERTICAL) {
-                    self.split_active(SplitAxis::Columns, cx);
-                    self.trigger_island_hud(cx);
+                // Tiling layout axis toggle (Columns ↔ Rows):
+                if chord == "alt+space" || chord == "alt+s" {
+                    self.toggle_split_axis(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                // Tiling pane directional navigation (Vim Alt+H/J/K/L + Alt+Arrows):
+                if chord == "alt+l" || chord == "alt+right" || chord == "alt+j" || chord == "alt+down" || chord == self.get_shortcut(ACTION_FOCUS_NEXT_PANE) {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                if chord == "alt+h" || chord == "alt+left" || chord == "alt+k" || chord == "alt+up" || chord == self.get_shortcut(ACTION_FOCUS_PREV_PANE) {
+                    if let Some(tab) = self.tabs.get_mut(self.active) {
+                        if tab.panes.len() > 1 {
+                            tab.active_pane = if tab.active_pane == 0 {
+                                tab.panes.len() - 1
+                            } else {
+                                tab.active_pane - 1
+                            };
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
+                // Tiling pane zoom / maximize (Alt+F / Alt+M / Ctrl+Shift+M):
+                if chord == "alt+f" || chord == "alt+m" || chord == "ctrl+shift+m" || chord == self.get_shortcut(ACTION_TOGGLE_MAXIMIZE) {
+                    self.toggle_maximize(cx);
                     self.focus_main(window);
                     return;
                 }
@@ -507,28 +546,6 @@ impl AtlasView {
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
-                }
-                if chord == self.get_shortcut(ACTION_FOCUS_NEXT_PANE) {
-                    if let Some(tab) = self.tabs.get_mut(self.active) {
-                        if tab.panes.len() > 1 {
-                            tab.active_pane = (tab.active_pane + 1) % tab.panes.len();
-                            cx.notify();
-                            return;
-                        }
-                    }
-                }
-                if chord == self.get_shortcut(ACTION_FOCUS_PREV_PANE) {
-                    if let Some(tab) = self.tabs.get_mut(self.active) {
-                        if tab.panes.len() > 1 {
-                            tab.active_pane = if tab.active_pane == 0 {
-                                tab.panes.len() - 1
-                            } else {
-                                tab.active_pane - 1
-                            };
-                            cx.notify();
-                            return;
-                        }
-                    }
                 }
                 if chord == self.get_shortcut(ACTION_FULLSCREEN) {
                     crate::rounded_corners::window_button(1);
@@ -589,15 +606,6 @@ impl AtlasView {
                 }
                 if chord == self.get_shortcut(ACTION_OPEN_URL_PICKER) {
                     self.open_buffer_urls(window, cx);
-                    return;
-                }
-                if chord == self.get_shortcut(ACTION_TOGGLE_THEME) || chord == "ctrl+shift+l" || chord == "alt+shift+t" {
-                    self.toggle_theme(cx);
-                    return;
-                }
-                if chord == self.get_shortcut(ACTION_TOGGLE_MAXIMIZE) {
-                    self.toggle_maximize(cx);
-                    self.focus_main(window);
                     return;
                 }
             }

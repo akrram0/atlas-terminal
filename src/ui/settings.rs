@@ -1279,15 +1279,17 @@ impl AtlasView {
                 )
         };
 
-        let mut built_in_card = card().child(section_header("BUILT-IN SHORTCUTS & NAVIGATION"));
-        let built_in_list: [(&'static str, &'static str); 8] = [
-            ("Cycle Tabs Forward (Browser & Kitty)", "Ctrl+Tab / Ctrl+PageDown / Ctrl+Shift+]"),
-            ("Cycle Tabs Backward (Browser & Kitty)", "Ctrl+Shift+Tab / Ctrl+PageUp / Ctrl+Shift+["),
-            ("Switch Directly to Tab 1 through 8", "Ctrl+1 … Ctrl+8"),
-            ("Switch to Last Tab", "Ctrl+9"),
-            ("Split Pane Horizontally / Vertically", "Ctrl+Shift+Enter / Ctrl+Shift+D / Ctrl+Shift+E"),
-            ("Focus Neighbor Split Pane", "Alt+Arrows / Ctrl+Alt+Arrows"),
-            ("Dynamic Island HUD & Quick Actions", "Hover Top-Center or trigger tab shortcuts"),
+        let mut built_in_card = card().child(section_header("BUILT-IN SHORTCUTS & LINUX TILING"));
+        let built_in_list: [(&'static str, &'static str); 10] = [
+            ("Cycle / Change Themes", "Ctrl+Shift+T"),
+            ("New Tab (Default Shell)", "Ctrl+T / Ctrl+Shift+N"),
+            ("Linux Tiling: Split Vertical", "Alt+Enter / Alt+V / Ctrl+Shift+E"),
+            ("Linux Tiling: Split Horizontal", "Alt+D / Ctrl+Shift+D"),
+            ("Linux Tiling: Navigate Panes", "Alt+H,J,K,L / Alt+Arrows"),
+            ("Linux Tiling: Toggle Layout (Cols ↔ Rows)", "Alt+Space / Alt+S"),
+            ("Linux Tiling: Zoom / Maximize Pane", "Alt+F / Alt+M / Ctrl+Shift+M"),
+            ("Linux Tiling: Close Pane", "Alt+W / Ctrl+Shift+W"),
+            ("Cycle Tabs Forward / Backward", "Ctrl+Tab / Ctrl+Shift+Tab"),
             ("Command Palette & Shell Catalog", "Ctrl+K / Ctrl+Shift+P"),
         ];
         for (label, keycap) in built_in_list {
@@ -1452,6 +1454,15 @@ impl AtlasView {
             .min_h(px(0.0))
             .overflow_y_scroll()
             .track_scroll(&self.settings_scroll_handle)
+            .on_scroll_wheel(cx.listener(|view, event: &gpui::ScrollWheelEvent, _window, cx| {
+                let delta = match event.delta {
+                    gpui::ScrollDelta::Lines(d) => d.y * 64.0,
+                    gpui::ScrollDelta::Pixels(d) => f32::from(d.y),
+                };
+                let max_y = f32::from(view.settings_scroll_handle.max_offset().height);
+                view.settings_scroll_target = (view.settings_scroll_target + delta).clamp(-max_y, 0.0);
+                cx.notify();
+            }))
             .p(px(32.0))
             .pb(px(88.0))
             .child(

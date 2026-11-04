@@ -79,10 +79,10 @@ pub fn action_display_name(action: &str) -> &'static str {
 
 pub fn default_shortcuts() -> HashMap<String, String> {
     let mut m = HashMap::new();
-    m.insert(ACTION_NEW_TAB.to_string(), "ctrl+shift+t".to_string());
+    m.insert(ACTION_NEW_TAB.to_string(), "ctrl+t".to_string());
     m.insert(ACTION_CLOSE_TAB.to_string(), "ctrl+shift+w".to_string());
-    m.insert(ACTION_SPLIT_HORIZONTAL.to_string(), "ctrl+shift+d".to_string());
-    m.insert(ACTION_SPLIT_VERTICAL.to_string(), "ctrl+shift+e".to_string());
+    m.insert(ACTION_SPLIT_HORIZONTAL.to_string(), "alt+d".to_string());
+    m.insert(ACTION_SPLIT_VERTICAL.to_string(), "alt+v".to_string());
     m.insert(ACTION_NEXT_TAB.to_string(), "ctrl+tab".to_string());
     m.insert(ACTION_PREV_TAB.to_string(), "ctrl+shift+tab".to_string());
     m.insert(ACTION_COPY.to_string(), "ctrl+shift+c".to_string());
@@ -102,8 +102,8 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_CLEAR_SCROLLBACK.to_string(), "ctrl+shift+k".to_string());
     m.insert(ACTION_FOCUS_NEXT_PANE.to_string(), "alt+right".to_string());
     m.insert(ACTION_FOCUS_PREV_PANE.to_string(), "alt+left".to_string());
-    m.insert(ACTION_TOGGLE_THEME.to_string(), "ctrl+shift+l".to_string());
-    m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "ctrl+shift+m".to_string());
+    m.insert(ACTION_TOGGLE_THEME.to_string(), "ctrl+shift+t".to_string());
+    m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "alt+f".to_string());
     m.insert(ACTION_FIND.to_string(), "ctrl+f".to_string());
     m.insert(ACTION_TOGGLE_SIDEBAR.to_string(), "ctrl+b".to_string());
     m.insert(ACTION_PROFILE_MENU.to_string(), "ctrl+alt+t".to_string());
