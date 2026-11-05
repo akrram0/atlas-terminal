@@ -4,6 +4,7 @@ use gpui::{
     IntoElement, MouseButton, MouseDownEvent, MouseUpEvent, Rgba,
 };
 use crate::icons;
+use crate::motion::Motion;
 use crate::theme::Theme;
 use crate::workspace::{format_tab_title, session_icon};
 use super::AtlasView;
@@ -467,8 +468,10 @@ impl AtlasView {
                 tab_row = tab_row
                     .bg(tb.card_hover)
                     .border_color(tb.accent)
-                    .shadow_lg()
-                    .opacity(0.92)
+                    .border_2()
+                    .shadow_xl()
+                    .relative()
+                    .left(px(4.0))
                     .cursor_grabbing();
             } else {
                 tab_row = tab_row.cursor_pointer();
@@ -581,7 +584,12 @@ impl AtlasView {
                 );
             }
 
-            tab_list = tab_list.child(tab_row);
+            let row_element = if is_dragged {
+                tab_row.breathe(ElementId::named_usize("sidebar-drag-pulse", tab.id as usize)).into_any_element()
+            } else {
+                tab_row.pop_in(ElementId::named_usize("sidebar-tab-pop", tab.id as usize)).into_any_element()
+            };
+            tab_list = tab_list.child(row_element);
         }
 
         // Footer with Settings item

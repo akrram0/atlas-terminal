@@ -1,17 +1,16 @@
 //! Top tab bar rendering: launch capsule, horizontal tab pills, settings pill, update badge, and window controls.
 
-use std::time::Duration;
-
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, ClickEvent, Context, ElementId, FontWeight,
+    ClickEvent, Context, ElementId, FontWeight,
     MouseButton, MouseDownEvent, MouseUpEvent, Rgba,
     div, px, relative, rgb, rgba,
 };
 
 use crate::icons;
+use crate::motion::Motion;
 use crate::theme::Theme;
-use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, EASE_OUT};
+use crate::ui::animation::EASE_OUT;
 use crate::ui::overlay::{
     caption_spacer, set_hover_mark,
     HOVER_MARK_CAPSULE_CHEVRON, HOVER_MARK_CAPSULE_PLUS, HOVER_MARK_WINDOW,
@@ -237,8 +236,10 @@ impl AtlasView {
                 pill = pill
                     .bg(tb.card_hover)
                     .border_color(tb.accent)
-                    .shadow_lg()
-                    .opacity(0.92)
+                    .border_2()
+                    .shadow_xl()
+                    .relative()
+                    .top(px(-3.0))
                     .cursor_grabbing();
             } else {
                 pill = pill.cursor_pointer();
@@ -344,11 +345,12 @@ impl AtlasView {
                         })),
                 );
             }
-            bar = bar.child(pill.with_animation(
-                ElementId::named_usize("tab-pill-in", tab.id as usize),
-                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
-                |el, delta| el.opacity(delta),
-            ));
+            let tab_element = if is_dragged {
+                pill.breathe(ElementId::named_usize("tab-drag-pulse", tab.id as usize)).into_any_element()
+            } else {
+                pill.pop_in(ElementId::named_usize("tab-pill-pop", tab.id as usize)).into_any_element()
+            };
+            bar = bar.child(tab_element);
         }
 
         // Settings tab pill: stays mounted on the tab bar until the user explicitly closes it.
@@ -452,7 +454,7 @@ impl AtlasView {
                         })),
                 );
 
-            bar = bar.child(settings_pill);
+            bar = bar.child(settings_pill.slide_in_right("settings-tab-pill-motion"));
         }
 
         bar = bar.child(caption_spacer(0));
@@ -518,7 +520,7 @@ impl AtlasView {
                     }
                 }));
 
-            bar = bar.child(badge);
+            bar = bar.child(badge.breathe("topbar-update-badge-breathe"));
         } else if self.is_checking_updates {
             bar = bar.child(
                 div()
@@ -530,7 +532,8 @@ impl AtlasView {
                     .rounded(px(6.0))
                     .text_color(tb.faint_fg)
                     .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb.faint_fg))
-                    .child(div().text_size(px(12.0)).child("Checking...")),
+                    .child(div().text_size(px(12.0)).child("Checking..."))
+                    .breathe("topbar-checking-breathe"),
             );
         }
 

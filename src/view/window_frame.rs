@@ -7,6 +7,7 @@ use gpui::{
 };
 
 use crate::icons;
+use crate::motion::Motion;
 use crate::theme::Theme;
 use crate::workspace::{format_tab_title, session_icon};
 use super::{AtlasView, UpdateDownloadState};
@@ -339,7 +340,7 @@ impl AtlasView {
             .flex()
             .flex_col()
             .items_center()
-            .child(hud)
+            .child(hud.pop_in("dynamic-island-hud-motion"))
             .into_any_element()
     }
 }

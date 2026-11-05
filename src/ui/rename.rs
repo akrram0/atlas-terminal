@@ -1,17 +1,15 @@
 //! Tab rename dialog popover.
 
-use std::time::Duration;
-
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, Context, ElementId, FontWeight, IntoElement,
+    AnyElement, Context, ElementId, FontWeight, IntoElement,
     KeyDownEvent, Keystroke, Window, div, px,
 };
 
+use crate::motion::Motion;
 use crate::theme::Theme;
 use crate::view::AtlasView;
 use crate::workspace::{profile_title, tab_name};
-use super::animation::{ease_apple_snappy, OVERLAY_IN_MS};
 
 impl AtlasView {
     pub fn open_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -139,12 +137,8 @@ impl AtlasView {
                             .text_size(px(12.0))
                             .text_color(theme.faint_fg)
                             .child("Enter to apply · Esc to cancel · empty restores the shell name"),
-                    ),
-            )
-            .with_animation(
-                ElementId::named_usize("rename-anim", 0),
-                Animation::new(Duration::from_millis(OVERLAY_IN_MS)).with_easing(ease_apple_snappy),
-                |el, delta| el.opacity(delta).top(px(120.0 - 8.0 * (1.0 - delta))),
+                    )
+                    .pop_in("rename-panel-motion"),
             )
             .into_any_element()
     }

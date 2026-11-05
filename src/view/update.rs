@@ -5,6 +5,7 @@ use std::time::Duration;
 use gpui::*;
 
 use crate::icons;
+use crate::motion::Motion;
 use crate::theme::Theme;
 use crate::ui::animation::OVERLAY_OUT_MS;
 use crate::updater;
@@ -174,7 +175,7 @@ impl AtlasView {
             .flex_row()
             .justify_center()
             .items_center()
-            .child(pill)
+            .child(pill.pop_in("update-toast-pill-motion"))
             .into_any_element()
     }
 

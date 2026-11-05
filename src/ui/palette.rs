@@ -10,6 +10,7 @@ use gpui::{
 
 use crate::config::SettingsTab;
 use crate::icons;
+use crate::motion::Motion;
 use crate::session::Profile;
 use crate::theme::Theme;
 use crate::view::AtlasView;
@@ -613,7 +614,7 @@ impl AtlasView {
                     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                         view.run_palette_action(action.clone(), window, cx);
                     }));
-                list = list.child(row);
+                list = list.child(row.stagger_in(ElementId::named_usize("palette-cmd-stagger", index), index));
             }
         }
 

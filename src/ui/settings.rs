@@ -2,12 +2,10 @@
 //! Designed with macOS / Apple SF design language, pixel-perfect metric geometry,
 //! and native vector controls.
 
-use std::time::Duration;
-
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontWeight,
+    AnyElement, ClickEvent, Context, ElementId, FontWeight,
     IntoElement, KeyDownEvent, Rgba, div, px, relative, rgb, rgba,
 };
 
@@ -24,9 +22,9 @@ use crate::config::{
     ACTION_NEW_TAB_GITBASH, ACTION_NEW_TAB_OPENCODE,
 };
 use crate::icons;
+use crate::motion::Motion;
 use crate::theme::Theme;
 use crate::view::AtlasView;
-use super::animation::{ease_apple_snappy, BODY_IN_MS};
 use super::controls::{pill_button, segmented_control, stepper, toggle_pill};
 
 impl AtlasView {
@@ -257,7 +255,8 @@ impl AtlasView {
                         view.settings_scroll_target = 0.0;
                         view.settings_scroll_handle.set_offset(gpui::Point::default());
                         cx.notify();
-                    })),
+                    }))
+                    .stagger_in(ElementId::named_usize("settings-nav-stagger", nav_idx), nav_idx),
             );
         }
 
@@ -1429,11 +1428,7 @@ impl AtlasView {
                 SettingsTab::Appearance => appearance_view.into_any_element(),
                 SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
             })
-            .with_animation(
-                ElementId::named_usize("settings-tab-pane", self.settings_tab as usize),
-                Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
-                |el, delta| el.opacity(delta),
-            )
+            .slide_up(ElementId::named_usize("settings-tab-pane", self.settings_tab as usize))
             .into_any_element();
 
         let content_header = div()
@@ -1554,6 +1549,7 @@ impl AtlasView {
             }))
             .child(sidebar)
             .child(right_pane)
+            .fade_in("settings-root-motion")
             .into_any_element()
     }
 }
