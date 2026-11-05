@@ -232,9 +232,16 @@ impl AtlasView {
                 .border_color(pill_border)
                 .text_color(pill_fg);
 
-            let is_dragged = self.tab_drag_origin == Some(ix);
+            let is_dragged = self.tab_is_dragging && self.tab_drag_origin == Some(ix);
             if is_dragged {
-                pill = pill.opacity(0.80).shadow_md();
+                pill = pill
+                    .bg(tb.card_hover)
+                    .border_color(tb.accent)
+                    .shadow_lg()
+                    .opacity(0.92)
+                    .cursor_grabbing();
+            } else {
+                pill = pill.cursor_pointer();
             }
 
             if !tab.closing {
@@ -242,7 +249,7 @@ impl AtlasView {
                     .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
                     .active(move |style| style.opacity(0.82))
                     .on_hover(cx.listener(move |view, hovered: &bool, _window, cx| {
-                        if *hovered {
+                        if *hovered && view.tab_is_dragging {
                             if let Some(source_ix) = view.tab_drag_origin {
                                 if source_ix != ix {
                                     view.reorder_tab(source_ix, ix, cx);
@@ -259,16 +266,19 @@ impl AtlasView {
                     }))
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(move |view, _: &MouseDownEvent, _window, cx| {
-                            view.tab_drag_origin = Some(ix);
-                            cx.notify();
+                        cx.listener(move |view, event: &MouseDownEvent, _window, _cx| {
+                            view.tab_drag_candidate = Some((ix, f32::from(event.position.x), f32::from(event.position.y)));
+                            view.tab_is_dragging = false;
                         }),
                     )
                     .on_mouse_up(
                         MouseButton::Left,
                         cx.listener(|view, _: &MouseUpEvent, _window, cx| {
-                            if view.tab_drag_origin.is_some() {
-                                view.tab_drag_origin = None;
+                            let had_drag = view.tab_drag_candidate.is_some() || view.tab_is_dragging || view.tab_drag_origin.is_some();
+                            view.tab_drag_candidate = None;
+                            view.tab_is_dragging = false;
+                            view.tab_drag_origin = None;
+                            if had_drag {
                                 cx.notify();
                             }
                         }),
@@ -281,10 +291,12 @@ impl AtlasView {
                         }),
                     )
                     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                        view.active = ix;
-                        view.settings_open = false;
-                        window.focus(&view.focus);
-                        cx.notify();
+                        if !view.tab_is_dragging {
+                            view.active = ix;
+                            view.settings_open = false;
+                            window.focus(&view.focus);
+                            cx.notify();
+                        }
                     }));
             }
 

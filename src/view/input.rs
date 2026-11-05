@@ -421,6 +421,17 @@ impl AtlasView {
             return;
         }
 
+        // When search is active, route all keystrokes exclusively to the search handler.
+        // Prevent any typed characters from leaking into the underlying shell PTY.
+        if self.search_open {
+            if modifiers.control && (key == "f" || key == "F") {
+                self.close_search(window, cx);
+                return;
+            }
+            self.handle_search_key(ks, window, cx);
+            return;
+        }
+
         // Clear hovered link if control is released
         if self.hovered_link.is_some() && !modifiers.control {
             self.hovered_link = None;

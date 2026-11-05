@@ -139,6 +139,10 @@ pub struct AtlasView {
     pub(crate) hover_tab: Option<usize>,
     /// Tab being dragged with the mouse to reorder slots.
     pub(crate) tab_drag_origin: Option<usize>,
+    /// Mouse-down candidate for tab drag: (tab_index, mouse_x, mouse_y).
+    pub(crate) tab_drag_candidate: Option<(usize, f32, f32)>,
+    /// Whether mouse has exceeded the drag threshold distance (8px).
+    pub(crate) tab_is_dragging: bool,
     /// Geometric chrome mark under the pointer (new-tab plus, pane actions).
     /// Painted quads can't inherit hover text colour, so the view tracks it.
     pub(crate) hover_mark: Option<u64>,
@@ -299,6 +303,8 @@ impl AtlasView {
             last_island_hud_time: std::time::Instant::now().checked_sub(std::time::Duration::from_secs(10)).unwrap_or_else(std::time::Instant::now),
             hover_tab: None,
             tab_drag_origin: None,
+            tab_drag_candidate: None,
+            tab_is_dragging: false,
             hover_mark: None,
             updater_settings: UpdaterSettings {
                 auto_check_updates: app_settings.auto_check_updates,
@@ -1254,6 +1260,16 @@ impl Render for AtlasView {
                 }),
             )
             .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
+                if let Some((cand_ix, start_x, start_y)) = view.tab_drag_candidate {
+                    let dx = f32::from(event.position.x) - start_x;
+                    let dy = f32::from(event.position.y) - start_y;
+                    let dist = (dx * dx + dy * dy).sqrt();
+                    if dist >= 8.0 && !view.tab_is_dragging {
+                        view.tab_is_dragging = true;
+                        view.tab_drag_origin = Some(cand_ix);
+                        cx.notify();
+                    }
+                }
                 if let Some((split_id, axis, start_coord, start_ratio)) = view.active_split_resize {
                     let current_coord = match axis {
                         crate::tiling::SplitAxis::Columns => f32::from(event.position.x),
@@ -1274,8 +1290,14 @@ impl Render for AtlasView {
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|view, _: &MouseUpEvent, _window, cx| {
+                    let had_drag = view.tab_drag_candidate.is_some() || view.tab_is_dragging || view.tab_drag_origin.is_some();
+                    view.tab_drag_candidate = None;
+                    view.tab_is_dragging = false;
+                    view.tab_drag_origin = None;
                     if view.active_split_resize.is_some() {
                         view.active_split_resize = None;
+                    }
+                    if had_drag {
                         cx.notify();
                     }
                 }),

@@ -16,11 +16,12 @@ pub enum CharClass {
 pub fn char_class(c: char) -> CharClass {
     let u = c as u32;
     match u {
+        // Block elements and procedural box-drawing pieces: must be evaluated
+        // before standard Latin ranges so technical lines (e.g. 0x23B8) and
+        // box characters are always painted procedurally seam-free.
+        _ if is_procedural(c) => CharClass::Block,
         // Private use areas: Nerd Font icons, Powerline separators, …
         0xE000..=0xF8FF | 0xF0000..=0x10FFFD => CharClass::Icon,
-        // Block elements and the box-drawing pieces this renderer draws
-        // itself: font glyphs there leave hairline seams between cells.
-        0x2500..=0x259F if is_procedural(c) => CharClass::Block,
         // Latin-ish ranges the terminal font covers: keep runs long.
         0x20..=0x24FF => CharClass::Text,
         // Emoji, CJK, exotic scripts, and non-procedural symbols: shape in
@@ -59,6 +60,7 @@ pub fn is_procedural(c: char) -> bool {
             | 0x253C
             | 0x254B
             | 0x256D..=0x2570
+            | 0x23B8..=0x23B9
     )
 }
 
@@ -234,6 +236,15 @@ pub fn procedural_cell(
         0x2595 => {
             let w = (cw / 8.0).floor().max(1.0);
             rects.push((cw - w, 0.0, cw, lh));
+            1.0
+        }
+        // Technical left and right vertical line pieces (⎸, ⎹)
+        0x23B8 => {
+            rects.push((0.0, 0.0, light, lh));
+            1.0
+        }
+        0x23B9 => {
+            rects.push((cw - light, 0.0, cw, lh));
             1.0
         }
         // Quadrants: every combination of upper/lower × left/right halves.

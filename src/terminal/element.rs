@@ -552,7 +552,7 @@ impl Element for TerminalElement {
         }
 
         // Smooth kinetic cursor with organic breathing alpha
-        let avail_h = (f32::from(bounds.size.height) - Self::PAD_Y * 2.0).max(cell_height);
+        let avail_h = (f32::from(bounds.size.height) - pad_y * 2.0).max(cell_height);
         let max_rows = (avail_h / cell_height).floor().max(1.0) as usize;
 
         if let Some((target_row, target_col)) = cursor_cell.filter(|_| self.cursor_on) {
@@ -777,8 +777,9 @@ impl Element for TerminalElement {
 
         // --------------------------------------------------------------------
         // Floating auto-hiding scrollbar indicator (Apple/macOS style)
+        // Suppressed in TUI / alt-screen mode so it never defaces full-screen TUI apps.
         // --------------------------------------------------------------------
-        if self.scrollbar_opacity > 0.01 {
+        if self.scrollbar_opacity > 0.01 && !is_alt_screen {
             let (history, offset) = {
                 let session = self.session.borrow();
                 (session.term.history_size(), session.term.renderable_content().display_offset)
