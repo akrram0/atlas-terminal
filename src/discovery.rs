@@ -13,7 +13,7 @@ use crate::session::Profile;
 use crate::wsl;
 
 /// Version marker for `profile.json` schema.
-pub const PROFILE_SCHEMA_VERSION: u32 = 1;
+pub const PROFILE_SCHEMA_VERSION: u32 = 2;
 
 /// User profile and detected environment state persisted in `%APPDATA%\AtlasTerminal\profile.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,10 +153,11 @@ impl UserProfile {
         let path = profile_path();
         if let Ok(content) = std::fs::read_to_string(&path) {
             if let Ok(mut profile) = serde_json::from_str::<UserProfile>(&content) {
-                // Ensure default shells are populated if the file was empty
-                if profile.shells.is_empty() {
+                // Ensure default shells and tools are populated if older schema or empty
+                if profile.schema_version < PROFILE_SCHEMA_VERSION || profile.shells.is_empty() {
                     let env = scan_environment_sync();
                     profile.reconcile(env);
+                    profile.schema_version = PROFILE_SCHEMA_VERSION;
                     profile.save();
                 }
                 return profile;
@@ -358,6 +359,17 @@ impl UserProfile {
                 }
                 (profile.clone(), None)
             }
+            Profile::Antigravity => {
+                let found = find_tool_in_system("agy").or_else(|| find_tool_in_system("antigravity"));
+                if found.is_none() {
+                    self.tools.retain(|t| t.name != "agy" && t.name != "antigravity");
+                    self.save();
+                    let msg = "Antigravity CLI is not installed. Falling back to PowerShell.".to_string();
+                    let fallback = self.fallback_profile();
+                    return (fallback, Some(msg));
+                }
+                (profile.clone(), None)
+            }
             Profile::CustomTool { name, path } => {
                 if !Path::new(path).is_file() {
                     self.tools.retain(|t| t.name != *name);
@@ -481,6 +493,7 @@ fn detect_wsl_distros() -> Vec<DiscoveredWsl> {
 /// Detect developer tools and AI CLI agents by fast file existence checks.
 fn detect_tools() -> Vec<DiscoveredTool> {
     let targets = [
+        ("agy", "Antigravity", icons::ANTIGRAVITY_MARK),
         ("opencode", "OpenCode", icons::OPENCODE_MARK),
         ("claude", "Claude Code", icons::CLAUDE_MARK),
         ("fastfetch", "Fastfetch", icons::TERMINAL),
@@ -495,7 +508,12 @@ fn detect_tools() -> Vec<DiscoveredTool> {
 
     let mut discovered = Vec::new();
     for (name, title, icon) in targets {
-        if let Some(path) = find_tool_in_system(name) {
+        let path = if name == "agy" {
+            find_tool_in_system("agy").or_else(|| find_tool_in_system("antigravity"))
+        } else {
+            find_tool_in_system(name)
+        };
+        if let Some(path) = path {
             discovered.push(DiscoveredTool {
                 name: name.to_string(),
                 title: title.to_string(),
@@ -582,10 +600,14 @@ pub fn find_tool_in_system(tool_name: &str) -> Option<String> {
     let mut explicit_dirs = Vec::new();
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
         let local_path = PathBuf::from(local);
+        explicit_dirs.push(local_path.join("agy").join("bin"));
         explicit_dirs.push(local_path.join("pnpm").join("bin"));
         explicit_dirs.push(local_path.join("pnpm"));
         explicit_dirs.push(local_path.join("Microsoft").join("WinGet").join("Links"));
         explicit_dirs.push(local_path.join("Programs").join(tool_name));
+        explicit_dirs.push(local_path.join("Programs").join(tool_name).join("bin"));
+        explicit_dirs.push(local_path.join("Programs").join("Antigravity"));
+        explicit_dirs.push(local_path.join("Programs").join("Antigravity").join("bin"));
     }
     if let Some(appdata) = std::env::var_os("APPDATA") {
         explicit_dirs.push(PathBuf::from(appdata).join("npm"));
@@ -744,6 +766,35 @@ mod tests {
         });
         assert!(tool_warning.is_some());
         assert_eq!(tool_fallback, Profile::PowerShell);
+
+        // Request Antigravity fallback when not found
+        let (agy_fallback, agy_warning) = profile.verify_or_fallback(&Profile::Antigravity);
+        // On this machine, agy is installed, so agy_fallback is Profile::Antigravity or PowerShell
+        if agy_warning.is_some() {
+            assert_eq!(agy_fallback, Profile::PowerShell);
+        } else {
+            assert_eq!(agy_fallback, Profile::Antigravity);
+        }
+    }
+
+    #[test]
+    fn test_antigravity_profile_mapping() {
+        assert_eq!(Profile::from_name("agy"), Profile::Antigravity);
+        assert_eq!(Profile::from_name("antigravity"), Profile::Antigravity);
+        assert_eq!(Profile::Antigravity.as_str(), "antigravity");
+        assert_eq!(Profile::Antigravity.to_serialized_id(), "antigravity");
+    }
+
+    #[test]
+    fn test_antigravity_tool_detection() {
+        if Path::new(r"C:\Users\Neweye\AppData\Local\agy\bin\agy.exe").is_file() {
+            let tools = detect_tools();
+            let agy = tools.iter().find(|t| t.name == "agy");
+            assert!(agy.is_some(), "detect_tools must detect agy when installed at %LOCALAPPDATA%\\agy\\bin");
+            let agy = agy.unwrap();
+            assert_eq!(agy.title, "Antigravity");
+            assert_eq!(agy.icon, icons::ANTIGRAVITY_MARK);
+        }
     }
 
     #[test]

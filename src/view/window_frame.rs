@@ -9,7 +9,7 @@ use gpui::{
 use crate::icons;
 use crate::motion::Motion;
 use crate::theme::Theme;
-use crate::workspace::{format_tab_title, session_icon};
+use crate::workspace::{format_tab_title, session_icon_for_pane};
 use super::{AtlasView, UpdateDownloadState};
 
 impl AtlasView {
@@ -30,7 +30,7 @@ impl AtlasView {
         let active_tab_ix = self.active;
         let total_tabs = self.tabs.len();
         let active_pane = self.tabs.get(active_tab_ix).and_then(|t| t.panes.get(t.active_pane));
-        let shell_icon = active_pane.map(|p| session_icon(&p.title, &p.profile)).unwrap_or(icons::TERMINAL);
+        let shell_icon = active_pane.map(session_icon_for_pane).unwrap_or(icons::TERMINAL);
         let active_title = if let Some(tab) = self.tabs.get(active_tab_ix) {
             if let Some(pane) = tab.panes.get(tab.active_pane) {
                 tab.custom_title.clone().unwrap_or_else(|| format_tab_title(pane))

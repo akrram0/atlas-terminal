@@ -117,11 +117,13 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
     let mut tool_items: Vec<(String, Profile, &'static str)> = Vec::new();
     for t in &view.user_profile.tools {
         let prof = match t.name.as_str() {
+            "agy" | "antigravity" => Profile::Antigravity,
             "opencode" => Profile::OpenCode,
             "claude" => Profile::Claude,
             _ => Profile::CustomTool { name: t.title.clone(), path: t.path.clone() },
         };
         let icon = match t.name.as_str() {
+            "agy" | "antigravity" => icons::ANTIGRAVITY_MARK,
             "opencode" => icons::OPENCODE_MARK,
             "claude" => icons::CLAUDE_MARK,
             "lazygit" => icons::GIT,

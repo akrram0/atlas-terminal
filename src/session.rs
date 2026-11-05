@@ -90,6 +90,8 @@ pub enum Profile {
     OpenCode,
     /// Claude Code CLI session.
     Claude,
+    /// Antigravity CLI session.
+    Antigravity,
     /// Custom tool session.
     CustomTool { name: String, path: String },
 }
@@ -104,6 +106,7 @@ impl Profile {
             Profile::GitBash => "gitbash",
             Profile::OpenCode => "opencode",
             Profile::Claude => "claude",
+            Profile::Antigravity => "antigravity",
             Profile::CustomTool { .. } => "tool",
         }
     }
@@ -118,6 +121,7 @@ impl Profile {
             Profile::GitBash => "gitbash".to_string(),
             Profile::OpenCode => "opencode".to_string(),
             Profile::Claude => "claude".to_string(),
+            Profile::Antigravity => "antigravity".to_string(),
             Profile::CustomTool { name, .. } => format!("tool:{name}"),
         }
     }
@@ -133,6 +137,7 @@ impl Profile {
             "gitbash" | "git bash" | "bash" => Profile::GitBash,
             "opencode" => Profile::OpenCode,
             "claude" | "claude code" => Profile::Claude,
+            "agy" | "antigravity" => Profile::Antigravity,
             other => {
                 if crate::wsl::is_known_distro(other) {
                     Profile::WslDistro(other.to_string())
@@ -406,6 +411,11 @@ impl Session {
         if matches!(profile, Profile::Claude) {
             claude_path = crate::discovery::find_tool_in_system("claude");
         }
+        let mut agy_path = None;
+        if matches!(profile, Profile::Antigravity) {
+            agy_path = crate::discovery::find_tool_in_system("agy")
+                .or_else(|| crate::discovery::find_tool_in_system("antigravity"));
+        }
 
         let candidates_vec: Vec<String> = match &profile {
             Profile::PowerShell | Profile::Pwsh => vec!["pwsh".into(), "powershell.exe".into()],
@@ -439,6 +449,20 @@ impl Session {
                     }
                 }
                 v.push("claude.exe".into());
+                v.push("cmd.exe".into());
+                v
+            }
+            Profile::Antigravity => {
+                let mut v = Vec::new();
+                if let Some(ref path) = agy_path {
+                    if path.ends_with(".cmd") || path.ends_with(".bat") {
+                        v.push("cmd.exe".into());
+                    } else {
+                        v.push(path.clone());
+                    }
+                }
+                v.push("agy.exe".into());
+                v.push("antigravity.exe".into());
                 v.push("cmd.exe".into());
                 v
             }
@@ -514,6 +538,16 @@ impl Session {
                             cmd.arg(path);
                         } else {
                             cmd.arg("claude");
+                        }
+                    }
+                }
+                Profile::Antigravity => {
+                    if shell == "cmd.exe" {
+                        cmd.arg("/k");
+                        if let Some(ref path) = agy_path {
+                            cmd.arg(path);
+                        } else {
+                            cmd.arg("agy");
                         }
                     }
                 }

@@ -14,7 +14,7 @@ use crate::config::{
     ACTION_SCROLL_TO_BOTTOM, ACTION_SCROLL_TO_TOP, ACTION_SELECT_ALL, ACTION_SPLIT_HORIZONTAL,
     ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR, ACTION_TOGGLE_THEME, ACTION_ZOOM_IN,
     ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_PROFILE_MENU, ACTION_NEW_TAB_WSL, ACTION_NEW_TAB_POWERSHELL,
-    ACTION_NEW_TAB_CMD, ACTION_NEW_TAB_GITBASH, ACTION_NEW_TAB_OPENCODE,
+    ACTION_NEW_TAB_CMD, ACTION_NEW_TAB_GITBASH, ACTION_NEW_TAB_OPENCODE, ACTION_NEW_TAB_ANTIGRAVITY,
 };
 use crate::keymap;
 use crate::session::Profile;
@@ -740,6 +740,17 @@ impl AtlasView {
                     || (modifiers.control && modifiers.shift && (key == "5" || key == "%"))
                 {
                     self.new_tab(Profile::OpenCode, cx);
+                    self.trigger_island_hud(cx);
+                    self.focus_main(window);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_NEW_TAB_ANTIGRAVITY)
+                    || chord == "ctrl+shift+6"
+                    || chord == "ctrl+shift+^"
+                    || chord == "ctrl+alt+6"
+                    || (modifiers.control && modifiers.shift && (key == "6" || key == "^"))
+                {
+                    self.new_tab(Profile::Antigravity, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;

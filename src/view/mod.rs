@@ -736,25 +736,53 @@ impl AtlasView {
         });
         motion_ticker.detach();
 
-        // Working-directory poll: reads each live shell's PEB every 1.5 s so
-        // the pane title can track `cd` like a real terminal. Repaints only
-        // when a path actually changed.
+        // Background poll for working directory (PEB) and active foreground processes (Toolhelp32).
+        // Polls every 400 ms so tab titles and brand icons update instantly when commands run or exit.
         let cwd_poll = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor()
-                    .timer(std::time::Duration::from_millis(800))
+                    .timer(std::time::Duration::from_millis(400))
                     .await;
                 if this
                     .update(cx, |view, cx| {
+                        let mut pids = Vec::new();
+                        for tab in &view.tabs {
+                            for pane in &tab.panes {
+                                if !pane.exited {
+                                    if let Some(pid) = pane.session.borrow().pid {
+                                        pids.push(pid);
+                                    }
+                                }
+                            }
+                        }
+
+                        let fg_map = if !pids.is_empty() {
+                            crate::process::get_foreground_processes(&pids)
+                        } else {
+                            std::collections::HashMap::new()
+                        };
+
                         let mut changed = false;
                         for tab in &mut view.tabs {
                             for pane in &mut tab.panes {
                                 if pane.exited {
                                     continue;
                                 }
-                                let Some(cwd) =
-                                    pane.session.borrow().pid.and_then(crate::cwd::process_cwd)
-                                else {
+
+                                let pid_opt = pane.session.borrow().pid;
+                                if let Some(pid) = pid_opt {
+                                    let fg = fg_map.get(&pid);
+                                    let new_cmd = fg.map(|f| f.display_name.clone());
+                                    let new_icon = fg.map(|f| f.icon);
+
+                                    if pane.running_cmd != new_cmd || pane.running_icon != new_icon {
+                                        pane.running_cmd = new_cmd;
+                                        pane.running_icon = new_icon;
+                                        changed = true;
+                                    }
+                                }
+
+                                let Some(cwd) = pid_opt.and_then(crate::cwd::process_cwd) else {
                                     continue;
                                 };
                                 if pane.cwd.as_deref() != Some(cwd.as_path()) {

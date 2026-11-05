@@ -39,6 +39,8 @@ pub struct Pane {
     pub cmd_start: Option<std::time::Instant>,
     /// Name/title of the currently running foreground command.
     pub running_cmd: Option<String>,
+    /// Brand icon of the currently running foreground command.
+    pub running_icon: Option<&'static str>,
 }
 
 pub struct Tab {
@@ -210,7 +212,11 @@ pub fn format_path_condensed(raw_path: &str) -> String {
 
 pub fn format_tab_title(pane: &Pane) -> String {
     let p_name = profile_title(&pane.profile);
-    let cmd = tab_name(&pane.title, "");
+    let cmd = if let Some(ref running) = pane.running_cmd {
+        running.clone()
+    } else {
+        tab_name(&pane.title, "")
+    };
     let path = if matches!(pane.profile, Profile::Wsl | Profile::WslDistro(_)) {
         title_path(&pane.title).or_else(|| pane.cwd.as_ref().map(|d| d.display().to_string()))
     } else {
@@ -239,6 +245,28 @@ pub fn format_tab_title(pane: &Pane) -> String {
     }
 }
 
+/// Dynamic process brand mark for a pane, taking active foreground process into account.
+pub fn session_icon_for_pane(pane: &Pane) -> &'static str {
+    if let Some(icon) = pane.running_icon {
+        return icon;
+    }
+    if let Some(ref cmd) = pane.running_cmd {
+        let lower = cmd.to_ascii_lowercase();
+        if lower.contains("antigravity") || lower.contains("agy") {
+            return icons::ANTIGRAVITY_MARK;
+        } else if lower.contains("claude") {
+            return icons::CLAUDE_MARK;
+        } else if lower.contains("opencode") || lower.contains("open-code") {
+            return icons::OPENCODE_MARK;
+        } else if lower.contains("cursor") {
+            return icons::CURSOR_MARK;
+        } else if lower.contains("lazygit") || lower.contains("git") {
+            return icons::GIT;
+        }
+    }
+    session_icon(&pane.title, &pane.profile)
+}
+
 /// Process mark for a tab, keyed off the shell-reported title (OSC 0/2) and profile:
 /// Matches PowerShell, Ubuntu/WSL, CMD, Git Bash, OpenCode, Claude, Cursor, Antigravity.
 /// Never falls back to a folder icon.
@@ -248,7 +276,7 @@ pub fn session_icon(title: &str, profile: &Profile) -> &'static str {
         icons::CLAUDE_MARK
     } else if lower.contains("cursor") {
         icons::CURSOR_MARK
-    } else if lower.contains("antigravity") || lower.contains("agy") {
+    } else if lower.contains("antigravity") || lower.contains("agy") || matches!(profile, Profile::Antigravity) {
         icons::ANTIGRAVITY_MARK
     } else if matches!(profile, Profile::OpenCode)
         || lower.contains("opencode")
@@ -303,6 +331,7 @@ pub fn profile_title(profile: &Profile) -> String {
         Profile::GitBash => "Git Bash".to_string(),
         Profile::OpenCode => "OpenCode".to_string(),
         Profile::Claude => "Claude Code".to_string(),
+        Profile::Antigravity => "Antigravity".to_string(),
         Profile::CustomTool { name, .. } => name.clone(),
     }
 }

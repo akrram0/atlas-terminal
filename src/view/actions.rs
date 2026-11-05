@@ -137,6 +137,7 @@ impl AtlasView {
                         closing: false,
                         cmd_start: None,
                         running_cmd: None,
+                        running_icon: None,
                     }],
                     active_pane: 0,
                     axis: SplitAxis::Columns,
@@ -382,6 +383,7 @@ impl AtlasView {
                         closing: false,
                         cmd_start: None,
                         running_cmd: None,
+                        running_icon: None,
                     });
                     tab.tile_tree.split(target_pane, new_pane_ix, axis);
                     tab.active_pane = new_pane_ix;
@@ -984,6 +986,7 @@ impl AtlasView {
                             closing: false,
                             cmd_start: None,
                             running_cmd: None,
+                            running_icon: None,
                         });
                         Self::watch(epoch, session, rx, cx);
                     }

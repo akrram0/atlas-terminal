@@ -28,6 +28,7 @@ pub enum Command {
     NewTabCmd,
     NewTabGitBash,
     NewTabOpenCode,
+    NewTabAntigravity,
     SplitPane,
     SplitPaneDown,
     SplitPaneWsl,
@@ -72,7 +73,7 @@ pub enum PaletteAction {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 36] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 37] = [
     (Command::NewWindow, icons::WINDOW_MAXIMIZE, "New window", "Ctrl Shift N"),
     (Command::ToggleSidebar, icons::SIDEBAR_LEFT, "Toggle Sidebar / Tab Bar", "Ctrl B"),
     (Command::FindInTerminal, icons::SEARCH, "Find in terminal...", "Ctrl F"),
@@ -81,6 +82,7 @@ pub const COMMANDS: [(Command, &str, &str, &str); 36] = [
     (Command::NewTabCmd, icons::CMD, "New Command Prompt tab", "Ctrl Shift 3"),
     (Command::NewTabGitBash, icons::GIT, "New Git Bash tab", "Ctrl Shift 4"),
     (Command::NewTabOpenCode, icons::OPENCODE_MARK, "New OpenCode tab", "Ctrl Shift 5"),
+    (Command::NewTabAntigravity, icons::ANTIGRAVITY_MARK, "New Antigravity tab", "Ctrl Shift 6"),
     (Command::SplitPane, icons::SPLIT_COLUMNS, "Split pane right (columns)", "Alt Enter"),
     (Command::SplitPaneDown, icons::SPLIT_ROWS, "Split pane down (rows)", "Alt D"),
     (Command::SplitPaneWsl, icons::SPLIT_COLUMNS, "Split pane right with WSL", ""),
@@ -276,6 +278,7 @@ impl AtlasView {
         // Add detected AI & developer tools
         for t in &self.user_profile.tools {
             let (prof, icon) = match t.name.as_str() {
+                "agy" | "antigravity" => (Profile::Antigravity, icons::ANTIGRAVITY_MARK),
                 "opencode" => (Profile::OpenCode, icons::OPENCODE_MARK),
                 "claude" => (Profile::Claude, icons::CLAUDE_MARK),
                 "lazygit" => (Profile::CustomTool { name: t.title.clone(), path: t.path.clone() }, icons::GIT),
@@ -430,6 +433,10 @@ impl AtlasView {
             }
             Command::NewTabOpenCode => {
                 self.new_tab(Profile::OpenCode, cx);
+                window.focus(&self.focus);
+            }
+            Command::NewTabAntigravity => {
+                self.new_tab(Profile::Antigravity, cx);
                 window.focus(&self.focus);
             }
             Command::SplitPane => {

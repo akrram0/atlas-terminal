@@ -15,7 +15,7 @@ use crate::ui::overlay::{
     caption_spacer, set_hover_mark,
     HOVER_MARK_CAPSULE_CHEVRON, HOVER_MARK_CAPSULE_PLUS, HOVER_MARK_WINDOW,
 };
-use crate::workspace::{format_tab_title, session_icon};
+use crate::workspace::{format_tab_title, session_icon_for_pane};
 use super::{AtlasView, UpdateDownloadState};
 
 impl AtlasView {
@@ -183,7 +183,7 @@ impl AtlasView {
                 crate::rounded_corners::set_window_title(&win_title);
             }
             let icon = match pane {
-                Some(pane) => session_icon(&pane.title, &pane.profile),
+                Some(pane) => session_icon_for_pane(pane),
                 None => icons::TERMINAL,
             };
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {

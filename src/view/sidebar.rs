@@ -6,7 +6,7 @@ use gpui::{
 use crate::icons;
 use crate::motion::Motion;
 use crate::theme::Theme;
-use crate::workspace::{format_tab_title, session_icon};
+use crate::workspace::{format_tab_title, session_icon_for_pane};
 use super::AtlasView;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -131,7 +131,7 @@ impl AtlasView {
                 let tab = &self.tabs[ix];
                 let pane = tab.panes.get(tab.active_pane);
                 let icon = match pane {
-                    Some(pane) => session_icon(&pane.title, &pane.profile),
+                    Some(pane) => session_icon_for_pane(pane),
                     None => icons::TERMINAL,
                 };
 
@@ -427,7 +427,7 @@ impl AtlasView {
                 None => "Terminal".to_string(),
             };
             let icon = match pane {
-                Some(pane) => session_icon(&pane.title, &pane.profile),
+                Some(pane) => session_icon_for_pane(pane),
                 None => icons::TERMINAL,
             };
 
