@@ -28,6 +28,7 @@ use gpui::{
 
 use crate::config::{load_app_settings, AppSettingsFile, SettingsTab};
 use crate::icons;
+use crate::motion::Motion;
 use crate::session::Session;
 use crate::theme::{Theme, ThemeRegistry};
 use crate::ui::animation::{ease_apple_snappy, BODY_IN_MS, EASE_OUT};
@@ -1011,9 +1012,9 @@ impl Render for AtlasView {
             container.into_any_element()
         };
 
-        // Swap the body through a quick fade: the settings page slides in over
-        // the terminal, and the terminal fades back when settings closes (its
-        // element remounts, which restarts the animation).
+        // iPhone-style expand launch: when switching or creating tabs, expand outward
+        // from the center of tab borders with smooth size-up and corner morphing,
+        // rather than fading or rising from the bottom.
         let tab_body = div()
             .flex()
             .flex_col()
@@ -1022,11 +1023,7 @@ impl Render for AtlasView {
             .min_h(px(0.0))
             .overflow_hidden()
             .child(body)
-            .with_animation(
-                ElementId::named_usize("tab-motion", self.active),
-                Animation::new(Duration::from_millis(140)).with_easing(ease_apple_snappy),
-                |el, delta| el.opacity(0.85 + 0.15 * delta),
-            );
+            .ios_app_launch(ElementId::named_usize("tab-launch-expand", self.active));
 
         let body = div()
             .flex()

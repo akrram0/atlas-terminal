@@ -470,8 +470,6 @@ impl AtlasView {
                     .border_color(tb.accent)
                     .border_2()
                     .shadow_xl()
-                    .relative()
-                    .left(px(4.0))
                     .cursor_grabbing();
             } else {
                 tab_row = tab_row.cursor_pointer();
@@ -584,11 +582,13 @@ impl AtlasView {
                 );
             }
 
-            let row_element = if is_dragged {
-                tab_row.breathe(ElementId::named_usize("sidebar-drag-pulse", tab.id as usize)).into_any_element()
-            } else {
-                tab_row.pop_in(ElementId::named_usize("sidebar-tab-pop", tab.id as usize)).into_any_element()
-            };
+            let row_element = tab_row.uno_card_drag_vertical(
+                ElementId::named_usize(
+                    if is_dragged { "sidebar-uno-drag" } else { "sidebar-uno-settle" },
+                    tab.id as usize,
+                ),
+                is_dragged,
+            ).into_any_element();
             tab_list = tab_list.child(row_element);
         }
 

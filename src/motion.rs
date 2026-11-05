@@ -189,6 +189,61 @@ pub trait Motion: IntoElement + Styled + Sized + 'static {
         let id = SharedString::from(format!("{id}-{key}"));
         run(self, id, 550, 0, spring, move |el, t| el.w(px(from + (to - from) * t)))
     }
+
+    /// Uno card swipe motion for horizontal tabs:
+    /// - When dragged: lifts card by -4px and squeezes horizontal padding (like pulling a physical Uno card from hand).
+    /// - When unselected / dropped: smoothly springs back to normal resting dimensions with Apple-damped spring physics.
+    fn uno_card_drag(self, id: impl Into<ElementId>, is_dragged: bool) -> impl IntoElement {
+        let dur = if is_dragged { 140 } else { 300 };
+        let curve: fn(f32) -> f32 = if is_dragged { ease_out } else { spring };
+        run(self, id, dur, 0, curve, move |el, t| {
+            let (lift, pad) = if is_dragged {
+                (-4.0 * t, 12.0 - 5.0 * t)
+            } else {
+                (-4.0 * (1.0 - t), 7.0 + 5.0 * t)
+            };
+            el.relative().top(px(lift)).px(px(pad))
+        })
+    }
+
+    /// Vertical Uno card swipe motion for sidebar tabs:
+    /// - When dragged: pulls out to the right by +4px and squeezes vertical padding.
+    /// - When unselected / dropped: smoothly springs back into the vertical stack.
+    fn uno_card_drag_vertical(self, id: impl Into<ElementId>, is_dragged: bool) -> impl IntoElement {
+        let dur = if is_dragged { 140 } else { 300 };
+        let curve: fn(f32) -> f32 = if is_dragged { ease_out } else { spring };
+        run(self, id, dur, 0, curve, move |el, t| {
+            let (shift, pad_y) = if is_dragged {
+                (4.0 * t, 6.0 - 2.0 * t)
+            } else {
+                (4.0 * (1.0 - t), 4.0 + 2.0 * t)
+            };
+            el.relative().left(px(shift)).py(px(pad_y))
+        })
+    }
+
+    /// iPhone app launch style entrance: smoothly expands outward from the center
+    /// of tab borders with size-up transition, instead of fading/sliding up from the bottom.
+    fn ios_app_launch(self, id: impl Into<ElementId>) -> impl IntoElement {
+        run(self, id, 240, 0, ease_emphasized, |el, t| {
+            let inset_x = 12.0 * (1.0 - t);
+            let inset_y = 8.0 * (1.0 - t);
+            let radius = 14.0 * (1.0 - t);
+            el.mx(px(inset_x))
+                .my(px(inset_y))
+                .rounded(px(radius))
+                .opacity((0.50 + 0.50 * t).clamp(0.0, 1.0))
+        })
+    }
+
+    /// Tab pill expand entrance: expands horizontally from center without rising from bottom.
+    fn tab_pill_expand(self, id: impl Into<ElementId>) -> impl IntoElement {
+        run(self, id, 220, 0, ease_emphasized, |el, t| {
+            let pad_inset = 5.0 * (1.0 - t);
+            el.px(px((12.0 - pad_inset).max(4.0)))
+                .opacity((0.40 + 0.60 * t).clamp(0.0, 1.0))
+        })
+    }
 }
 
 impl<E: IntoElement + Styled + 'static> Motion for E {}

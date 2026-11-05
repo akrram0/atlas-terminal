@@ -238,8 +238,6 @@ impl AtlasView {
                     .border_color(tb.accent)
                     .border_2()
                     .shadow_xl()
-                    .relative()
-                    .top(px(-3.0))
                     .cursor_grabbing();
             } else {
                 pill = pill.cursor_pointer();
@@ -345,11 +343,13 @@ impl AtlasView {
                         })),
                 );
             }
-            let tab_element = if is_dragged {
-                pill.breathe(ElementId::named_usize("tab-drag-pulse", tab.id as usize)).into_any_element()
-            } else {
-                pill.pop_in(ElementId::named_usize("tab-pill-pop", tab.id as usize)).into_any_element()
-            };
+            let tab_element = pill.uno_card_drag(
+                ElementId::named_usize(
+                    if is_dragged { "tab-uno-drag" } else { "tab-uno-settle" },
+                    tab.id as usize,
+                ),
+                is_dragged,
+            ).into_any_element();
             bar = bar.child(tab_element);
         }
 
