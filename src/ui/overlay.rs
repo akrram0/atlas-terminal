@@ -12,7 +12,6 @@ use crate::icons;
 use crate::session::Profile;
 use crate::theme::Theme;
 use crate::view::AtlasView;
-use crate::workspace::{profile_title, session_icon};
 use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 
 pub const HOVER_MARK_CAPSULE_PLUS: u64 = 1;
@@ -91,16 +90,46 @@ pub fn caption_spacer(slot: usize) -> impl IntoElement {
 
 /// Unified Launch & Action Menu anchored under the left-side ( + │ ▾ ) capsule.
 pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Context<AtlasView>) -> AnyElement {
-    let wsl_label = crate::wsl::default_distro()
-        .map(|distro| format!("{} (WSL)", distro.title))
-        .unwrap_or_else(|| "WSL".to_string());
-    let entries: [(String, Profile); 5] = [
-        ("PowerShell".to_string(), Profile::PowerShell),
-        (wsl_label, Profile::Wsl),
-        ("Command Prompt".to_string(), Profile::Cmd),
-        ("Git Bash".to_string(), Profile::GitBash),
-        ("OpenCode".to_string(), Profile::OpenCode),
-    ];
+    let mut shell_items: Vec<(String, Profile, &'static str)> = Vec::new();
+    for s in &view.user_profile.shells {
+        let prof = Profile::from_name(&s.id);
+        let icon = match s.id.as_str() {
+            "pwsh" | "powershell" => icons::POWERSHELL,
+            "cmd" => icons::CMD,
+            "gitbash" => icons::GIT,
+            _ => icons::TERMINAL,
+        };
+        shell_items.push((s.title.clone(), prof, icon));
+    }
+    if shell_items.is_empty() {
+        shell_items.push(("PowerShell".to_string(), Profile::PowerShell, icons::POWERSHELL));
+        shell_items.push(("Command Prompt".to_string(), Profile::Cmd, icons::CMD));
+    }
+
+    let mut wsl_items: Vec<(String, Profile, &'static str)> = Vec::new();
+    for d in &view.user_profile.wsl_distros {
+        let label = format!("{} (WSL)", d.title);
+        let prof = Profile::WslDistro(d.name.clone());
+        let icon = crate::wsl::icon_for_name(&d.name);
+        wsl_items.push((label, prof, icon));
+    }
+
+    let mut tool_items: Vec<(String, Profile, &'static str)> = Vec::new();
+    for t in &view.user_profile.tools {
+        let prof = match t.name.as_str() {
+            "opencode" => Profile::OpenCode,
+            "claude" => Profile::Claude,
+            _ => Profile::CustomTool { name: t.title.clone(), path: t.path.clone() },
+        };
+        let icon = match t.name.as_str() {
+            "opencode" => icons::OPENCODE_MARK,
+            "claude" => icons::CLAUDE_MARK,
+            "lazygit" => icons::GIT,
+            _ => icons::TERMINAL,
+        };
+        tool_items.push((t.title.clone(), prof, icon));
+    }
+
     let item_hover = theme.card_hover;
     let zoomed = crate::rounded_corners::is_zoomed();
     let (menu_top, menu_left) = {
@@ -123,6 +152,8 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
         .top(menu_top)
         .left(menu_left)
         .w(px(260.0))
+        .max_h(px(460.0))
+        .overflow_y_scroll()
         .flex()
         .flex_col()
         .p(px(8.0))
@@ -178,11 +209,11 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
             .bg(theme.elevated_border),
     );
 
-    for (index, (label, profile)) in entries.into_iter().enumerate() {
-        let icon = session_icon(&profile_title(profile), profile);
+    // Shells
+    for (index, (label, profile, icon)) in shell_items.into_iter().enumerate() {
         menu = menu.child(
             div()
-                .id(ElementId::named_usize("profile-item", index))
+                .id(ElementId::named_usize("profile-shell-item", index))
                 .h(px(36.0))
                 .px(px(12.0))
                 .flex()
@@ -199,11 +230,83 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
                         .child(label),
                 )
                 .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                    view.new_tab(profile, cx);
+                    view.new_tab(profile.clone(), cx);
                     view.dismiss_profile(cx);
                     window.focus(&view.focus);
                 })),
         );
+    }
+
+    // WSL Distros
+    if !wsl_items.is_empty() {
+        menu = menu.child(
+            div()
+                .h(px(1.0))
+                .my(px(4.0))
+                .bg(theme.elevated_border),
+        );
+        for (index, (label, profile, icon)) in wsl_items.into_iter().enumerate() {
+            menu = menu.child(
+                div()
+                    .id(ElementId::named_usize("profile-wsl-item", index))
+                    .h(px(36.0))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(10.0))
+                    .rounded(px(7.0))
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(item_hover))
+                    .child(icons::icon(icon).size(px(16.0)).text_color(theme.chrome_fg))
+                    .child(
+                        div()
+                            .text_size(px(14.0))
+                            .text_color(theme.chrome_fg_active)
+                            .child(label),
+                    )
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        view.new_tab(profile.clone(), cx);
+                        view.dismiss_profile(cx);
+                        window.focus(&view.focus);
+                    })),
+            );
+        }
+    }
+
+    // AI & Dev Tools
+    if !tool_items.is_empty() {
+        menu = menu.child(
+            div()
+                .h(px(1.0))
+                .my(px(4.0))
+                .bg(theme.elevated_border),
+        );
+        for (index, (label, profile, icon)) in tool_items.into_iter().enumerate() {
+            menu = menu.child(
+                div()
+                    .id(ElementId::named_usize("profile-tool-item", index))
+                    .h(px(36.0))
+                    .px(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(10.0))
+                    .rounded(px(7.0))
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(item_hover))
+                    .child(icons::icon(icon).size(px(16.0)).text_color(theme.chrome_fg))
+                    .child(
+                        div()
+                            .text_size(px(14.0))
+                            .text_color(theme.chrome_fg_active)
+                            .child(label),
+                    )
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        view.new_tab(profile.clone(), cx);
+                        view.dismiss_profile(cx);
+                        window.focus(&view.focus);
+                    })),
+            );
+        }
     }
 
     // Divider
@@ -212,6 +315,44 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
             .h(px(1.0))
             .my(px(4.0))
             .bg(theme.elevated_border),
+    );
+
+    // Rescan Environment item
+    menu = menu.child(
+        div()
+            .id(ElementId::named_usize("menu-item-rescan", 0))
+            .h(px(36.0))
+            .px(px(12.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .rounded(px(7.0))
+            .cursor_pointer()
+            .hover(move |style| style.bg(item_hover))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.0))
+                    .child(icons::icon(icons::REFRESH).size(px(16.0)).text_color(theme.chrome_fg))
+                    .child(
+                        div()
+                            .text_size(px(14.0))
+                            .text_color(theme.chrome_fg_active)
+                            .child("Rescan Environment"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.chrome_fg)
+                    .child("Scan"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.dismiss_profile(cx);
+                view.rescan_environment(cx);
+            })),
     );
 
     // Settings item (Ctrl+,)

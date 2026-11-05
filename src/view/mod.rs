@@ -186,6 +186,7 @@ pub struct AtlasView {
     pub(crate) sidebar_is_resizing: bool,
     pub(crate) active_split_resize: Option<(u64, crate::tiling::SplitAxis, f32, f32)>,
     pub(crate) last_settings_mtime: Option<std::time::SystemTime>,
+    pub(crate) user_profile: crate::discovery::UserProfile,
 }
 
 
@@ -220,6 +221,10 @@ impl AtlasView {
         window.focus(&focus);
         let registry = ThemeRegistry::standard();
         let app_settings = load_app_settings();
+        let mut user_profile = crate::discovery::UserProfile::load_or_init();
+        if !app_settings.default_shell.is_empty() && app_settings.default_shell != "PowerShell" {
+            user_profile.default_shell = app_settings.default_shell.clone();
+        }
         let theme_mode = if app_settings.theme_mode == "auto" {
             "dark".to_string()
         } else {
@@ -356,9 +361,27 @@ impl AtlasView {
             sidebar_is_resizing: false,
             active_split_resize: None,
             last_settings_mtime: std::fs::metadata(crate::user_data_dir().join("settings.json")).and_then(|m| m.modified()).ok(),
+            user_profile,
         };
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(opacity);
+
+        // Stale-While-Revalidate: scan environment in background without blocking UI startup (<250ms)
+        cx.spawn(async move |this, cx| {
+            let (tx, rx) = smol::channel::bounded(1);
+            crate::discovery::scan_background(move |env| {
+                let _ = tx.try_send(env);
+            });
+            if let Ok(fresh_env) = rx.recv().await {
+                let _ = this.update(cx, |view, cx| {
+                    if view.user_profile.reconcile(fresh_env) {
+                        view.user_profile.save();
+                        crate::log_line("user profile & environment discovery reconciled from background scan");
+                        cx.notify();
+                    }
+                });
+            }
+        }).detach();
         let default_shell_prof = view.get_default_profile();
         let mut restored = false;
         if initial_dir.is_none()

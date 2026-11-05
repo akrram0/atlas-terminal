@@ -4,6 +4,7 @@
 
 mod config;
 mod cwd;
+pub mod discovery;
 mod icons;
 pub mod image_osc;
 mod keymap;

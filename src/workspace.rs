@@ -110,7 +110,7 @@ pub fn title_path(raw: &str) -> Option<String> {
 /// the words agree (never the raw shell name like "PowerShell").
 #[allow(dead_code)]
 pub fn dir_label(pane: &Pane) -> Option<String> {
-    let raw = if matches!(pane.profile, Profile::Wsl) {
+    let raw = if matches!(pane.profile, Profile::Wsl | Profile::WslDistro(_)) {
         title_path(&pane.title).or_else(|| pane.cwd.as_ref().map(|dir| dir.display().to_string()))
     } else {
         pane.cwd.as_ref().map(|dir| dir.display().to_string()).or_else(|| title_path(&pane.title))
@@ -209,9 +209,9 @@ pub fn format_path_condensed(raw_path: &str) -> String {
 }
 
 pub fn format_tab_title(pane: &Pane) -> String {
-    let p_name = profile_title(pane.profile);
+    let p_name = profile_title(&pane.profile);
     let cmd = tab_name(&pane.title, "");
-    let path = if matches!(pane.profile, Profile::Wsl) {
+    let path = if matches!(pane.profile, Profile::Wsl | Profile::WslDistro(_)) {
         title_path(&pane.title).or_else(|| pane.cwd.as_ref().map(|d| d.display().to_string()))
     } else {
         pane.cwd
@@ -242,9 +242,9 @@ pub fn format_tab_title(pane: &Pane) -> String {
 /// Process mark for a tab, keyed off the shell-reported title (OSC 0/2) and profile:
 /// Matches PowerShell, Ubuntu/WSL, CMD, Git Bash, OpenCode, Claude, Cursor, Antigravity.
 /// Never falls back to a folder icon.
-pub fn session_icon(title: &str, profile: Profile) -> &'static str {
+pub fn session_icon(title: &str, profile: &Profile) -> &'static str {
     let lower = title.to_ascii_lowercase();
-    if lower.contains("claude") {
+    if lower.contains("claude") || matches!(profile, Profile::Claude) {
         icons::CLAUDE_MARK
     } else if lower.contains("cursor") {
         icons::CURSOR_MARK
@@ -255,6 +255,8 @@ pub fn session_icon(title: &str, profile: Profile) -> &'static str {
         || lower.contains("open-code")
     {
         icons::OPENCODE_MARK
+    } else if let Profile::WslDistro(name) = profile {
+        crate::wsl::icon_for_name(name)
     } else if matches!(profile, Profile::Wsl) {
         wsl::default_distro()
             .map(|distro| distro.icon)
@@ -263,10 +265,20 @@ pub fn session_icon(title: &str, profile: Profile) -> &'static str {
         icons::CMD
     } else if matches!(profile, Profile::GitBash) {
         icons::GIT
-    } else if matches!(profile, Profile::PowerShell) {
+    } else if matches!(profile, Profile::PowerShell | Profile::Pwsh) {
         icons::POWERSHELL
-    } else if lower.contains("ubuntu") || lower.contains("wsl") {
+    } else if lower.contains("ubuntu") {
         icons::UBUNTU
+    } else if lower.contains("arch") {
+        icons::ARCH
+    } else if lower.contains("debian") {
+        icons::DEBIAN
+    } else if lower.contains("kali") {
+        icons::KALI
+    } else if lower.contains("fedora") {
+        icons::FEDORA
+    } else if lower.contains("wsl") {
+        icons::LINUX
     } else if lower.contains("cmd.exe") || lower == "cmd" {
         icons::CMD
     } else if lower.contains("bash") || lower.contains("git") {
@@ -279,15 +291,19 @@ pub fn session_icon(title: &str, profile: Profile) -> &'static str {
 }
 
 /// Default title for a freshly spawned profile.
-pub fn profile_title(profile: Profile) -> String {
+pub fn profile_title(profile: &Profile) -> String {
     match profile {
         Profile::PowerShell => "PowerShell".to_string(),
+        Profile::Pwsh => "PowerShell 7".to_string(),
         Profile::Cmd => "Command Prompt".to_string(),
         Profile::Wsl => wsl::default_distro()
             .map(|distro| distro.title.clone())
             .unwrap_or_else(|| "WSL".to_string()),
+        Profile::WslDistro(name) => crate::wsl::title_for_name(name),
         Profile::GitBash => "Git Bash".to_string(),
         Profile::OpenCode => "OpenCode".to_string(),
+        Profile::Claude => "Claude Code".to_string(),
+        Profile::CustomTool { name, .. } => name.clone(),
     }
 }
 

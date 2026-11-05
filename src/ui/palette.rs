@@ -66,6 +66,9 @@ pub enum Command {
 pub enum PaletteAction {
     Command(Command),
     OpenUrl(String),
+    LaunchProfile(Profile),
+    SplitProfile(SplitAxis, Profile),
+    RescanEnvironment,
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
@@ -125,6 +128,7 @@ pub const COMMANDS: [(Command, &str, &str, &str); 36] = [
 
 impl AtlasView {
     pub fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.user_profile.verify_installed();
         self.palette_open = true;
         self.palette_closing = false;
         self.palette_query.clear();
@@ -238,6 +242,53 @@ impl AtlasView {
             }
         }
 
+        // Add Rescan Environment action
+        items.push((
+            PaletteAction::RescanEnvironment,
+            icons::REFRESH,
+            "Rescan environment & installed shells".to_string(),
+            String::new(),
+        ));
+
+        // Add dynamic WSL distros
+        for d in &self.user_profile.wsl_distros {
+            let icon = crate::wsl::icon_for_name(&d.name);
+            items.push((
+                PaletteAction::LaunchProfile(Profile::WslDistro(d.name.clone())),
+                icon,
+                format!("New tab: {} (WSL)", d.title),
+                String::new(),
+            ));
+            items.push((
+                PaletteAction::SplitProfile(SplitAxis::Columns, Profile::WslDistro(d.name.clone())),
+                icons::SPLIT_COLUMNS,
+                format!("Split right with {} (WSL)", d.title),
+                String::new(),
+            ));
+            items.push((
+                PaletteAction::SplitProfile(SplitAxis::Rows, Profile::WslDistro(d.name.clone())),
+                icons::SPLIT_ROWS,
+                format!("Split down with {} (WSL)", d.title),
+                String::new(),
+            ));
+        }
+
+        // Add detected AI & developer tools
+        for t in &self.user_profile.tools {
+            let (prof, icon) = match t.name.as_str() {
+                "opencode" => (Profile::OpenCode, icons::OPENCODE_MARK),
+                "claude" => (Profile::Claude, icons::CLAUDE_MARK),
+                "lazygit" => (Profile::CustomTool { name: t.title.clone(), path: t.path.clone() }, icons::GIT),
+                _ => (Profile::CustomTool { name: t.title.clone(), path: t.path.clone() }, icons::TERMINAL),
+            };
+            items.push((
+                PaletteAction::LaunchProfile(prof),
+                icon,
+                format!("Launch {}", t.title),
+                String::new(),
+            ));
+        }
+
         // Add dynamically detected URLs from active terminal viewport
         if let Some(pane) = self.active_pane() {
             let session = pane.session.borrow();
@@ -333,6 +384,18 @@ impl AtlasView {
             PaletteAction::Command(command) => self.run_command(command, window, cx),
             PaletteAction::OpenUrl(url) => {
                 crate::url::open_url(&url);
+                self.focus_main(window);
+            }
+            PaletteAction::LaunchProfile(profile) => {
+                self.new_tab(profile, cx);
+                self.focus_main(window);
+            }
+            PaletteAction::SplitProfile(axis, profile) => {
+                self.split_active_profile(axis, profile, cx);
+                self.focus_main(window);
+            }
+            PaletteAction::RescanEnvironment => {
+                self.rescan_environment(cx);
                 self.focus_main(window);
             }
         }

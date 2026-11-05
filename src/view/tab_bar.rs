@@ -55,7 +55,6 @@ impl AtlasView {
             .border_color(tb.hairline);
 
         // Left Anchor: Unified Split Capsule ( + │ ▾ )
-        let default_prof = self.get_default_profile();
         let is_menu_open = self.profile_menu;
         let capsule_bg = tb.elevated_bg;
         let capsule_border = if is_menu_open { tb.accent } else { tb.elevated_border };
@@ -94,8 +93,9 @@ impl AtlasView {
                     .size(px(15.5))
                     .text_color(plus_ink),
             )
-            .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                view.new_tab(default_prof, cx);
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                let prof = view.get_default_profile();
+                view.new_tab(prof, cx);
                 window.focus(&view.focus);
             }));
 
@@ -183,7 +183,7 @@ impl AtlasView {
                 crate::rounded_corners::set_window_title(&win_title);
             }
             let icon = match pane {
-                Some(pane) => session_icon(&pane.title, pane.profile),
+                Some(pane) => session_icon(&pane.title, &pane.profile),
                 None => icons::TERMINAL,
             };
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {

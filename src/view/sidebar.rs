@@ -44,7 +44,6 @@ impl AtlasView {
             tb.chrome_fg
         };
 
-        let default_prof = self.get_default_profile();
         let is_compact = sb_width < 100.0;
 
         // =========================================================================
@@ -104,8 +103,9 @@ impl AtlasView {
                         .active(|s| s.opacity(0.75))
                         .cursor_pointer()
                         .child(icons::icon(icons::PLUS).size(px(13.0)).text_color(tb.chrome_fg))
-                        .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                            view.new_tab(default_prof, cx);
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            let prof = view.get_default_profile();
+                            view.new_tab(prof, cx);
                             window.focus(&view.focus);
                         }))
                         .on_mouse_down(
@@ -131,7 +131,7 @@ impl AtlasView {
                 let tab = &self.tabs[ix];
                 let pane = tab.panes.get(tab.active_pane);
                 let icon = match pane {
-                    Some(pane) => session_icon(&pane.title, pane.profile),
+                    Some(pane) => session_icon(&pane.title, &pane.profile),
                     None => icons::TERMINAL,
                 };
 
@@ -309,8 +309,9 @@ impl AtlasView {
             .active(|s| s.opacity(0.75))
             .cursor_pointer()
             .child(icons::icon(icons::PLUS).size(px(12.5)).text_color(tb.chrome_fg))
-            .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
-                view.new_tab(default_prof, cx);
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                let prof = view.get_default_profile();
+                view.new_tab(prof, cx);
                 window.focus(&view.focus);
             }));
 
@@ -426,7 +427,7 @@ impl AtlasView {
                 None => "Terminal".to_string(),
             };
             let icon = match pane {
-                Some(pane) => session_icon(&pane.title, pane.profile),
+                Some(pane) => session_icon(&pane.title, &pane.profile),
                 None => icons::TERMINAL,
             };
 

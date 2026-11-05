@@ -103,7 +103,7 @@ impl AtlasView {
     }
 
     pub fn get_default_profile(&self) -> Profile {
-        Profile::from_name(&self.app_settings.default_shell)
+        Profile::from_name(&self.user_profile.default_shell)
     }
 
     pub fn adjust_font_size(&mut self, new_size: f32, cx: &mut Context<Self>) {

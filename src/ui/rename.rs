@@ -22,7 +22,7 @@ impl AtlasView {
         self.rename_value = tab
             .custom_title
             .clone()
-            .unwrap_or_else(|| tab_name(&pane.title, &profile_title(pane.profile)));
+            .unwrap_or_else(|| tab_name(&pane.title, &profile_title(&pane.profile)));
         self.rename_open = true;
         if self.palette_open {
             self.close_palette(window, cx);

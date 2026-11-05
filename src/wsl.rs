@@ -10,6 +10,7 @@ use std::sync::OnceLock;
 use crate::icons;
 
 /// A WSL distribution detected on this machine.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Distro {
     /// Registry `DistributionName`, e.g. `Ubuntu-24.04`.
     pub name: String,
@@ -17,9 +18,30 @@ pub struct Distro {
     pub title: String,
     /// Embedded vector mark path (see [`crate::icons`]).
     pub icon: &'static str,
+    /// WSL version (1 or 2).
+    pub version: u32,
+    /// Whether this distro is the default distribution.
+    pub is_default: bool,
 }
 
 static DEFAULT_DISTRO: OnceLock<Option<Distro>> = OnceLock::new();
+
+/// All WSL distributions detected on this machine.
+pub fn all_distros() -> Vec<Distro> {
+    #[cfg(windows)]
+    {
+        platform::detect_all()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
+}
+
+/// Check if a distribution name is currently installed.
+pub fn is_known_distro(name: &str) -> bool {
+    all_distros().iter().any(|d| d.name.eq_ignore_ascii_case(name))
+}
 
 /// Default WSL distribution, detected once and cached for the process.
 pub fn default_distro() -> Option<&'static Distro> {
@@ -177,6 +199,7 @@ mod platform {
     const ERROR_SUCCESS: Lstatus = 0;
     const ERROR_NO_MORE_ITEMS: Lstatus = 259;
     const REG_SZ: u32 = 1;
+    const REG_DWORD: u32 = 4;
 
     const LXSS: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Lxss";
 
@@ -270,6 +293,28 @@ mod platform {
             (!value.is_empty()).then_some(value)
         }
 
+        fn read_u32(&self, name: &str) -> Option<u32> {
+            let name = wide(name);
+            let mut kind = 0u32;
+            let mut val = 0u32;
+            let mut len = std::mem::size_of::<u32>() as u32;
+            let status = unsafe {
+                RegQueryValueExW(
+                    self.0,
+                    name.as_ptr(),
+                    null_mut(),
+                    &mut kind,
+                    &mut val as *mut u32 as *mut u8,
+                    &mut len,
+                )
+            };
+            if status == ERROR_SUCCESS && kind == REG_DWORD {
+                Some(val)
+            } else {
+                None
+            }
+        }
+
         fn subkeys(&self) -> Vec<String> {
             let mut names = Vec::new();
             let mut index = 0u32;
@@ -298,20 +343,48 @@ mod platform {
         }
     }
 
-    pub(super) fn detect_default() -> Option<Distro> {
-        let lxss = Key::open(HKEY_CURRENT_USER, LXSS)?;
-        let detected = lxss
+    pub(super) fn detect_all() -> Vec<Distro> {
+        let Some(lxss) = Key::open(HKEY_CURRENT_USER, LXSS) else {
+            return Vec::new();
+        };
+        let default_guid = lxss
             .read_sz("DefaultDistribution")
-            .and_then(|guid| read_distro(&guid))
-            .or_else(|| {
-                lxss.subkeys()
-                    .into_iter()
-                    .find_map(|guid| read_distro(&guid))
-            });
-        detected
+            .unwrap_or_default()
+            .trim()
+            .trim_start_matches('{')
+            .trim_end_matches('}')
+            .to_ascii_lowercase();
+
+        let mut distros = Vec::new();
+        for subkey_name in lxss.subkeys() {
+            let clean_sub = subkey_name
+                .trim()
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+                .to_ascii_lowercase();
+            if let Some(mut distro) = read_distro_full(&subkey_name) {
+                distro.is_default = !default_guid.is_empty() && clean_sub == default_guid;
+                distros.push(distro);
+            }
+        }
+
+        if !distros.is_empty() && !distros.iter().any(|d| d.is_default) {
+            distros[0].is_default = true;
+        }
+
+        distros.sort_by(|a, b| {
+            b.is_default.cmp(&a.is_default).then_with(|| a.title.cmp(&b.title))
+        });
+
+        distros
     }
 
-    fn read_distro(guid: &str) -> Option<Distro> {
+    pub(super) fn detect_default() -> Option<Distro> {
+        let all = detect_all();
+        all.into_iter().find(|d| d.is_default).or_else(|| detect_all().into_iter().next())
+    }
+
+    fn read_distro_full(guid: &str) -> Option<Distro> {
         let guid = guid.trim().trim_start_matches('{').trim_end_matches('}');
         if guid.is_empty() {
             return None;
@@ -319,10 +392,13 @@ mod platform {
         let path = format!("{LXSS}\\{{{guid}}}");
         let key = Key::open(HKEY_CURRENT_USER, &path)?;
         let name = key.read_sz("DistributionName")?;
+        let version = key.read_u32("Version").unwrap_or(2);
         Some(Distro {
             icon: icon_for_name(&name),
             title: title_for_name(&name),
             name,
+            version,
+            is_default: false,
         })
     }
 }

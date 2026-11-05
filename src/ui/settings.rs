@@ -674,28 +674,41 @@ impl AtlasView {
         // ==========================================
 
         // Visual Shell Selector Cards
-        let (wsl_title, wsl_desc, wsl_icon, has_wsl) = match crate::wsl::default_distro() {
-            Some(distro) => (
-                format!("{} (WSL)", distro.title),
-                format!("WSL 2 • {}", distro.name),
-                distro.icon,
-                true,
-            ),
-            None => (
-                "WSL (Linux)".to_string(),
-                "You don't have WSL".to_string(),
-                icons::LINUX,
-                false,
-            ),
-        };
+        let mut shell_list: Vec<(String, String, String, &'static str, bool)> = Vec::new();
 
-        let shell_list = vec![
-            ("PowerShell", "PowerShell".to_string(), "Windows PowerShell & Core".to_string(), icons::POWERSHELL, true),
-            ("WSL", wsl_title, wsl_desc, wsl_icon, has_wsl),
-            ("OpenCode", "OpenCode AI".to_string(), "Autonomous Agent CLI".to_string(), icons::OPENCODE_MARK, true),
-            ("Command Prompt", "CMD".to_string(), "Classic Windows Command Prompt".to_string(), icons::CMD, true),
-            ("Git Bash", "Git Bash".to_string(), "MinGW Git for Windows".to_string(), icons::GIT, true),
-        ];
+        for s in &self.user_profile.shells {
+            let (desc, icon) = match s.id.as_str() {
+                "pwsh" => ("PowerShell Core 7+", icons::POWERSHELL),
+                "powershell" => ("Windows PowerShell 5.1", icons::POWERSHELL),
+                "cmd" => ("Command Prompt", icons::CMD),
+                "gitbash" => ("MinGW Git for Windows", icons::GIT),
+                _ => ("System Shell", icons::TERMINAL),
+            };
+            shell_list.push((s.id.clone(), s.title.clone(), desc.to_string(), icon, true));
+        }
+        if shell_list.is_empty() {
+            shell_list.push(("powershell".to_string(), "PowerShell".to_string(), "Windows PowerShell".to_string(), icons::POWERSHELL, true));
+            shell_list.push(("cmd".to_string(), "CMD".to_string(), "Classic Command Prompt".to_string(), icons::CMD, true));
+        }
+
+        for d in &self.user_profile.wsl_distros {
+            let s_id = format!("wsl:{}", d.name);
+            let s_title = format!("{} (WSL)", d.title);
+            let s_desc = format!("WSL {} • {}", d.version, d.name);
+            let s_icon = crate::wsl::icon_for_name(&d.name);
+            shell_list.push((s_id, s_title, s_desc, s_icon, true));
+        }
+        if self.user_profile.wsl_distros.is_empty() {
+            shell_list.push(("wsl".to_string(), "WSL (Linux)".to_string(), "No WSL distributions detected".to_string(), icons::LINUX, false));
+        }
+
+        for t in &self.user_profile.tools {
+            if t.name == "opencode" {
+                shell_list.push(("opencode".to_string(), "OpenCode AI".to_string(), "Autonomous Agent CLI".to_string(), icons::OPENCODE_MARK, true));
+            } else if t.name == "claude" {
+                shell_list.push(("claude".to_string(), "Claude Code".to_string(), "Anthropic Claude Code CLI".to_string(), icons::CLAUDE_MARK, true));
+            }
+        }
 
         let mut shell_cards = div()
             .flex()
@@ -705,7 +718,11 @@ impl AtlasView {
             .p(px(14.0));
 
         for (idx, (s_id, s_title, s_desc, s_icon, is_available)) in shell_list.into_iter().enumerate() {
-            let is_sel = self.app_settings.default_shell.eq_ignore_ascii_case(s_id) && is_available;
+            let is_sel = (self.app_settings.default_shell.eq_ignore_ascii_case(&s_id)
+                || self.user_profile.default_shell.eq_ignore_ascii_case(&s_id)
+                || (s_id == "powershell" && self.user_profile.default_shell.eq_ignore_ascii_case("PowerShell"))
+                || (s_id == "cmd" && self.user_profile.default_shell.eq_ignore_ascii_case("Command Prompt")))
+                && is_available;
             let s_str = s_id.to_string();
             let card_border = if is_sel {
                 theme.accent
@@ -762,6 +779,8 @@ impl AtlasView {
                 )
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                     if is_available {
+                        view.user_profile.default_shell = s_str.clone();
+                        view.user_profile.save();
                         view.app_settings.default_shell = s_str.clone();
                         view.sync_and_save_settings();
                         cx.notify();
@@ -1044,19 +1063,51 @@ impl AtlasView {
             )
         });
 
+        let edit_profile_json_btn = pill_button(
+            "Edit profile.json".to_string(),
+            386,
+            false,
+            theme,
+            |view, _cx| {
+                open_file(&crate::discovery::profile_path(), &view.app_settings.default_editor);
+            },
+            cx,
+        );
+
+        let rescan_shells_btn = pill_button(
+            "Rescan Environment".to_string(),
+            387,
+            false,
+            theme,
+            |view, cx| {
+                view.rescan_environment(cx);
+            },
+            cx,
+        );
+
         let general_view = div()
             .flex()
             .flex_col()
             .gap(px(16.0))
             .child(
                 card()
-                    .child(section_header("DEFAULT SHELL"))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .justify_between()
+                            .pr(px(14.0))
+                            .child(section_header("DEFAULT SHELL & ENVIRONMENT"))
+                            .child(rescan_shells_btn),
+                    )
                     .child(shell_cards),
             )
             .child({
                 let mut config_card = card()
                     .child(section_header("CONFIGURATION & PROMPT FILES"))
                     .child(setting_row("Atlas Config (settings.json)", Some("Font family, opacity %, custom themes, and keybindings"), edit_settings_btn, false))
+                    .child(setting_row("Atlas Environment Profile (profile.json)", Some("Detected shells, WSL distros, and dev/AI CLI tool paths (%APPDATA%\\AtlasTerminal)"), edit_profile_json_btn, false))
                     .child(setting_row("PowerShell Profile ($PROFILE)", Some("Custom prompt name, Oh-My-Posh / Starship prompt, startup script"), edit_profile_btn, false));
                 if let Some(btn) = edit_fastfetch_btn {
                     config_card = config_card.child(setting_row("Fastfetch Config (config.jsonc)", Some("Logo image, system specs, modules, and inline layout"), btn, false));

@@ -47,7 +47,11 @@ impl AtlasView {
     }
 
     pub fn new_tab(&mut self, profile: Profile, cx: &mut Context<Self>) {
-        self.new_tab_with_cwd(profile, None, cx);
+        let (verified, warning) = self.user_profile.verify_or_fallback(&profile);
+        if let Some(msg) = warning {
+            self.update_toast = Some((msg, false, std::time::Instant::now()));
+        }
+        self.new_tab_with_cwd(verified, None, cx);
     }
 
     pub fn new_window(&mut self, _cx: &mut Context<Self>) {
@@ -101,12 +105,15 @@ impl AtlasView {
                 home_dir()
             }
         });
+        if let Some(ref d) = spawn_cwd {
+            self.user_profile.add_recent_directory(&d.to_string_lossy());
+        }
         let (init_cols, init_rows) = self.default_grid_size();
         match Session::spawn(
             init_cols,
             init_rows,
             spawn_cwd.clone(),
-            profile,
+            profile.clone(),
             self.app_settings.scrollback_lines,
         ) {
             Ok((session, rx)) => {
@@ -117,8 +124,8 @@ impl AtlasView {
                     custom_title: None,
                     panes: vec![Pane {
                         epoch,
-                        profile,
-                        title: profile_title(profile),
+                        profile: profile.clone(),
+                        title: profile_title(&profile),
                         session: session.clone(),
                         cwd,
                         branch: None,
@@ -287,7 +294,7 @@ impl AtlasView {
     pub(crate) fn restart_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         let (id, profile, pane_ix) = match self.tabs.get(index) {
             Some(tab) => match tab.panes.get(tab.active_pane) {
-                Some(pane) => (tab.id, pane.profile, tab.active_pane),
+                Some(pane) => (tab.id, pane.profile.clone(), tab.active_pane),
                 None => return,
             },
             None => return,
@@ -300,7 +307,7 @@ impl AtlasView {
             init_cols,
             init_rows,
             home_dir(),
-            profile,
+            profile.clone(),
             self.app_settings.scrollback_lines,
         ) {
             Ok((session, rx)) => {
@@ -312,7 +319,7 @@ impl AtlasView {
                         pane.session = session.clone();
                         pane.cwd = cwd;
                         pane.branch = None;
-                        pane.title = profile_title(profile);
+                        pane.title = profile_title(&profile);
                         pane.exited = false;
                     }
                 }
@@ -343,12 +350,15 @@ impl AtlasView {
         self.next_epoch += 1;
 
         let spawn_cwd = inherit_cwd.or_else(home_dir);
+        if let Some(ref d) = spawn_cwd {
+            self.user_profile.add_recent_directory(&d.to_string_lossy());
+        }
         let (init_cols, init_rows) = self.default_grid_size();
         match Session::spawn(
             init_cols,
             init_rows,
             spawn_cwd.clone(),
-            profile,
+            profile.clone(),
             self.app_settings.scrollback_lines,
         ) {
             Ok((session, rx)) => {
@@ -359,8 +369,8 @@ impl AtlasView {
                     let new_pane_ix = tab.panes.len();
                     tab.panes.push(Pane {
                         epoch,
-                        profile,
-                        title: profile_title(profile),
+                        profile: profile.clone(),
+                        title: profile_title(&profile),
                         session: session.clone(),
                         cwd,
                         branch: None,
@@ -398,7 +408,7 @@ impl AtlasView {
             return;
         };
         let profile = match tab.panes.get(tab.active_pane) {
-            Some(pane) => pane.profile,
+            Some(pane) => pane.profile.clone(),
             None => self.get_default_profile(),
         };
         self.split_active_profile(axis, profile, cx);
@@ -514,7 +524,7 @@ impl AtlasView {
                         SessionMsg::Event(Event::Title(title)) => {
                             let trimmed_new = title.trim();
                             if !trimmed_new.is_empty() {
-                                let default_title = profile_title(pane.profile);
+                                let default_title = profile_title(&pane.profile);
                                 let is_shell_prompt = trimmed_new.eq_ignore_ascii_case("powershell")
                                     || trimmed_new.eq_ignore_ascii_case("pwsh")
                                     || trimmed_new.eq_ignore_ascii_case("cmd")
@@ -655,12 +665,34 @@ impl AtlasView {
             // Clicking the caret again while the menu fades keeps it open.
             self.profile_closing = false;
         } else {
+            if !self.profile_menu {
+                self.user_profile.verify_installed();
+            }
             self.profile_menu = !self.profile_menu;
             if self.profile_menu {
                 self.settings_open = false;
             }
         }
         cx.notify();
+    }
+
+    pub fn rescan_environment(&mut self, cx: &mut Context<Self>) {
+        self.update_toast = Some(("Rescanning environment & shells...".to_string(), false, std::time::Instant::now()));
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let (tx, rx) = smol::channel::bounded(1);
+            crate::discovery::scan_background(move |env| {
+                let _ = tx.try_send(env);
+            });
+            if let Ok(fresh_env) = rx.recv().await {
+                let _ = this.update(cx, |view, cx| {
+                    view.user_profile.reconcile(fresh_env);
+                    view.user_profile.save();
+                    view.update_toast = Some(("Environment discovery up to date".to_string(), false, std::time::Instant::now()));
+                    cx.notify();
+                });
+            }
+        }).detach();
     }
 
     pub(crate) fn cycle_sidebar_mode(&mut self, cx: &mut Context<Self>) {
@@ -866,7 +898,7 @@ impl AtlasView {
                             .and_then(crate::cwd::process_cwd)
                             .or_else(|| p.cwd.clone());
                         crate::workspace::SavedPane {
-                            profile: p.profile.as_str().to_string(),
+                            profile: p.profile.to_serialized_id(),
                             cwd,
                         }
                     })
@@ -931,7 +963,7 @@ impl AtlasView {
                     init_cols,
                     init_rows,
                     cwd.clone(),
-                    profile,
+                    profile.clone(),
                     self.app_settings.scrollback_lines,
                 ) {
                     Ok((session, rx)) => {
@@ -939,8 +971,8 @@ impl AtlasView {
                         let live_cwd = session.borrow().pid.and_then(crate::cwd::process_cwd).or(cwd);
                         restored_panes.push(Pane {
                             epoch,
-                            profile,
-                            title: profile_title(profile),
+                            profile: profile.clone(),
+                            title: profile_title(&profile),
                             session: session.clone(),
                             cwd: live_cwd,
                             branch: None,

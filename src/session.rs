@@ -71,86 +71,77 @@ impl EventListener for EventProxy {
 }
 
 /// Which program a new session runs.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Profile {
     /// PowerShell 7 (`pwsh`), falling back to Windows PowerShell.
     PowerShell,
+    /// PowerShell 7 specifically.
+    Pwsh,
     /// Command Prompt (`cmd.exe`).
     Cmd,
     /// `wsl.exe` — the default distro's login shell via Windows Subsystem for
     /// Linux. The ConPTY path is identical; wsl.exe maps the Windows cwd.
     Wsl,
+    /// `wsl.exe -d <distro>` — a specific registered WSL distro.
+    WslDistro(String),
     /// Git for Windows bash.
     GitBash,
     /// OpenCode CLI session.
     OpenCode,
+    /// Claude Code CLI session.
+    Claude,
+    /// Custom tool session.
+    CustomTool { name: String, path: String },
 }
 
 impl Profile {
     pub fn as_str(&self) -> &'static str {
         match self {
             Profile::PowerShell => "powershell",
+            Profile::Pwsh => "pwsh",
             Profile::Cmd => "cmd",
-            Profile::Wsl => "wsl",
+            Profile::Wsl | Profile::WslDistro(_) => "wsl",
             Profile::GitBash => "gitbash",
             Profile::OpenCode => "opencode",
+            Profile::Claude => "claude",
+            Profile::CustomTool { .. } => "tool",
+        }
+    }
+
+    pub fn to_serialized_id(&self) -> String {
+        match self {
+            Profile::PowerShell => "powershell".to_string(),
+            Profile::Pwsh => "pwsh".to_string(),
+            Profile::Cmd => "cmd".to_string(),
+            Profile::Wsl => "wsl".to_string(),
+            Profile::WslDistro(distro) => format!("wsl:{distro}"),
+            Profile::GitBash => "gitbash".to_string(),
+            Profile::OpenCode => "opencode".to_string(),
+            Profile::Claude => "claude".to_string(),
+            Profile::CustomTool { name, .. } => format!("tool:{name}"),
         }
     }
 
     pub fn from_name(s: &str) -> Self {
+        if let Some(distro) = s.strip_prefix("wsl:") {
+            return Profile::WslDistro(distro.to_string());
+        }
         match s.to_ascii_lowercase().as_str() {
+            "pwsh" | "powershell 7" => Profile::Pwsh,
             "cmd" | "command prompt" => Profile::Cmd,
-            "wsl" | "ubuntu" | "arch" | "debian" | "kali" | "fedora" | "linux" => Profile::Wsl,
+            "wsl" => Profile::Wsl,
             "gitbash" | "git bash" | "bash" => Profile::GitBash,
             "opencode" => Profile::OpenCode,
-            _ => Profile::PowerShell,
-        }
-    }
-}
-
-/// Absolute candidates for Git for Windows' bash, most preferred first.
-///
-/// `bash.exe` on PATH is ambiguous: the Microsoft Store WSL alias lives in
-/// `%LOCALAPPDATA%\Microsoft\WindowsApps`, so spawning a bare `bash.exe` can
-/// silently open a WSL distro instead of Git Bash. Only explicit Git
-/// installations are considered here.
-fn git_bash_candidates() -> Vec<String> {
-    let mut roots: Vec<PathBuf> = Vec::new();
-    for var in ["ProgramFiles", "ProgramFiles(x86)"] {
-        if let Some(dir) = std::env::var_os(var) {
-            roots.push(PathBuf::from(dir).join("Git"));
-        }
-    }
-    if let Some(dir) = std::env::var_os("LOCALAPPDATA") {
-        roots.push(PathBuf::from(dir).join("Programs").join("Git"));
-    }
-    // Non-standard installs that expose `git.exe` on PATH: derive the Git
-    // root from `<root>\cmd\git.exe`.
-    if let Some(path) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&path) {
-            if dir.join("git.exe").is_file() {
-                if let Some(root) = dir.parent() {
-                    roots.push(root.to_path_buf());
+            "claude" | "claude code" => Profile::Claude,
+            other => {
+                if crate::wsl::is_known_distro(other) {
+                    Profile::WslDistro(other.to_string())
+                } else {
+                    Profile::PowerShell
                 }
             }
         }
     }
-    // Standard install location last so environment-derived roots win.
-    roots.push(PathBuf::from(r"C:\Program Files\Git"));
-
-    let mut candidates = Vec::new();
-    for root in roots {
-        for rel in [r"bin\bash.exe", r"usr\bin\bash.exe"] {
-            let candidate = root.join(rel);
-            if candidate.is_file() {
-                let candidate = candidate.to_string_lossy().into_owned();
-                if !candidates.contains(&candidate) {
-                    candidates.push(candidate);
-                }
-            }
-        }
-    }
-    candidates
 }
 
 #[cfg(windows)]
@@ -409,45 +400,22 @@ impl Session {
 
         let mut opencode_path = None;
         if matches!(profile, Profile::OpenCode) {
-            let probes = [
-                std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.exe")),
-                std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("pnpm").join("opencode.exe")),
-                std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("Programs").join("OpenCode").join("opencode.exe")),
-                std::env::var_os("USERPROFILE")
-                    .map(|u| PathBuf::from(u).join(".cargo").join("bin").join("opencode.exe")),
-                std::env::var_os("USERPROFILE")
-                    .map(|u| PathBuf::from(u).join(".bun").join("bin").join("opencode.exe")),
-                std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("Microsoft").join("WinGet").join("Links").join("opencode.exe")),
-                std::env::var_os("USERPROFILE")
-                    .map(|u| PathBuf::from(u).join("scoop").join("shims").join("opencode.exe")),
-                std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("pnpm").join("bin").join("opencode.cmd")),
-                std::env::var_os("LOCALAPPDATA")
-                    .map(|l| PathBuf::from(l).join("pnpm").join("opencode.cmd")),
-                std::env::var_os("APPDATA")
-                    .map(|a| PathBuf::from(a).join("npm").join("opencode.cmd")),
-            ];
-            for cand in probes.into_iter().flatten() {
-                if cand.is_file() {
-                    opencode_path = Some(cand.to_string_lossy().to_string());
-                    break;
-                }
-            }
+            opencode_path = crate::discovery::find_tool_in_system("opencode");
+        }
+        let mut claude_path = None;
+        if matches!(profile, Profile::Claude) {
+            claude_path = crate::discovery::find_tool_in_system("claude");
         }
 
-        let candidates_vec: Vec<String> = match profile {
-            Profile::PowerShell => vec!["pwsh".into(), "powershell.exe".into()],
+        let candidates_vec: Vec<String> = match &profile {
+            Profile::PowerShell | Profile::Pwsh => vec!["pwsh".into(), "powershell.exe".into()],
             Profile::Cmd => vec!["cmd.exe".into()],
-            Profile::Wsl => vec!["wsl.exe".into()],
+            Profile::Wsl | Profile::WslDistro(_) => vec!["wsl.exe".into()],
             // Never fall back to a bare `bash.exe`: on Windows that name is
             // usually the Microsoft Store WSL launcher (WindowsApps), not Git
             // for Windows. Resolve Git's own bash explicitly so the Git Bash
             // profile cannot silently open a WSL distro.
-            Profile::GitBash => git_bash_candidates(),
+            Profile::GitBash => crate::discovery::git_bash_candidates(),
             Profile::OpenCode => {
                 let mut v = Vec::new();
                 if let Some(ref path) = opencode_path {
@@ -461,13 +429,33 @@ impl Session {
                 v.push("cmd.exe".into());
                 v
             }
+            Profile::Claude => {
+                let mut v = Vec::new();
+                if let Some(ref path) = claude_path {
+                    if path.ends_with(".cmd") || path.ends_with(".bat") {
+                        v.push("cmd.exe".into());
+                    } else {
+                        v.push(path.clone());
+                    }
+                }
+                v.push("claude.exe".into());
+                v.push("cmd.exe".into());
+                v
+            }
+            Profile::CustomTool { path, .. } => {
+                if path.ends_with(".cmd") || path.ends_with(".bat") {
+                    vec!["cmd.exe".into()]
+                } else {
+                    vec![path.clone()]
+                }
+            }
         };
         let mut child: Option<Box<dyn Child + Send + Sync>> = None;
         let mut shell_used = candidates_vec.last().cloned().unwrap_or_else(|| "powershell.exe".into());
         for shell in &candidates_vec {
             let mut cmd = CommandBuilder::new(shell);
-            match profile {
-                Profile::PowerShell => {
+            match &profile {
+                Profile::PowerShell | Profile::Pwsh => {
                     cmd.arg("-NoLogo");
                     cmd.arg("-NoExit");
                     cmd.arg("-Command");
@@ -501,6 +489,10 @@ impl Session {
                 }
                 Profile::Cmd => {}
                 Profile::Wsl => {}
+                Profile::WslDistro(distro) => {
+                    cmd.arg("-d");
+                    cmd.arg(distro);
+                }
                 Profile::GitBash => {
                     cmd.arg("--login");
                     cmd.arg("-i");
@@ -513,6 +505,22 @@ impl Session {
                         } else {
                             cmd.arg("opencode");
                         }
+                    }
+                }
+                Profile::Claude => {
+                    if shell == "cmd.exe" {
+                        cmd.arg("/k");
+                        if let Some(ref path) = claude_path {
+                            cmd.arg(path);
+                        } else {
+                            cmd.arg("claude");
+                        }
+                    }
+                }
+                Profile::CustomTool { path, .. } => {
+                    if shell == "cmd.exe" {
+                        cmd.arg("/k");
+                        cmd.arg(path);
                     }
                 }
             }
@@ -580,7 +588,7 @@ impl Session {
             cmd.env("WT_SESSION", "1");
             cmd.env("TERM_PROGRAM", "Atlas");
             cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
-            if matches!(profile, Profile::Wsl) {
+            if matches!(profile, Profile::Wsl | Profile::WslDistro(_)) {
                 // wsl.exe starts a Linux process from a Windows one; only
                 // variables listed in WSLENV are copied into the distro. Without
                 // this, fastfetch and other CLIs inside WSL see no terminal
