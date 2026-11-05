@@ -185,6 +185,7 @@ impl AtlasView {
                 Some(pane) => session_icon(&pane.title, pane.profile),
                 None => icons::TERMINAL,
             };
+            let is_dark_theme = (0.2126 * tb.elevated_bg.r + 0.7152 * tb.elevated_bg.g + 0.0722 * tb.elevated_bg.b) < 0.45;
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
                 (
                     tb.elevated_bg,
@@ -193,7 +194,17 @@ impl AtlasView {
                     tb.accent,
                 )
             } else {
-                (rgba(0x00000000), rgba(0x00000000), chrome_ink, chrome_ink)
+                let inactive_bg = if is_dark_theme {
+                    rgba(0xFFFFFF0D)
+                } else {
+                    rgba(0x00000009)
+                };
+                let inactive_border = if is_dark_theme {
+                    rgba(0xFFFFFF12)
+                } else {
+                    rgba(0x0000000E)
+                };
+                (inactive_bg, inactive_border, chrome_ink, chrome_ink)
             };
             // The active pill must stay an opaque fill on hover: card_hover is
             // a translucent wash that would drop the title over a bright
@@ -207,18 +218,19 @@ impl AtlasView {
 
             let (max_w, min_w, px_pad, opacity) = if tab.closing {
                 let scale = (1.0 - EASE_OUT.eval(tab.close_progress)).max(0.0);
-                (240.0 * scale, 0.0, 12.0 * scale, scale)
+                (200.0 * scale, 0.0, 10.0 * scale, scale)
             } else {
-                (240.0, 48.0, 12.0, 1.0)
+                (200.0, 128.0, 10.0, 1.0)
             };
 
             let mut pill = div()
                 .id(ElementId::named_usize("tab-pill", ix))
-                .h(px(32.0))
+                .h(px(28.0))
+                .relative()
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(9.0))
+                .gap(px(8.0))
                 .px(px(px_pad))
                 .max_w(px(max_w))
                 .min_w(px(min_w))
@@ -231,13 +243,17 @@ impl AtlasView {
                 .border_color(pill_border)
                 .text_color(pill_fg);
 
+            if active {
+                pill = pill.shadow_sm();
+            }
+
             let is_dragged = self.tab_is_dragging && self.tab_drag_origin == Some(ix);
             if is_dragged {
                 pill = pill
                     .bg(tb.card_hover)
                     .border_color(tb.accent)
                     .border_2()
-                    .shadow_xl()
+                    .shadow_2xl()
                     .cursor_grabbing();
             } else {
                 pill = pill.cursor_pointer();
@@ -307,7 +323,8 @@ impl AtlasView {
                 )
                 .child(
                     div()
-                        .text_size(px(13.5))
+                        .flex_1()
+                        .text_size(px(12.5))
                         .font_weight(if active {
                             FontWeight::MEDIUM
                         } else {
@@ -341,6 +358,19 @@ impl AtlasView {
                             view.close_tab(ix, cx);
                             window.focus(&view.focus);
                         })),
+                );
+            }
+
+            if active {
+                pill = pill.child(
+                    div()
+                        .absolute()
+                        .bottom(px(0.0))
+                        .left(px(6.0))
+                        .right(px(6.0))
+                        .h(px(2.0))
+                        .rounded_full()
+                        .bg(tb.accent),
                 );
             }
             let tab_element = pill.uno_card_drag(
@@ -537,6 +567,56 @@ impl AtlasView {
             );
         }
 
+        bar = bar.child(div().w(px(6.0)));
+
+        let search_capsule = div()
+            .id(ElementId::named_usize("topbar-search-capsule", 0))
+            .h(px(26.0))
+            .px(px(9.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(5.0))
+            .rounded(px(6.0))
+            .bg(tb.card_hover)
+            .border_1()
+            .border_color(tb.hairline)
+            .text_color(tb.chrome_fg)
+            .hover(move |s| s.border_color(tb.accent).text_color(tb.chrome_fg_active))
+            .cursor_pointer()
+            .child(icons::icon(icons::SEARCH).size(px(12.5)).text_color(tb.chrome_fg))
+            .child(
+                div()
+                    .text_size(px(11.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("Search (Ctrl+K)"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.open_palette(window, cx);
+            }));
+        bar = bar.child(search_capsule);
+
+        let is_dark_mode = (0.2126 * tb.elevated_bg.r + 0.7152 * tb.elevated_bg.g + 0.0722 * tb.elevated_bg.b) < 0.45;
+        let theme_icon = if is_dark_mode { icons::SUN } else { icons::MOON };
+        let theme_btn = div()
+            .id(ElementId::named_usize("topbar-theme-toggle", 0))
+            .w(px(26.0))
+            .h(px(26.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.0))
+            .bg(tb.card_hover)
+            .border_1()
+            .border_color(tb.hairline)
+            .text_color(tb.chrome_fg)
+            .hover(move |s| s.border_color(tb.accent).text_color(tb.chrome_fg_active))
+            .cursor_pointer()
+            .child(icons::icon(theme_icon).size(px(13.0)))
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.toggle_theme(cx);
+            }));
+        bar = bar.child(theme_btn);
         bar = bar.child(div().w(px(6.0)));
 
         // Window controls: clean 44px wide native vector controls filling top bar height

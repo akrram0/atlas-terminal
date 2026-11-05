@@ -220,14 +220,22 @@ pub fn format_tab_title(pane: &Pane) -> String {
             .or_else(|| title_path(&pane.title))
     };
 
-    if !cmd.is_empty() && cmd != p_name {
-        return cmd;
-    }
-
-    if let Some(p) = path {
+    let dir = if let Some(p) = path {
         format_path_condensed(&p)
     } else {
         "~".to_string()
+    };
+
+    let label_name = if !cmd.is_empty() && cmd != p_name {
+        cmd
+    } else {
+        p_name.to_string()
+    };
+
+    if dir == label_name || dir.is_empty() {
+        label_name
+    } else {
+        format!("{label_name} · {dir}")
     }
 }
 

@@ -191,18 +191,19 @@ pub trait Motion: IntoElement + Styled + Sized + 'static {
     }
 
     /// Uno card swipe motion for horizontal tabs:
-    /// - When dragged: lifts card by -4px and squeezes horizontal padding (like pulling a physical Uno card from hand).
+    /// - When dragged: squeezes horizontal padding (like pulling a physical Uno card from hand) with elevated shadow.
+    /// - Strictly locked on Y-axis (zero vertical jump / no moving up).
     /// - When unselected / dropped: smoothly springs back to normal resting dimensions with Apple-damped spring physics.
     fn uno_card_drag(self, id: impl Into<ElementId>, is_dragged: bool) -> impl IntoElement {
         let dur = if is_dragged { 140 } else { 300 };
         let curve: fn(f32) -> f32 = if is_dragged { ease_out } else { spring };
         run(self, id, dur, 0, curve, move |el, t| {
-            let (lift, pad) = if is_dragged {
-                (-4.0 * t, 12.0 - 5.0 * t)
+            let pad = if is_dragged {
+                12.0 - 5.0 * t
             } else {
-                (-4.0 * (1.0 - t), 7.0 + 5.0 * t)
+                7.0 + 5.0 * t
             };
-            el.relative().top(px(lift)).px(px(pad))
+            el.px(px(pad))
         })
     }
 
@@ -223,16 +224,14 @@ pub trait Motion: IntoElement + Styled + Sized + 'static {
     }
 
     /// iPhone app launch style entrance: smoothly expands outward from the center
-    /// of tab borders with size-up transition, instead of fading/sliding up from the bottom.
+    /// with horizontal size-up transition, strictly locked on the Y-axis (no vertical jumping).
     fn ios_app_launch(self, id: impl Into<ElementId>) -> impl IntoElement {
-        run(self, id, 240, 0, ease_emphasized, |el, t| {
-            let inset_x = 12.0 * (1.0 - t);
-            let inset_y = 8.0 * (1.0 - t);
-            let radius = 14.0 * (1.0 - t);
+        run(self, id, 220, 0, ease_emphasized, |el, t| {
+            let inset_x = 8.0 * (1.0 - t);
+            let radius = 10.0 * (1.0 - t);
             el.mx(px(inset_x))
-                .my(px(inset_y))
                 .rounded(px(radius))
-                .opacity((0.50 + 0.50 * t).clamp(0.0, 1.0))
+                .opacity((0.60 + 0.40 * t).clamp(0.0, 1.0))
         })
     }
 
