@@ -222,6 +222,8 @@ impl JobObject {
         }
 
         const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+        const JOB_OBJECT_LIMIT_BREAKAWAY_OK: u32 = 0x0800;
+        const JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK: u32 = 0x1000;
         const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: u32 = 9;
 
         unsafe {
@@ -231,7 +233,9 @@ impl JobObject {
             }
 
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                | JOB_OBJECT_LIMIT_BREAKAWAY_OK
+                | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
 
             let ok = SetInformationJobObject(
                 handle,

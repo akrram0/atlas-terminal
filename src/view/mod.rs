@@ -514,27 +514,6 @@ impl AtlasView {
                         needs_paint = true;
                     }
 
-                    // 4c. Settings kinetic smooth inertia scroll
-                    if view.settings_open {
-                        let max_y = f32::from(view.settings_scroll_handle.max_offset().height);
-                        if max_y > 0.0 {
-                            view.settings_scroll_target = view.settings_scroll_target.clamp(-max_y, 0.0);
-                        } else {
-                            view.settings_scroll_target = 0.0;
-                        }
-                        let diff = view.settings_scroll_target - view.settings_scroll_pos;
-                        if diff.abs() > 0.5 {
-                            active_motion = true;
-                            let factor = (1.0 - (-16.0 * dt).exp()).clamp(0.0, 1.0);
-                            view.settings_scroll_pos += diff * factor;
-                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(view.settings_scroll_pos)));
-                            needs_paint = true;
-                        } else if (view.settings_scroll_pos - view.settings_scroll_target).abs() > 0.01 {
-                            view.settings_scroll_pos = view.settings_scroll_target;
-                            view.settings_scroll_handle.set_offset(gpui::point(px(0.0), px(view.settings_scroll_pos)));
-                            needs_paint = true;
-                        }
-                    }
 
                     // 4d. Tab close button smooth hover fade (constant tab width)
                     for (t_ix, tab) in view.tabs.iter_mut().enumerate() {

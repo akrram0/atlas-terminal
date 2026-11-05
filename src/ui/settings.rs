@@ -1496,15 +1496,6 @@ impl AtlasView {
             .min_h(px(0.0))
             .overflow_y_scroll()
             .track_scroll(&self.settings_scroll_handle)
-            .on_scroll_wheel(cx.listener(|view, event: &gpui::ScrollWheelEvent, _window, cx| {
-                let delta = match event.delta {
-                    gpui::ScrollDelta::Lines(d) => d.y * 64.0,
-                    gpui::ScrollDelta::Pixels(d) => f32::from(d.y),
-                };
-                let max_y = f32::from(view.settings_scroll_handle.max_offset().height);
-                view.settings_scroll_target = (view.settings_scroll_target + delta).clamp(-max_y, 0.0);
-                cx.notify();
-            }))
             .p(px(28.0))
             .pb(px(88.0))
             .child(

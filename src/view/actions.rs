@@ -52,7 +52,19 @@ impl AtlasView {
 
     pub fn new_window(&mut self, _cx: &mut Context<Self>) {
         if let Ok(exe) = std::env::current_exe() {
-            let _ = std::process::Command::new(exe).spawn();
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x01000000;
+                const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+                let _ = std::process::Command::new(exe)
+                    .creation_flags(CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP)
+                    .spawn();
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = std::process::Command::new(exe).spawn();
+            }
         }
     }
 

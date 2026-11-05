@@ -133,7 +133,8 @@ pub fn format_keystroke_chord(ks: &Keystroke) -> Option<String> {
     if ks.modifiers.alt {
         parts.push("alt");
     }
-    if ks.modifiers.shift {
+    let is_shifted_num = matches!(key.as_str(), "!" | "@" | "#" | "$" | "%" | "^" | "&" | "*" | "(" | ")");
+    if ks.modifiers.shift || is_shifted_num {
         parts.push("shift");
     }
     let key_clean = match key.as_str() {
@@ -142,8 +143,19 @@ pub fn format_keystroke_chord(ks: &Keystroke) -> Option<String> {
         "arrowright" => "right",
         "arrowup" => "up",
         "arrowdown" => "down",
-        "return" => "enter",
+        "return" | "\r" | "\n" | "numpadenter" => "enter",
         "esc" => "escape",
+        // Normalize shifted punctuation characters so "ctrl+shift+1" matches when GPUI reports "!"
+        "!" => "1",
+        "@" => "2",
+        "#" => "3",
+        "$" => "4",
+        "%" => "5",
+        "^" => "6",
+        "&" => "7",
+        "*" => "8",
+        "(" => "9",
+        ")" => "0",
         other => other,
     };
     parts.push(key_clean);

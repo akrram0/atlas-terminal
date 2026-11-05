@@ -440,6 +440,17 @@ impl AtlasView {
             return;
         }
 
+        // When palette is active, route all keystrokes exclusively to the palette handler.
+        // Prevent any typed characters from leaking into the underlying shell PTY or triggering terminal actions.
+        if self.palette_open {
+            if modifiers.control && (key == "k" || key == "K") {
+                self.close_palette(window, cx);
+                return;
+            }
+            self.handle_palette_key(ks, window, cx);
+            return;
+        }
+
         // Clear hovered link if control is released
         if self.hovered_link.is_some() && !modifiers.control {
             self.hovered_link = None;
@@ -542,14 +553,27 @@ impl AtlasView {
                     self.focus_main(window);
                     return;
                 }
-                // Linux Tiling & Kitty split pane chords (Alt+Enter / Alt+V / Ctrl+Shift+E):
-                if chord == "alt+enter" || chord == "alt+v" || chord == "ctrl+shift+enter" || chord == "ctrl+shift+e" || chord == self.get_shortcut(ACTION_SPLIT_VERTICAL) {
+                // Linux Tiling & Kitty split pane chords (Alt+Enter / Alt+V / Ctrl+Shift+Enter / Ctrl+Shift+E):
+                let is_split_vertical = chord == "alt+enter"
+                    || chord == "alt+v"
+                    || chord == "ctrl+shift+enter"
+                    || chord == "ctrl+shift+e"
+                    || chord == self.get_shortcut(ACTION_SPLIT_VERTICAL)
+                    || (modifiers.alt && (key == "enter" || key == "return" || key == "\r" || key == "\n"));
+                if is_split_vertical {
                     self.split_active(SplitAxis::Columns, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == "alt+d" || chord == "ctrl+shift+d" || chord == "ctrl+shift+o" || chord == "alt+shift+h" || chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL) {
+
+                let is_split_horizontal = chord == "alt+d"
+                    || chord == "ctrl+shift+d"
+                    || chord == "ctrl+shift+o"
+                    || chord == "alt+shift+h"
+                    || chord == self.get_shortcut(ACTION_SPLIT_HORIZONTAL)
+                    || (modifiers.alt && (key == "d" || key == "D"));
+                if is_split_horizontal {
                     self.split_active(SplitAxis::Rows, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
@@ -665,31 +689,56 @@ impl AtlasView {
                     return;
                 }
                 // Direct Profile Tab Launchers:
-                if chord == self.get_shortcut(ACTION_NEW_TAB_POWERSHELL) || chord == "ctrl+shift+1" || chord == "ctrl+alt+1" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_POWERSHELL)
+                    || chord == "ctrl+shift+1"
+                    || chord == "ctrl+shift+!"
+                    || chord == "ctrl+alt+1"
+                    || (modifiers.control && modifiers.shift && (key == "1" || key == "!"))
+                {
                     self.new_tab(Profile::PowerShell, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_WSL) || chord == "ctrl+shift+2" || chord == "ctrl+alt+2" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_WSL)
+                    || chord == "ctrl+shift+2"
+                    || chord == "ctrl+shift+@"
+                    || chord == "ctrl+alt+2"
+                    || (modifiers.control && modifiers.shift && (key == "2" || key == "@"))
+                {
                     self.new_tab(Profile::Wsl, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_CMD) || chord == "ctrl+shift+3" || chord == "ctrl+alt+3" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_CMD)
+                    || chord == "ctrl+shift+3"
+                    || chord == "ctrl+shift+#"
+                    || chord == "ctrl+alt+3"
+                    || (modifiers.control && modifiers.shift && (key == "3" || key == "#"))
+                {
                     self.new_tab(Profile::Cmd, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_GITBASH) || chord == "ctrl+shift+4" || chord == "ctrl+alt+4" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_GITBASH)
+                    || chord == "ctrl+shift+4"
+                    || chord == "ctrl+shift+$"
+                    || chord == "ctrl+alt+4"
+                    || (modifiers.control && modifiers.shift && (key == "4" || key == "$"))
+                {
                     self.new_tab(Profile::GitBash, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
                     return;
                 }
-                if chord == self.get_shortcut(ACTION_NEW_TAB_OPENCODE) || chord == "ctrl+shift+5" || chord == "ctrl+alt+5" {
+                if chord == self.get_shortcut(ACTION_NEW_TAB_OPENCODE)
+                    || chord == "ctrl+shift+5"
+                    || chord == "ctrl+shift+%"
+                    || chord == "ctrl+alt+5"
+                    || (modifiers.control && modifiers.shift && (key == "5" || key == "%"))
+                {
                     self.new_tab(Profile::OpenCode, cx);
                     self.trigger_island_hud(cx);
                     self.focus_main(window);
