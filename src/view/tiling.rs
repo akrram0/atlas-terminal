@@ -333,7 +333,7 @@ impl AtlasView {
                         a: 0.18,
                         ..theme.panel_bg
                     }
-                } else if is_focused_pane {
+                } else if is_focused_pane || is_light {
                     theme.bg
                 } else {
                     theme.panel_bg

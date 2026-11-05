@@ -353,8 +353,18 @@ impl AtlasView {
             return default_bg;
         }
 
+        // Only detect custom background if the pane is an active full-screen TUI (alternate screen or OpenCode)
+        let is_alt = sess.term.mode().contains(TermMode::ALT_SCREEN);
+        let is_opencode = pane.profile == Profile::OpenCode
+            || pane.title.starts_with("OC")
+            || pane.title.to_lowercase().contains("opencode");
+        if !is_alt && !is_opencode {
+            return default_bg;
+        }
+
         let content = sess.term.renderable_content();
         let mut counts: Vec<(alacritty_terminal::vte::ansi::Color, usize)> = Vec::new();
+        let mut total_sampled = 0usize;
 
         // Sample the visible viewport, focusing on the middle 70% of rows and columns
         // to avoid top headers, tabs, and bottom status bars/command lines.
@@ -367,6 +377,7 @@ impl AtlasView {
             let line = indexed.point.line.0;
             let col = indexed.point.column.0;
             if line >= min_line && line <= max_line && col >= min_col && col <= max_col {
+                total_sampled += 1;
                 let color = indexed.cell.bg;
                 if let Some(entry) = counts.iter_mut().find(|(c, _)| *c == color) {
                     entry.1 += 1;
@@ -376,8 +387,10 @@ impl AtlasView {
             }
         }
 
+        // Must cover at least 30% of the sampled viewport and at least 30 cells
+        let min_threshold = (total_sampled * 30 / 100).max(30);
         if let Some((most_frequent_color, count)) = counts.into_iter().max_by_key(|(_, count)| *count) {
-            if count >= 10 && most_frequent_color != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
+            if count >= min_threshold && most_frequent_color != alacritty_terminal::vte::ansi::Color::Named(alacritty_terminal::vte::ansi::NamedColor::Background) {
                 return theme.resolve(most_frequent_color, false, &over);
             }
         }
@@ -385,18 +398,13 @@ impl AtlasView {
         default_bg
     }
 
-    pub(crate) fn is_pane_tui(pane: &Pane, theme: &Theme) -> bool {
-        if pane.session.borrow().term.mode().contains(TermMode::ALT_SCREEN)
+    pub(crate) fn is_pane_tui(pane: &Pane, _theme: &Theme) -> bool {
+        let is_alt = pane.session.borrow().term.mode().contains(TermMode::ALT_SCREEN);
+        if is_alt
             || pane.profile == Profile::OpenCode
             || pane.title.starts_with("OC")
             || pane.title.to_lowercase().contains("opencode")
         {
-            return true;
-        }
-        // Content heuristic: if the pane displays content with an explicitly detected non-default background color
-        let (default_bg, _, _) = theme.defaults(pane.session.borrow().term.colors());
-        let detected_bg = Self::detect_pane_bg(pane, theme);
-        if detected_bg != default_bg && detected_bg.a > 0.95 {
             return true;
         }
         false

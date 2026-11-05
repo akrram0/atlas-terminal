@@ -220,44 +220,31 @@ impl Theme {
         }
     }
 
-    /// Classic flipped for daylight: off-white sheet (#F2F2F2), near-black
-    /// ink, classic blue (#2472C8) accent, and a Campbell-flavoured ANSI set
-    /// with the illegible-on-white hues (yellow, cyan, white) darkened.
+    /// Classic flipped for daylight: crisp white sheet (#FFFFFF), near-black
+    /// ink, classic blue (#0969DA) accent, and a high-contrast ANSI set.
     pub fn classic_light() -> Self {
         Self {
-            bg: rgb(0xF2F2F2),
+            bg: rgb(0xFFFFFF),
             fg: rgb(0x1F1F1F),
-            cursor: rgb(0x2472C8),
-            panel_bg: rgb(0xE8E8E8),
+            cursor: rgb(0x0969DA),
+            panel_bg: rgb(0xF2F2F4),
             elevated_bg: rgb(0xFFFFFF),
-            elevated_border: rgba(0x0000001A),
+            elevated_border: rgba(0x00000014),
             chrome_fg: rgb(0x6B6B6B),
             chrome_fg_active: rgb(0x1F1F1F),
             faint_fg: rgb(0x8F8F8F),
-            hairline: rgba(0x00000018),
-            card_hover: rgba(0x0000000D),
-            card_active: rgba(0x2472C81E),
-            accent: rgb(0x2472C8),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
+            card_active: rgba(0x0969DA1A),
+            accent: rgb(0x0969DA),
             good: rgb(0x13A10E),
-            sheet_border: rgba(0x00000018),
-            soft_bg: rgba(0x0000000F),
+            sheet_border: rgba(0x00000012),
+            soft_bg: rgba(0x00000006),
             ansi: [
-                rgb(0x0C0C0C), // 0 black
-                rgb(0xC50F1F), // 1 red
-                rgb(0x13A10E), // 2 green
-                rgb(0xC19C00), // 3 yellow
-                rgb(0x2472C8), // 4 blue
-                rgb(0x881798), // 5 magenta
-                rgb(0x0E7490), // 6 cyan
-                rgb(0x555555), // 7 white — mid gray on the light sheet
-                rgb(0x808080), // 8 bright black
-                rgb(0xE74856), // 9 bright red
-                rgb(0x16C60C), // 10 bright green
-                rgb(0xD9A406), // 11 bright yellow
-                rgb(0x3B8EEA), // 12 bright blue
-                rgb(0xB4009E), // 13 bright magenta
-                rgb(0x1295A3), // 14 bright cyan
-                rgb(0x1F1F1F), // 15 bright white — default ink, like other light themes
+                rgb(0x1F1F1F), rgb(0xC50F1F), rgb(0x13A10E), rgb(0xC19C00),
+                rgb(0x0969DA), rgb(0x881798), rgb(0x0E7490), rgb(0x6E7781),
+                rgb(0x555555), rgb(0xE74856), rgb(0x16C60C), rgb(0xD9A406),
+                rgb(0x3B8EEA), rgb(0xB4009E), rgb(0x1295A3), rgb(0x000000),
             ],
         }
     }
@@ -489,27 +476,27 @@ impl Theme {
 
     pub fn tokyo_night_light() -> Self {
         Self {
-            bg: rgb(0xE1E2E7),
-            fg: rgb(0x3760BF),
+            bg: rgb(0xF7F8FC),
+            fg: rgb(0x343B58),
             cursor: rgb(0x2E7DE9),
-            panel_bg: rgb(0xD5D6DB),
-            elevated_bg: rgb(0xEBEDF2),
+            panel_bg: rgb(0xEBEDF5),
+            elevated_bg: rgb(0xFFFFFF),
             elevated_border: rgba(0x00000014),
             chrome_fg: rgb(0x6172B0),
-            chrome_fg_active: rgb(0x3760BF),
+            chrome_fg_active: rgb(0x343B58),
             faint_fg: rgb(0x8990B3),
-            hairline: rgba(0x00000014),
-            card_hover: rgba(0x0000000D),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
             card_active: rgba(0x2E7DE91E),
             accent: rgb(0x2E7DE9),
-            good: rgb(0x587539),
-            sheet_border: rgba(0x00000014),
-            soft_bg: rgba(0x0000000F),
+            good: rgb(0x387038),
+            sheet_border: rgba(0x00000012),
+            soft_bg: rgba(0x00000006),
             ansi: [
-                rgb(0x0F0F14), rgb(0x8C4351), rgb(0x485E30), rgb(0x8F5E15),
-                rgb(0x2E7DE9), rgb(0x7847BD), rgb(0x166775), rgb(0x4F5B66),
-                rgb(0x68707F), rgb(0xB15C6B), rgb(0x587539), rgb(0x9D6A1F),
-                rgb(0x3B8BF2), rgb(0x8C5ECF), rgb(0x217E8F), rgb(0xE1E2E7),
+                rgb(0x343B58), rgb(0x8C4351), rgb(0x387038), rgb(0x8F5E15),
+                rgb(0x2E7DE9), rgb(0x7847BD), rgb(0x166775), rgb(0x68707F),
+                rgb(0x4F5B66), rgb(0xB15C6B), rgb(0x448544), rgb(0x9D6A1F),
+                rgb(0x3B8BF2), rgb(0x8C5ECF), rgb(0x217E8F), rgb(0x1D202F),
             ],
         }
     }
@@ -543,27 +530,27 @@ impl Theme {
 
     pub fn catppuccin_light() -> Self {
         Self {
-            bg: rgb(0xEFF1F5),
+            bg: rgb(0xFAFAFC),
             fg: rgb(0x4C4F69),
             cursor: rgb(0xEA76CB),
-            panel_bg: rgb(0xE6E9EF),
-            elevated_bg: rgb(0xDCE0E8),
+            panel_bg: rgb(0xEFF1F5),
+            elevated_bg: rgb(0xFFFFFF),
             elevated_border: rgba(0x00000014),
             chrome_fg: rgb(0x7C7F93),
             chrome_fg_active: rgb(0x4C4F69),
             faint_fg: rgb(0x9CA0B0),
-            hairline: rgba(0x00000014),
-            card_hover: rgba(0x0000000D),
-            card_active: rgba(0xEA76CB1E),
-            accent: rgb(0xEA76CB),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
+            card_active: rgba(0x8839EF1E),
+            accent: rgb(0x8839EF),
             good: rgb(0x40A02B),
-            sheet_border: rgba(0x00000014),
-            soft_bg: rgba(0x0000000F),
+            sheet_border: rgba(0x00000012),
+            soft_bg: rgba(0x00000006),
             ansi: [
-                rgb(0x5C5F77), rgb(0xD20F39), rgb(0x40A02B), rgb(0xDF8E1D),
-                rgb(0x1E66F5), rgb(0xEA76CB), rgb(0x179299), rgb(0xACB0BE),
-                rgb(0x6C6F85), rgb(0xD20F39), rgb(0x40A02B), rgb(0xDF8E1D),
-                rgb(0x1E66F5), rgb(0xEA76CB), rgb(0x179299), rgb(0x4C4F69),
+                rgb(0x4C4F69), rgb(0xD20F39), rgb(0x40A02B), rgb(0xDF8E1D),
+                rgb(0x1E66F5), rgb(0x8839EF), rgb(0x179299), rgb(0x9CA0B0),
+                rgb(0x6C6F85), rgb(0xE64553), rgb(0x348022), rgb(0xB87010),
+                rgb(0x2A72F8), rgb(0x9B4EFA), rgb(0x147E84), rgb(0x2A2B3D),
             ],
         }
     }
@@ -597,27 +584,189 @@ impl Theme {
 
     pub fn nord_light() -> Self {
         Self {
-            bg: rgb(0xECEFF4),
+            bg: rgb(0xF8FAFC),
             fg: rgb(0x2E3440),
             cursor: rgb(0x5E81AC),
-            panel_bg: rgb(0xE5E9F0),
-            elevated_bg: rgb(0xD8DEE9),
+            panel_bg: rgb(0xEDF1F7),
+            elevated_bg: rgb(0xFFFFFF),
             elevated_border: rgba(0x00000014),
             chrome_fg: rgb(0x4C566A),
             chrome_fg_active: rgb(0x2E3440),
             faint_fg: rgb(0x7B88A1),
-            hairline: rgba(0x00000014),
-            card_hover: rgba(0x0000000D),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
             card_active: rgba(0x5E81AC1E),
             accent: rgb(0x5E81AC),
-            good: rgb(0x608E46),
-            sheet_border: rgba(0x00000014),
-            soft_bg: rgba(0x0000000F),
+            good: rgb(0x4E7A36),
+            sheet_border: rgba(0x00000012),
+            soft_bg: rgba(0x00000006),
             ansi: [
-                rgb(0x2E3440), rgb(0x9E3B44), rgb(0x608E46), rgb(0x9F7C2C),
+                rgb(0x2E3440), rgb(0x9E3B44), rgb(0x4E7A36), rgb(0x9F7C2C),
                 rgb(0x5E81AC), rgb(0x84557A), rgb(0x497F87), rgb(0x768297),
-                rgb(0x4C566A), rgb(0xB34852), rgb(0x72A355), rgb(0xB28C33),
-                rgb(0x6E93C0), rgb(0x98668E), rgb(0x55929B), rgb(0x2E3440),
+                rgb(0x4C566A), rgb(0xB34852), rgb(0x5C8E41), rgb(0xB28C33),
+                rgb(0x6E93C0), rgb(0x98668E), rgb(0x55929B), rgb(0x1E222A),
+            ],
+        }
+    }
+
+    pub fn github_light() -> Self {
+        Self {
+            bg: rgb(0xFFFFFF),
+            fg: rgb(0x24292F),
+            cursor: rgb(0x0969DA),
+            panel_bg: rgb(0xF6F8FA),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgba(0x00000014),
+            chrome_fg: rgb(0x57606A),
+            chrome_fg_active: rgb(0x24292F),
+            faint_fg: rgb(0x8C959F),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
+            card_active: rgba(0x0969DA1A),
+            accent: rgb(0x0969DA),
+            good: rgb(0x1A7F37),
+            sheet_border: rgba(0x00000012),
+            soft_bg: rgba(0x00000006),
+            ansi: [
+                rgb(0x24292F), rgb(0xCF222E), rgb(0x1A7F37), rgb(0x9A6700),
+                rgb(0x0969DA), rgb(0x8250DF), rgb(0x1B7C83), rgb(0x6E7781),
+                rgb(0x57606A), rgb(0xA40E26), rgb(0x116329), rgb(0x633C01),
+                rgb(0x0550AE), rgb(0x5A32A3), rgb(0x095D63), rgb(0x24292F),
+            ],
+        }
+    }
+
+    pub fn github_dark() -> Self {
+        Self {
+            bg: rgb(0x0D1117),
+            fg: rgb(0xC9D1D9),
+            cursor: rgb(0x58A6FF),
+            panel_bg: rgb(0x010409),
+            elevated_bg: rgb(0x161B22),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x8B949E),
+            chrome_fg_active: rgb(0xF0F6FC),
+            faint_fg: rgb(0x484F58),
+            hairline: rgba(0xFFFFFF10),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x58A6FF26),
+            accent: rgb(0x58A6FF),
+            good: rgb(0x3FB950),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x484F58), rgb(0xFF7B72), rgb(0x3FB950), rgb(0xD29922),
+                rgb(0x58A6FF), rgb(0xBC8CFF), rgb(0x39C5CF), rgb(0xB1BAC4),
+                rgb(0x6E7681), rgb(0xFFA198), rgb(0x56D364), rgb(0xE3B341),
+                rgb(0x79C0FF), rgb(0xD2A8FF), rgb(0x56D4DD), rgb(0xF0F6FC),
+            ],
+        }
+    }
+
+    pub fn one_light() -> Self {
+        Self {
+            bg: rgb(0xFAFAFA),
+            fg: rgb(0x383A42),
+            cursor: rgb(0x4078F2),
+            panel_bg: rgb(0xF0F0F0),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgba(0x00000014),
+            chrome_fg: rgb(0x696C77),
+            chrome_fg_active: rgb(0x383A42),
+            faint_fg: rgb(0xA0A1A7),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
+            card_active: rgba(0x4078F21A),
+            accent: rgb(0x4078F2),
+            good: rgb(0x50A14F),
+            sheet_border: rgba(0x00000012),
+            soft_bg: rgba(0x00000006),
+            ansi: [
+                rgb(0x383A42), rgb(0xE45649), rgb(0x50A14F), rgb(0xC18401),
+                rgb(0x4078F2), rgb(0xA626A4), rgb(0x0184BC), rgb(0xA0A1A7),
+                rgb(0x696C77), rgb(0xE05243), rgb(0x469545), rgb(0xA87200),
+                rgb(0x346CD8), rgb(0x982196), rgb(0x0172A3), rgb(0x202227),
+            ],
+        }
+    }
+
+    pub fn one_dark() -> Self {
+        Self {
+            bg: rgb(0x282C34),
+            fg: rgb(0xABB2BF),
+            cursor: rgb(0x61AFEF),
+            panel_bg: rgb(0x21252B),
+            elevated_bg: rgb(0x2C313A),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x828997),
+            chrome_fg_active: rgb(0xABB2BF),
+            faint_fg: rgb(0x5C6370),
+            hairline: rgba(0xFFFFFF10),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x61AFEF26),
+            accent: rgb(0x61AFEF),
+            good: rgb(0x98C379),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x3F4451), rgb(0xE06C75), rgb(0x98C379), rgb(0xE5C07B),
+                rgb(0x61AFEF), rgb(0xC678DD), rgb(0x56B6C2), rgb(0xABB2BF),
+                rgb(0x4B5263), rgb(0xBE5046), rgb(0x7EB35B), rgb(0xD19A66),
+                rgb(0x4D9DE0), rgb(0xB25EC9), rgb(0x439EA9), rgb(0xE6EDF3),
+            ],
+        }
+    }
+
+    pub fn solarized_light() -> Self {
+        Self {
+            bg: rgb(0xFDF6E3),
+            fg: rgb(0x586E75),
+            cursor: rgb(0x268BD2),
+            panel_bg: rgb(0xEEE8D5),
+            elevated_bg: rgb(0xFFFAF0),
+            elevated_border: rgba(0x00000014),
+            chrome_fg: rgb(0x657B83),
+            chrome_fg_active: rgb(0x073642),
+            faint_fg: rgb(0x93A1A1),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
+            card_active: rgba(0x268BD21A),
+            accent: rgb(0x268BD2),
+            good: rgb(0x859900),
+            sheet_border: rgba(0x00000012),
+            soft_bg: rgba(0x00000006),
+            ansi: [
+                rgb(0x073642), rgb(0xDC322F), rgb(0x859900), rgb(0xB58900),
+                rgb(0x268BD2), rgb(0xD33682), rgb(0x2AA198), rgb(0x93A1A1),
+                rgb(0x657B83), rgb(0xCB4B16), rgb(0x718200), rgb(0x987300),
+                rgb(0x1F70A8), rgb(0xB8286E), rgb(0x207E77), rgb(0x002B36),
+            ],
+        }
+    }
+
+    pub fn solarized_dark() -> Self {
+        Self {
+            bg: rgb(0x002B36),
+            fg: rgb(0x839496),
+            cursor: rgb(0x268BD2),
+            panel_bg: rgb(0x073642),
+            elevated_bg: rgb(0x0A3F4E),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x657B83),
+            chrome_fg_active: rgb(0x93A1A1),
+            faint_fg: rgb(0x586E75),
+            hairline: rgba(0xFFFFFF10),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x268BD226),
+            accent: rgb(0x268BD2),
+            good: rgb(0x859900),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x073642), rgb(0xDC322F), rgb(0x859900), rgb(0xB58900),
+                rgb(0x268BD2), rgb(0xD33682), rgb(0x2AA198), rgb(0x93A1A1),
+                rgb(0x657B83), rgb(0xCB4B16), rgb(0x718200), rgb(0x987300),
+                rgb(0x1F70A8), rgb(0xB8286E), rgb(0x207E77), rgb(0xFDF6E3),
             ],
         }
     }
@@ -651,9 +800,30 @@ impl ThemeRegistry {
                 Preset {
                     id: "atlas",
                     name: "Atlas Default",
-                    description: "Warm paper light mode & sleek matte dark mode with terracotta rust accents.",
+                    description: "Apple macOS Light paper sheet & sleek matte dark mode with terracotta accents.",
                     dark: Theme::dark(),
                     light: Theme::cream(),
+                },
+                Preset {
+                    id: "github",
+                    name: "GitHub",
+                    description: "Pristine white paper, GitHub blue accents, and high-contrast developer syntax.",
+                    dark: Theme::github_dark(),
+                    light: Theme::github_light(),
+                },
+                Preset {
+                    id: "one",
+                    name: "One Light / Dark",
+                    description: "Clean modern aesthetic with Atom violet and balanced syntax tones.",
+                    dark: Theme::one_dark(),
+                    light: Theme::one_light(),
+                },
+                Preset {
+                    id: "solarized",
+                    name: "Solarized",
+                    description: "Warm ivory linen with Ethan Schoonover's iconic precision color science.",
+                    dark: Theme::solarized_dark(),
+                    light: Theme::solarized_light(),
                 },
                 Preset {
                     id: "tokyo_night",
@@ -761,6 +931,13 @@ mod tests {
         let registry = ThemeRegistry::standard();
         let idx = registry.find_by_name_or_id("classic").expect("classic preset");
         assert_eq!(registry.preset(idx).name, "Classic");
-        assert_eq!(registry.len(), 5);
+        assert_eq!(registry.len(), 8);
+    }
+
+    #[test]
+    fn github_light_is_pristine_white() {
+        let gh = Theme::github_light();
+        assert!(is(gh.bg, 0xFF, 0xFF, 0xFF));
+        assert!(is(gh.fg, 0x24, 0x29, 0x2F));
     }
 }
