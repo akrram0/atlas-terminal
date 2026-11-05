@@ -191,19 +191,19 @@ pub trait Motion: IntoElement + Styled + Sized + 'static {
     }
 
     /// Uno card swipe motion for horizontal tabs:
-    /// - When dragged: squeezes horizontal padding (like pulling a physical Uno card from hand) with elevated shadow.
+    /// - When dragged: squeezes tab width & horizontal padding (like picking an Uno card from a hand) with elevated shadow.
     /// - Strictly locked on Y-axis (zero vertical jump / no moving up).
     /// - When unselected / dropped: smoothly springs back to normal resting dimensions with Apple-damped spring physics.
     fn uno_card_drag(self, id: impl Into<ElementId>, is_dragged: bool) -> impl IntoElement {
-        let dur = if is_dragged { 140 } else { 300 };
+        let dur = if is_dragged { 120 } else { 240 };
         let curve: fn(f32) -> f32 = if is_dragged { ease_out } else { spring };
         run(self, id, dur, 0, curve, move |el, t| {
-            let pad = if is_dragged {
-                12.0 - 5.0 * t
+            let (max_w, pad) = if is_dragged {
+                (200.0 - 70.0 * t, 10.0 - 3.0 * t)
             } else {
-                7.0 + 5.0 * t
+                (130.0 + 70.0 * t, 7.0 + 3.0 * t)
             };
-            el.px(px(pad))
+            el.max_w(px(max_w)).px(px(pad))
         })
     }
 

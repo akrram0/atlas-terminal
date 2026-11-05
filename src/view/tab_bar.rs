@@ -216,15 +216,19 @@ impl AtlasView {
             };
             let pill_hot = tb.chrome_fg_active;
 
+            let is_dragged = self.tab_is_dragging && self.tab_drag_origin == Some(ix);
             let (max_w, min_w, px_pad, opacity) = if tab.closing {
                 let scale = (1.0 - EASE_OUT.eval(tab.close_progress)).max(0.0);
                 (200.0 * scale, 0.0, 10.0 * scale, scale)
+            } else if is_dragged {
+                // Squeezed Uno Card in-hand state: visibly contracts from 200px to 130px
+                (130.0, 96.0, 7.0, 0.95)
             } else {
                 (200.0, 128.0, 10.0, 1.0)
             };
 
             let mut pill = div()
-                .id(ElementId::named_usize("tab-pill", ix))
+                .id(ElementId::named_usize("tab-pill", tab.id as usize))
                 .h(px(28.0))
                 .relative()
                 .flex()
@@ -238,23 +242,18 @@ impl AtlasView {
                 .overflow_hidden()
                 .flex_shrink()
                 .rounded(px(7.0))
-                .bg(pill_bg)
+                .bg(if is_dragged { tb.elevated_bg } else { pill_bg })
                 .border_1()
-                .border_color(pill_border)
+                .border_color(if is_dragged { tb.accent } else { pill_border })
                 .text_color(pill_fg);
 
-            if active {
-                pill = pill.shadow_sm();
-            }
-
-            let is_dragged = self.tab_is_dragging && self.tab_drag_origin == Some(ix);
             if is_dragged {
                 pill = pill
-                    .bg(tb.card_hover)
-                    .border_color(tb.accent)
                     .border_2()
-                    .shadow_2xl()
+                    .shadow_xl()
                     .cursor_grabbing();
+            } else if active {
+                pill = pill.shadow_sm().cursor_pointer();
             } else {
                 pill = pill.cursor_pointer();
             }
@@ -338,7 +337,7 @@ impl AtlasView {
             if !tab.closing {
                 pill = pill.child(
                     div()
-                        .id(ElementId::named_usize("tab-close", ix))
+                        .id(ElementId::named_usize("tab-close", tab.id as usize))
                         .w(px(18.0))
                         .h(px(18.0))
                         .flex_none()
@@ -645,7 +644,7 @@ impl AtlasView {
             .text_color(tb.chrome_fg)
             .hover(move |s| s.border_color(tb.accent).text_color(tb.chrome_fg_active))
             .cursor_pointer()
-            .child(icons::icon(theme_icon).size(px(13.0)))
+            .child(icons::icon(theme_icon).size(px(13.5)).text_color(tb.chrome_fg))
             .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                 view.toggle_theme(cx);
             }));

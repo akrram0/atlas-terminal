@@ -601,27 +601,40 @@ unsafe extern "system" fn window_proc(
                 unsafe { CallWindowProcW(prev, hwnd, msg, wparam, lparam) }
             };
             let info = lparam as *mut MinMaxInfo;
-            let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
-            if !info.is_null() && !monitor.is_null() {
-                let mut mi = MonitorInfo {
-                    cb_size: core::mem::size_of::<MonitorInfo>() as u32,
-                    rc_monitor: Rect::default(),
-                    rc_work: Rect::default(),
-                    dw_flags: 0,
-                };
-                if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
-                    unsafe {
-                        (*info).pt_max_position.x = mi.rc_work.left - mi.rc_monitor.left;
-                        (*info).pt_max_position.y = mi.rc_work.top - mi.rc_monitor.top;
-                        (*info).pt_max_size.x = mi.rc_work.right - mi.rc_work.left;
-                        (*info).pt_max_size.y = mi.rc_work.bottom - mi.rc_work.top;
-                        if (*info).pt_max_track_size.x <= 0 {
-                            (*info).pt_max_track_size.x =
-                                mi.rc_monitor.right - mi.rc_monitor.left;
-                        }
-                        if (*info).pt_max_track_size.y <= 0 {
-                            (*info).pt_max_track_size.y =
-                                mi.rc_monitor.bottom - mi.rc_monitor.top;
+            if !info.is_null() {
+                // Enforce minimum window tracking dimensions: prevents the window from being resized
+                // so small that the top bar, tab drag zone, or caption controls get clipped/inaccessible.
+                let dpi = unsafe { GetDpiForWindow(hwnd) };
+                let scale = if dpi == 0 { 1.0 } else { (dpi as f32 / 96.0).max(1.0) };
+                let min_w = (480.0 * scale).round() as i32;
+                let min_h = (280.0 * scale).round() as i32;
+                unsafe {
+                    (*info).pt_min_track_size.x = (*info).pt_min_track_size.x.max(min_w);
+                    (*info).pt_min_track_size.y = (*info).pt_min_track_size.y.max(min_h);
+                }
+
+                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+                if !monitor.is_null() {
+                    let mut mi = MonitorInfo {
+                        cb_size: core::mem::size_of::<MonitorInfo>() as u32,
+                        rc_monitor: Rect::default(),
+                        rc_work: Rect::default(),
+                        dw_flags: 0,
+                    };
+                    if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
+                        unsafe {
+                            (*info).pt_max_position.x = mi.rc_work.left - mi.rc_monitor.left;
+                            (*info).pt_max_position.y = mi.rc_work.top - mi.rc_monitor.top;
+                            (*info).pt_max_size.x = mi.rc_work.right - mi.rc_work.left;
+                            (*info).pt_max_size.y = mi.rc_work.bottom - mi.rc_work.top;
+                            if (*info).pt_max_track_size.x <= 0 {
+                                (*info).pt_max_track_size.x =
+                                    mi.rc_monitor.right - mi.rc_monitor.left;
+                            }
+                            if (*info).pt_max_track_size.y <= 0 {
+                                (*info).pt_max_track_size.y =
+                                    mi.rc_monitor.bottom - mi.rc_monitor.top;
+                            }
                         }
                     }
                 }
@@ -922,8 +935,9 @@ pub fn apply() {
                         &preference as *const i32 as *const core::ffi::c_void,
                         core::mem::size_of::<i32>() as u32,
                     );
-                    // Suppress DWM window border drawing to prevent any visible edge line or frame artifacts.
-                    let border: u32 = DWMWA_COLOR_NONE;
+                    // Restore native Windows 11 border so Windows 11 Snap Layouts / tiling manager
+                    // draws the native hairline/accent border around the window.
+                    let border: u32 = DWMWA_COLOR_DEFAULT;
                     let _ = DwmSetWindowAttribute(
                         hwnd,
                         DWMWA_BORDER_COLOR,
