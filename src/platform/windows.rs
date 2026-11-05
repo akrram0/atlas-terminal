@@ -990,11 +990,11 @@ pub fn send_desktop_notification(title: &str, message: &str) {
     if raw == 0 {
         return;
     }
-    let hwnd = raw as Hwnd;
     let title_utf16: Vec<u16> = title.encode_utf16().take(63).collect();
     let msg_utf16: Vec<u16> = message.encode_utf16().take(255).collect();
 
     std::thread::spawn(move || {
+        let hwnd = raw as Hwnd;
         #[repr(C)]
         struct NotifyIconDataW {
             cb_size: u32,

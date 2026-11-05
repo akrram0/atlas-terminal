@@ -390,27 +390,26 @@ fn from_rgb(rgb_: Rgb) -> Rgba {
 
 #[cfg(windows)]
 pub fn is_system_light_mode() -> bool {
-    use std::ptr::null_mut;
     #[link(name = "advapi32")]
     unsafe extern "system" {
         fn RegOpenKeyExW(
-            hkey: *mut core::ffi::c_void,
+            hkey: isize,
             sub_key: *const u16,
             options: u32,
             sam_desired: u32,
-            result: *mut *mut core::ffi::c_void,
+            result: *mut isize,
         ) -> i32;
         fn RegQueryValueExW(
-            hkey: *mut core::ffi::c_void,
+            hkey: isize,
             value_name: *const u16,
             reserved: *mut u32,
             type_: *mut u32,
             data: *mut u8,
             cb_data: *mut u32,
         ) -> i32;
-        fn RegCloseKey(hkey: *mut core::ffi::c_void) -> i32;
+        fn RegCloseKey(hkey: isize) -> i32;
     }
-    const HKEY_CURRENT_USER: *mut core::ffi::c_void = 0x80000001u32 as usize as *mut core::ffi::c_void;
+    const HKEY_CURRENT_USER: isize = 0x80000001u32 as i32 as isize;
     const KEY_READ: u32 = 0x20019;
 
     let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
@@ -419,7 +418,7 @@ pub fn is_system_light_mode() -> bool {
     let val_name: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
 
     unsafe {
-        let mut key: *mut core::ffi::c_void = null_mut();
+        let mut key: isize = 0;
         if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut key) == 0 {
             let mut val: u32 = 0;
             let mut size: u32 = std::mem::size_of::<u32>() as u32;
@@ -427,7 +426,7 @@ pub fn is_system_light_mode() -> bool {
             let res = RegQueryValueExW(
                 key,
                 val_name.as_ptr(),
-                null_mut(),
+                std::ptr::null_mut(),
                 &mut val_type,
                 &mut val as *mut u32 as *mut u8,
                 &mut size,
