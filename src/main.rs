@@ -7,6 +7,7 @@ mod cwd;
 mod icons;
 pub mod image_osc;
 mod keymap;
+pub mod motion;
 mod session;
 mod terminal;
 mod theme;
