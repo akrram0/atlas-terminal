@@ -154,6 +154,8 @@ pub(crate) mod platform;
 pub(crate) use platform::rounded_corners;
 
 fn main() {
+    session::init_process_job_object();
+
     // Hidden CI/test helper: apply a zstd delta and exit without starting GPUI.
     if let Some(code) = updater::run_patch_cli() {
         std::process::exit(code);
@@ -261,6 +263,7 @@ fn main() {
         log_line("window opened");
         #[cfg(windows)]
         rounded_corners::apply();
+        session::trim_working_set();
         cx.activate(true);
     });
     log_line("event loop exited");

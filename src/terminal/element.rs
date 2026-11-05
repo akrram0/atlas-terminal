@@ -320,6 +320,8 @@ impl Element for TerminalElement {
                 }
 
                 let is_icon = char_class(ch) == CharClass::Icon;
+                // High-contrast, fully opaque foreground ink prevents subpixel glyph edge erosion on transparent swapchains
+                fg.a = 1.0;
                 let style = CellStyle {
                     fg,
                     bg,

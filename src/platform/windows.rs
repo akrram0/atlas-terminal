@@ -250,7 +250,11 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
 
         let mut policy = if enabled {
             let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::Relaxed));
-            let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
+            let alpha = if op <= 0.01 {
+                0x01
+            } else {
+                ((op.clamp(0.0, 1.0)) * 255.0) as u32
+            };
             let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
                 0x0a0c10
             } else {
@@ -259,7 +263,7 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
             AccentPolicy {
                 accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
                 accent_flags: 2,
-                gradient_color: (alpha.max(1) << 24) | rgb,
+                gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
                 animation_id: 0,
             }
         } else {
@@ -527,8 +531,9 @@ pub fn set_dark_mode(dark: bool) {
         }
     }
     let hwnd = raw as Hwnd;
+    let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
+    let value: i32 = if dark && op > 0.02 { 1 } else { 0 };
     unsafe {
-        let value: i32 = if dark { 1 } else { 0 };
         let _ = DwmSetWindowAttribute(
             hwnd,
             DWMWA_USE_IMMERSIVE_DARK_MODE,
@@ -551,7 +556,18 @@ pub fn set_opacity(opacity: f32) {
     }
     let raw = MAIN_HWND.load(Ordering::SeqCst);
     if raw != 0 {
-        apply_backdrop(raw as Hwnd, opacity < 0.999);
+        let hwnd = raw as Hwnd;
+        apply_backdrop(hwnd, opacity < 0.999);
+        let dark = DARK_MODE.load(Ordering::SeqCst);
+        let value: i32 = if dark && opacity > 0.02 { 1 } else { 0 };
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                &value as *const i32 as *const core::ffi::c_void,
+                core::mem::size_of::<i32>() as u32,
+            );
+        }
     }
 }
 
@@ -967,30 +983,71 @@ pub fn apply() {
     });
 }
 
-/// Send a native Windows desktop notification asynchronously.
+/// Send a native Windows desktop notification asynchronously via Shell_NotifyIconW.
+/// Zero overhead, zero child processes spawned, zero PowerShell memory leaks.
 pub fn send_desktop_notification(title: &str, message: &str) {
-    let t = title.replace('\'', "''");
-    let m = message.replace('\'', "''");
-    let script = format!(
-        "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; \
-         $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02); \
-         $nodes = $template.GetElementsByTagName('text'); \
-         $nodes.Item(0).AppendChild($template.CreateTextNode('{t}')) | Out-Null; \
-         $nodes.Item(1).AppendChild($template.CreateTextNode('{m}')) | Out-Null; \
-         $toast = [Windows.UI.Notifications.ToastNotification]::new($template); \
-         [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Atlas.Terminal').Show($toast)"
-    );
+    let raw = MAIN_HWND.load(Ordering::Relaxed);
+    if raw == 0 {
+        return;
+    }
+    let hwnd = raw as Hwnd;
+    let title_utf16: Vec<u16> = title.encode_utf16().take(63).collect();
+    let msg_utf16: Vec<u16> = message.encode_utf16().take(255).collect();
+
     std::thread::spawn(move || {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        if let Ok(mut child) = std::process::Command::new("powershell.exe")
-            .arg("-NoProfile")
-            .arg("-Command")
-            .arg(&script)
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-        {
-            let _ = child.wait();
+        #[repr(C)]
+        struct NotifyIconDataW {
+            cb_size: u32,
+            h_wnd: Hwnd,
+            u_id: u32,
+            u_flags: u32,
+            u_callback_message: u32,
+            h_icon: *mut core::ffi::c_void,
+            sz_tip: [u16; 128],
+            dw_state: u32,
+            dw_state_mask: u32,
+            sz_info: [u16; 256],
+            u_timeout_or_version: u32,
+            sz_info_title: [u16; 64],
+            dw_info_flags: u32,
+            guid_item: [u8; 16],
+            h_balloon_icon: *mut core::ffi::c_void,
+        }
+
+        const NIM_ADD: u32 = 0x00000000;
+        const NIM_MODIFY: u32 = 0x00000001;
+        const NIM_DELETE: u32 = 0x00000002;
+        const NIF_INFO: u32 = 0x00000010;
+        const NIIF_INFO: u32 = 0x00000001;
+
+        #[link(name = "shell32")]
+        unsafe extern "system" {
+            fn Shell_NotifyIconW(dwMessage: u32, lpData: *const NotifyIconDataW) -> i32;
+        }
+
+        let mut nid: NotifyIconDataW = unsafe { core::mem::zeroed() };
+        nid.cb_size = core::mem::size_of::<NotifyIconDataW>() as u32;
+        nid.h_wnd = hwnd;
+        nid.u_id = 9999;
+        nid.u_flags = NIF_INFO;
+        nid.dw_info_flags = NIIF_INFO;
+
+        for (i, &c) in title_utf16.iter().enumerate() {
+            if i < nid.sz_info_title.len() - 1 {
+                nid.sz_info_title[i] = c;
+            }
+        }
+        for (i, &c) in msg_utf16.iter().enumerate() {
+            if i < nid.sz_info.len() - 1 {
+                nid.sz_info[i] = c;
+            }
+        }
+
+        unsafe {
+            let _ = Shell_NotifyIconW(NIM_ADD, &nid);
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &nid);
+            std::thread::sleep(std::time::Duration::from_millis(4000));
+            let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
         }
     });
 }

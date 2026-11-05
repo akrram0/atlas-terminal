@@ -292,6 +292,28 @@ impl Drop for JobObject {
 }
 
 #[cfg(windows)]
+pub fn init_process_job_object() {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentProcess() -> *mut core::ffi::c_void;
+        fn AssignProcessToJobObject(hJob: *mut core::ffi::c_void, hProcess: *mut core::ffi::c_void) -> i32;
+    }
+    if let Some(job) = JobObject::new() {
+        unsafe {
+            // Assign our process to this job. All children spawned by Atlas will inherit it.
+            let _ = AssignProcessToJobObject(job.handle, GetCurrentProcess());
+        }
+        // Leak the job handle deliberately so it stays alive until Atlas exits, at which point
+        // the Windows kernel closes the job and terminates all child processes automatically.
+        std::mem::forget(job);
+    }
+}
+
+#[allow(dead_code)]
+#[cfg(not(windows))]
+pub fn init_process_job_object() {}
+
+#[cfg(windows)]
 pub fn terminate_process_tree(pid: u32) {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x08000000;

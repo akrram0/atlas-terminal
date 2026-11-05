@@ -173,7 +173,10 @@ impl AtlasView {
         }
         let open_count = self.tabs.iter().filter(|t| !t.closing).count();
         if open_count <= 1 {
-            self.tabs.remove(index);
+            let removed = self.tabs.remove(index);
+            for pane in removed.panes {
+                pane.session.borrow_mut().kill();
+            }
             crate::session::trim_working_set();
             self.hover_tab = None;
             if self.tabs.is_empty() {
@@ -1284,7 +1287,11 @@ impl AtlasView {
             .px(px(8.0))
             .gap(px(6.0))
             .track_focus(&self.search_focus)
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
             .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                cx.stop_propagation();
                 view.handle_search_key(&event.keystroke, window, cx);
             }))
             .child(

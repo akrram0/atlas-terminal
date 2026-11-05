@@ -328,11 +328,8 @@ impl AtlasView {
                 .shadow_md()
                 .bg(if pane_is_tui {
                     pane_bg
-                } else if is_translucent && !is_light {
-                    Rgba {
-                        a: 0.18,
-                        ..theme.panel_bg
-                    }
+                } else if is_translucent {
+                    rgba(0x00000000)
                 } else if is_focused_pane || is_light {
                     theme.bg
                 } else {

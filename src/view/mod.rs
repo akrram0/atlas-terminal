@@ -570,7 +570,10 @@ impl AtlasView {
                         }
                     }
                     for &i in tabs_to_remove.iter().rev() {
-                        view.tabs.remove(i);
+                        let removed = view.tabs.remove(i);
+                        for pane in removed.panes {
+                            pane.session.borrow_mut().kill();
+                        }
                         if i < view.active {
                             view.active = view.active.saturating_sub(1);
                         }
@@ -638,7 +641,8 @@ impl AtlasView {
                             }
                         }
                         for &p_ix in panes_to_remove.iter().rev() {
-                            tab.panes.remove(p_ix);
+                            let removed = tab.panes.remove(p_ix);
+                            removed.session.borrow_mut().kill();
                             tab.tile_tree.remove_pane(p_ix);
                             if p_ix < tab.active_pane {
                                 tab.active_pane = tab.active_pane.saturating_sub(1);
@@ -837,6 +841,8 @@ impl Render for AtlasView {
         if is_active && !self.window_was_active {
             self.maybe_auto_check(true, cx);
             self.check_settings_reload(cx);
+        } else if !is_active && self.window_was_active {
+            crate::session::trim_working_set();
         }
         self.window_was_active = is_active;
 
@@ -906,15 +912,24 @@ impl Render for AtlasView {
             && self.sidebar_mode != sidebar::SidebarMode::Hidden
             && self.sidebar_current_width > 1.0;
 
+        let is_light = theme.bg.r > 0.65 && theme.bg.g > 0.65 && theme.bg.b > 0.65;
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             let alpha = self.opacity.clamp(0.0, 1.0);
             let chrome = Rgba {
                 a: alpha * 0.90,
                 ..tb.panel_bg
             };
-            let sheet = Rgba {
-                a: alpha,
-                ..term_base
+            let sheet = if is_light {
+                // Ensure a solid premultiplied-safe floor in light mode so DWM does not clip or wash out anti-aliased edge pixels
+                Rgba {
+                    a: (alpha * 0.90 + 0.10).clamp(0.20, 1.0),
+                    ..term_base
+                }
+            } else {
+                Rgba {
+                    a: alpha,
+                    ..term_base
+                }
             };
             (chrome, sheet, rgba(0x00000000))
         } else {
@@ -1260,7 +1275,7 @@ impl Render for AtlasView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|view, _: &MouseDownEvent, window, _cx| {
-                    if !view.settings_open && !view.palette_open && !view.profile_menu {
+                    if !view.settings_open && !view.palette_open && !view.profile_menu && !view.search_open {
                         window.focus(&view.focus);
                     }
                 }),
