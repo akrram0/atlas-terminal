@@ -174,6 +174,7 @@ impl AtlasView {
         let open_count = self.tabs.iter().filter(|t| !t.closing).count();
         if open_count <= 1 {
             self.tabs.remove(index);
+            crate::session::trim_working_set();
             self.hover_tab = None;
             if self.tabs.is_empty() {
                 let profile = self.get_default_profile();

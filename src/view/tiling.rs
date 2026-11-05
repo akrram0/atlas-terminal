@@ -296,10 +296,11 @@ impl AtlasView {
         let pane_up = pane_ix;
         let pane_rc = pane_ix;
 
+        let is_light = theme.bg.r > 0.7 && theme.bg.g > 0.7 && theme.bg.b > 0.7;
         let pane_is_tui = Self::is_pane_tui(pane, theme);
         let pane_bg = if pane_is_tui {
             Self::detect_pane_bg(pane, theme)
-        } else if is_translucent {
+        } else if is_translucent && !is_light {
             rgba(0x00000000)
         } else {
             active_bg
@@ -327,19 +328,21 @@ impl AtlasView {
                 .shadow_md()
                 .bg(if pane_is_tui {
                     pane_bg
-                } else if is_translucent {
+                } else if is_translucent && !is_light {
                     Rgba {
                         a: 0.18,
                         ..theme.panel_bg
                     }
                 } else if is_focused_pane {
-                    theme.elevated_bg
+                    theme.bg
                 } else {
                     theme.panel_bg
                 });
         } else {
             cell = cell.bg(if pane_is_tui {
                 pane_bg
+            } else if is_light {
+                theme.bg
             } else {
                 rgba(0x00000000)
             });
@@ -831,7 +834,11 @@ impl AtlasView {
                 session: pane.session.clone(),
                 theme: theme.clone(),
                 active_bg: if is_translucent && !pane_is_tui {
-                    rgba(0x00000000)
+                    if is_light {
+                        theme.bg
+                    } else {
+                        rgba(0x00000000)
+                    }
                 } else {
                     pane_bg
                 },

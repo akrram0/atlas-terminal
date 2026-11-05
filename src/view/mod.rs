@@ -578,6 +578,9 @@ impl AtlasView {
                             view.active = view.tabs.len() - 1;
                         }
                     }
+                    if !tabs_to_remove.is_empty() {
+                        crate::session::trim_working_set();
+                    }
 
                     // 6. Spatial cursor gliding, split pane expansion and pane collapse
                     for tab in &mut view.tabs {
@@ -646,6 +649,9 @@ impl AtlasView {
                             if tab.panes.len() == 1 {
                                 tab.maximized = false;
                             }
+                        }
+                        if !panes_to_remove.is_empty() {
+                            crate::session::trim_working_set();
                         }
                     }
 

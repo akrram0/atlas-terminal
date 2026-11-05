@@ -169,6 +169,156 @@ fn ensure_pnpm_opencode_manifest(pnpm_root: &std::path::Path) {
     }
 }
 
+#[cfg(windows)]
+pub struct JobObject {
+    handle: *mut core::ffi::c_void,
+}
+
+#[cfg(windows)]
+impl JobObject {
+    pub fn new() -> Option<Self> {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn CreateJobObjectW(lpJobAttributes: *mut core::ffi::c_void, lpName: *const u16) -> *mut core::ffi::c_void;
+            fn SetInformationJobObject(
+                hJob: *mut core::ffi::c_void,
+                JobObjectInformationClass: u32,
+                lpJobObjectInformation: *const core::ffi::c_void,
+                cbJobObjectInformationLength: u32,
+            ) -> i32;
+        }
+
+        #[repr(C)]
+        struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+            per_process_user_time_limit: i64,
+            per_job_user_time_limit: i64,
+            limit_flags: u32,
+            minimum_working_set_size: usize,
+            maximum_working_set_size: usize,
+            active_process_limit: u32,
+            affinity: usize,
+            priority_class: u32,
+            scheduling_class: u32,
+        }
+
+        #[repr(C)]
+        struct IO_COUNTERS {
+            read_operation_count: u64,
+            write_operation_count: u64,
+            other_operation_count: u64,
+            read_transfer_count: u64,
+            write_transfer_count: u64,
+            other_transfer_count: u64,
+        }
+
+        #[repr(C)]
+        struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+            basic_limit_information: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+            io_info: IO_COUNTERS,
+            process_memory_limit: usize,
+            job_memory_limit: usize,
+            peak_process_memory_limit: usize,
+            peak_job_memory_limit: usize,
+        }
+
+        const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+        const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: u32 = 9;
+
+        unsafe {
+            let handle = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+            if handle.is_null() {
+                return None;
+            }
+
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+            let ok = SetInformationJobObject(
+                handle,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                &info as *const _ as *const _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+
+            if ok == 0 {
+                #[link(name = "kernel32")]
+                unsafe extern "system" {
+                    fn CloseHandle(hObject: *mut core::ffi::c_void) -> i32;
+                }
+                CloseHandle(handle);
+                return None;
+            }
+
+            Some(Self { handle })
+        }
+    }
+
+    pub fn assign_process(&self, pid: u32) -> bool {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> *mut core::ffi::c_void;
+            fn AssignProcessToJobObject(hJob: *mut core::ffi::c_void, hProcess: *mut core::ffi::c_void) -> i32;
+            fn CloseHandle(hObject: *mut core::ffi::c_void) -> i32;
+        }
+
+        const PROCESS_SET_QUOTA: u32 = 0x0100;
+        const PROCESS_TERMINATE: u32 = 0x0001;
+
+        unsafe {
+            let h_proc = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, pid);
+            if h_proc.is_null() {
+                return false;
+            }
+            let res = AssignProcessToJobObject(self.handle, h_proc);
+            CloseHandle(h_proc);
+            res != 0
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for JobObject {
+    fn drop(&mut self) {
+        if !self.handle.is_null() {
+            #[link(name = "kernel32")]
+            unsafe extern "system" {
+                fn CloseHandle(hObject: *mut core::ffi::c_void) -> i32;
+            }
+            unsafe {
+                CloseHandle(self.handle);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn terminate_process_tree(pid: u32) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let _ = std::process::Command::new("taskkill")
+        .args(["/F", "/T", "/PID", &pid.to_string()])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+}
+
+#[cfg(not(windows))]
+pub fn terminate_process_tree(_pid: u32) {}
+
+#[cfg(windows)]
+pub fn trim_working_set() {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentProcess() -> *mut core::ffi::c_void;
+        fn SetProcessWorkingSetSize(hProcess: *mut core::ffi::c_void, dwMinimumWorkingSetSize: usize, dwMaximumWorkingSetSize: usize) -> i32;
+    }
+    unsafe {
+        SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn trim_working_set() {}
+
 pub struct Session {
     pub term: Term<EventProxy>,
     pub parser: Processor,
@@ -202,6 +352,8 @@ pub struct Session {
     writer: Option<Box<dyn Write + Send>>,
     master: Box<dyn MasterPty>,
     child: Box<dyn Child + Send + Sync>,
+    #[cfg(windows)]
+    _job: Option<JobObject>,
 }
 
 impl Session {
@@ -485,6 +637,14 @@ impl Session {
                 let _ = tx.send_blocking(SessionMsg::Event(Event::Exit));
             })?;
 
+        #[cfg(windows)]
+        let _job = JobObject::new().map(|job| {
+            if let Some(p) = pid {
+                job.assign_process(p);
+            }
+            job
+        });
+
         Ok((
             Session {
                 term,
@@ -506,6 +666,8 @@ impl Session {
                 writer: Some(writer),
                 master,
                 child,
+                #[cfg(windows)]
+                _job,
             },
             rx,
         ))
@@ -600,6 +762,12 @@ impl Session {
         let limit = self.scrollback_limit as i32;
         self.placed_images
             .retain(|img| img.is_alt_screen || img.anchor_line >= cur_history - limit);
+        // Memory optimization: cap retained scrollback images to the 5 newest
+        // to avoid uncompressed image texture memory accumulation.
+        if self.placed_images.len() > 5 {
+            let overflow = self.placed_images.len() - 5;
+            self.placed_images.drain(0..overflow);
+        }
     }
 
     /// Send bytes to the shell.
@@ -655,6 +823,10 @@ impl Session {
     #[allow(dead_code)]
     pub fn kill(&mut self) {
         let _ = self.child.kill();
+        if let Some(pid) = self.pid {
+            terminate_process_tree(pid);
+        }
+        trim_working_set();
     }
 }
 
@@ -663,5 +835,9 @@ impl Drop for Session {
         // Killing the child closes the ConPTY; the reader thread then exits
         // and the channel closes, which stops the UI watcher task.
         let _ = self.child.kill();
+        if let Some(pid) = self.pid {
+            terminate_process_tree(pid);
+        }
+        trim_working_set();
     }
 }

@@ -95,43 +95,44 @@ impl Theme {
         }
     }
 
-    /// Paper: warm cream sheet (#EDE8DC) over sand chrome (#E5E0D4), warm
-    /// deep-charcoal ink (#1C1A16), terracotta rust accent (#C05A28). Zed aesthetic.
+    /// Apple macOS Light: pristine paper sheet (#FFFFFF) over System Gray chrome (#F2F2F7),
+    /// deep carbon ink (#1D1D1F), terracotta rust accent (#C05A28), and a high-contrast
+    /// ANSI palette tuned for crisp legibility in light mode.
     pub fn cream() -> Self {
         Self {
-            bg: rgb(0xEDE8DC),
-            fg: rgb(0x1C1A16),
+            bg: rgb(0xFFFFFF),
+            fg: rgb(0x1D1D1F),
             cursor: rgb(0xC05A28),
-            panel_bg: rgb(0xE5E0D4),
-            elevated_bg: rgb(0xF5F0E8),
-            elevated_border: rgba(0x00000014),
-            chrome_fg: rgb(0x7A7570),
-            chrome_fg_active: rgb(0x1C1A16),
-            faint_fg: rgb(0x9A9590),
-            hairline: rgba(0x00000014),
-            card_hover: rgba(0x0000000D),
+            panel_bg: rgb(0xF2F2F7),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgba(0x00000012),
+            chrome_fg: rgb(0x6E6E73),
+            chrome_fg_active: rgb(0x1D1D1F),
+            faint_fg: rgb(0x86868B),
+            hairline: rgba(0x00000010),
+            card_hover: rgba(0x0000000A),
             card_active: rgba(0xC05A281E),
             accent: rgb(0xC05A28),
-            good: rgb(0x5F7A46),
-            sheet_border: rgba(0x00000014),
-            soft_bg: rgba(0x0000000F),
+            good: rgb(0x1A7F37),
+            sheet_border: rgba(0x00000010),
+            soft_bg: rgba(0x00000008),
             ansi: [
-                rgb(0x1C1A16), // 0 black
-                rgb(0xB8332A), // 1 red
-                rgb(0x5F7A46), // 2 green
-                rgb(0x8F6824), // 3 yellow
-                rgb(0x3F6C9E), // 4 blue
-                rgb(0xA25B69), // 5 magenta
-                rgb(0x3E7A74), // 6 cyan
-                rgb(0xB3AC9C), // 7 white
-                rgb(0x78736A), // 8 bright black
-                rgb(0xD14B3F), // 9 bright red
-                rgb(0x6F9052), // 10 bright green
-                rgb(0xB8882E), // 11 bright yellow
-                rgb(0x5586BC), // 12 bright blue
-                rgb(0xBF7381), // 13 bright magenta
-                rgb(0x4E968E), // 14 bright cyan
-                rgb(0xE8E2D4), // 15 bright white
+                rgb(0x1D1D1F), // 0 black
+                rgb(0xCF222E), // 1 red
+                rgb(0x1A7F37), // 2 green (crisp high-contrast prompt)
+                rgb(0x9A6700), // 3 yellow / amber
+                rgb(0x0969DA), // 4 blue
+                rgb(0x8250DF), // 5 magenta / purple
+                rgb(0x0E7490), // 6 cyan / teal
+                rgb(0x6E7781), // 7 white / light gray
+                rgb(0x57606A), // 8 bright black / slate
+                rgb(0xA40E26), // 9 bright red
+                rgb(0x116329), // 10 bright green
+                rgb(0x7D4E00), // 11 bright yellow
+                rgb(0x0550AE), // 12 bright blue
+                rgb(0x6639BA), // 13 bright magenta
+                rgb(0x0A5C64), // 14 bright cyan
+                rgb(0x24292F), // 15 bright white / ink
             ],
         }
     }

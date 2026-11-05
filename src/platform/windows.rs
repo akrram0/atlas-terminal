@@ -983,11 +983,14 @@ pub fn send_desktop_notification(title: &str, message: &str) {
     std::thread::spawn(move || {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let _ = std::process::Command::new("powershell.exe")
+        if let Ok(mut child) = std::process::Command::new("powershell.exe")
             .arg("-NoProfile")
             .arg("-Command")
             .arg(&script)
             .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
+            .spawn()
+        {
+            let _ = child.wait();
+        }
     });
 }
