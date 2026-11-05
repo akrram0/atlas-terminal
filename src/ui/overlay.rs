@@ -133,6 +133,51 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
         .border_color(theme.elevated_border)
         .shadow_xl();
 
+    // New Window (Ctrl+Shift+N)
+    menu = menu.child(
+        div()
+            .id(ElementId::named_usize("menu-item-new-window", 0))
+            .h(px(36.0))
+            .px(px(12.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .rounded(px(7.0))
+            .cursor_pointer()
+            .hover(move |style| style.bg(item_hover))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.0))
+                    .child(icons::icon(icons::WINDOW_MAXIMIZE).size(px(15.0)).text_color(theme.chrome_fg))
+                    .child(
+                        div()
+                            .text_size(px(14.0))
+                            .text_color(theme.chrome_fg_active)
+                            .child("New Window"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.chrome_fg)
+                    .child("Ctrl+Shift+N"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.dismiss_profile(cx);
+                view.new_window(cx);
+            })),
+    );
+
+    menu = menu.child(
+        div()
+            .h(px(1.0))
+            .my(px(4.0))
+            .bg(theme.elevated_border),
+    );
+
     for (index, (label, profile)) in entries.into_iter().enumerate() {
         let icon = session_icon(&profile_title(profile), profile);
         menu = menu.child(

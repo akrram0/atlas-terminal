@@ -50,6 +50,12 @@ impl AtlasView {
         self.new_tab_with_cwd(profile, None, cx);
     }
 
+    pub fn new_window(&mut self, _cx: &mut Context<Self>) {
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe).spawn();
+        }
+    }
+
     pub fn new_tab_with_cwd(
         &mut self,
         profile: Profile,

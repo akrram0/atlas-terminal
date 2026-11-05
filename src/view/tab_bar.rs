@@ -29,6 +29,7 @@ impl AtlasView {
     ) -> gpui::Div {
         let tb = theme.clone();
         let chrome_ink = tb.chrome_fg;
+        let is_dark_theme = (0.2126 * tb.elevated_bg.r + 0.7152 * tb.elevated_bg.g + 0.0722 * tb.elevated_bg.b) < 0.45;
 
         // Ghostty-style minimalist top bar:
         // Ultra-compact 32px (36px when zoomed) for maximum vertical terminal lines
@@ -185,7 +186,6 @@ impl AtlasView {
                 Some(pane) => session_icon(&pane.title, pane.profile),
                 None => icons::TERMINAL,
             };
-            let is_dark_theme = (0.2126 * tb.elevated_bg.r + 0.7152 * tb.elevated_bg.g + 0.0722 * tb.elevated_bg.b) < 0.45;
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
                 (
                     tb.elevated_bg,
@@ -384,6 +384,7 @@ impl AtlasView {
         }
 
         // Settings tab pill: stays mounted on the tab bar until the user explicitly closes it.
+        // Styled 1:1 identically to terminal tabs (matching Windows Terminal).
         if self.settings_tab_open {
             let active = self.settings_open;
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
@@ -394,7 +395,17 @@ impl AtlasView {
                     tb.accent,
                 )
             } else {
-                (rgba(0x00000000), rgba(0x00000000), chrome_ink, chrome_ink)
+                let inactive_bg = if is_dark_theme {
+                    rgba(0xFFFFFF0D)
+                } else {
+                    rgba(0x00000009)
+                };
+                let inactive_border = if is_dark_theme {
+                    rgba(0xFFFFFF12)
+                } else {
+                    rgba(0x0000000E)
+                };
+                (inactive_bg, inactive_border, chrome_ink, chrome_ink)
             };
             let pill_hover = if active {
                 crate::theme::lerp_color(tb.elevated_bg, tb.accent, 0.10)
@@ -405,14 +416,15 @@ impl AtlasView {
 
             let mut settings_pill = div()
                 .id(ElementId::named_usize("tab-pill-settings", 0))
-                .h(px(32.0))
+                .h(px(28.0))
+                .relative()
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(9.0))
-                .px(px(12.0))
-                .max_w(px(240.0))
-                .min_w(px(80.0))
+                .gap(px(8.0))
+                .px(px(10.0))
+                .max_w(px(200.0))
+                .min_w(px(128.0))
                 .overflow_hidden()
                 .flex_shrink()
                 .rounded(px(7.0))
@@ -421,8 +433,13 @@ impl AtlasView {
                 .border_color(pill_border)
                 .text_color(pill_fg);
 
+            if active {
+                settings_pill = settings_pill.shadow_sm();
+            }
+
             if !active {
                 settings_pill = settings_pill
+                    .cursor_pointer()
                     .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
                     .active(move |style| style.opacity(0.82))
                     .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -430,6 +447,8 @@ impl AtlasView {
                         window.focus(&view.settings_focus);
                         cx.notify();
                     }));
+            } else {
+                settings_pill = settings_pill.cursor_pointer();
             }
 
             settings_pill = settings_pill
@@ -445,11 +464,12 @@ impl AtlasView {
                 .child(
                     div()
                         .text_color(pill_icon)
-                        .child(icons::icon(icons::SETTINGS).size(px(16.5)).text_color(pill_icon)),
+                        .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(pill_icon)),
                 )
                 .child(
                     div()
-                        .text_size(px(13.5))
+                        .flex_1()
+                        .text_size(px(12.5))
                         .font_weight(if active {
                             FontWeight::MEDIUM
                         } else {
@@ -461,18 +481,18 @@ impl AtlasView {
                 .child(
                     div()
                         .id(ElementId::named_usize("tab-close-settings", 0))
-                        .w(px(20.0))
-                        .h(px(20.0))
+                        .w(px(18.0))
+                        .h(px(18.0))
                         .flex_none()
                         .flex()
                         .items_center()
                         .justify_center()
-                        .rounded(px(5.0))
+                        .rounded(px(4.0))
                         .hover(move |style| style.bg(tb.card_hover))
                         .active(move |style| style.opacity(0.75))
                         .child(
                             icons::icon(icons::CLOSE)
-                                .size(px(12.0))
+                                .size(px(11.0))
                                 .text_color(tb.faint_fg),
                         )
                         .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -484,7 +504,20 @@ impl AtlasView {
                         })),
                 );
 
-            bar = bar.child(settings_pill.slide_in_right("settings-tab-pill-motion"));
+            if active {
+                settings_pill = settings_pill.child(
+                    div()
+                        .absolute()
+                        .bottom(px(0.0))
+                        .left(px(6.0))
+                        .right(px(6.0))
+                        .h(px(2.0))
+                        .rounded_full()
+                        .bg(tb.accent),
+                );
+            }
+
+            bar = bar.child(settings_pill.tab_pill_expand("settings-tab-pill-motion"));
         }
 
         bar = bar.child(caption_spacer(0));

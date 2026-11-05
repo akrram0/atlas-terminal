@@ -213,7 +213,8 @@ impl AtlasView {
                     .font_weight(FontWeight::BOLD)
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.85))
-                    .child("🔄 Restart")
+                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(rgb(0xFFFFFF)))
+                    .child("Restart")
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                         view.apply_update_and_restart(cx);
                     })),
@@ -232,7 +233,8 @@ impl AtlasView {
                     .text_color(tb2.elevated_bg)
                     .text_size(px(11.5))
                     .font_weight(FontWeight::BOLD)
-                    .child(format!("⏳ {percent}%")),
+                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb2.elevated_bg))
+                    .child(format!("{percent}%")),
             );
         } else if self.available_update.is_some() {
             right_section = right_section.child(
@@ -250,7 +252,8 @@ impl AtlasView {
                     .font_weight(FontWeight::BOLD)
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.85))
-                    .child("⚡ Update")
+                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb2.elevated_bg))
+                    .child("Update")
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                         view.start_download_update(cx);
                     })),

@@ -9,7 +9,7 @@ use gpui::{ClipboardItem, Context, Keystroke, Pixels, Rgba, Window};
 use crate::config::{
     default_shortcuts, format_keystroke_chord, SettingsTab, ACTION_CLEAR_SCROLLBACK,
     ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FIND, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE,
-    ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_OPEN_URL_PICKER,
+    ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEW_WINDOW, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_OPEN_URL_PICKER,
     ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_TO_BOTTOM, ACTION_SCROLL_TO_TOP, ACTION_SELECT_ALL, ACTION_SPLIT_HORIZONTAL,
     ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR, ACTION_TOGGLE_THEME, ACTION_ZOOM_IN,
@@ -518,8 +518,13 @@ impl AtlasView {
                     cx.notify();
                     return;
                 }
-                // Browser & Terminal new tab (Ctrl+T) / Theme toggle (Ctrl+Shift+T):
-                if chord == "ctrl+t" || chord == "ctrl+shift+n" || chord == self.get_shortcut(ACTION_NEW_TAB) {
+                // New Window (Ctrl+Shift+N):
+                if chord == "ctrl+shift+n" || chord == self.get_shortcut(ACTION_NEW_WINDOW) {
+                    self.new_window(cx);
+                    return;
+                }
+                // Browser & Terminal new tab (Ctrl+T):
+                if chord == "ctrl+t" || chord == self.get_shortcut(ACTION_NEW_TAB) {
                     let prof = self.get_default_profile();
                     self.new_tab(prof, cx);
                     self.trigger_island_hud(cx);

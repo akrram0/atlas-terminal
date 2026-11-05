@@ -22,6 +22,7 @@ use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum Command {
+    NewWindow,
     NewTab,
     NewTabWsl,
     NewTabCmd,
@@ -68,7 +69,8 @@ pub enum PaletteAction {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 35] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 36] = [
+    (Command::NewWindow, icons::WINDOW_MAXIMIZE, "New window", "Ctrl Shift N"),
     (Command::ToggleSidebar, icons::SIDEBAR_LEFT, "Toggle Sidebar / Tab Bar", "Ctrl B"),
     (Command::FindInTerminal, icons::SEARCH, "Find in terminal...", "Ctrl F"),
     (Command::NewTab, icons::PLUS, "New tab (PowerShell)", "Ctrl T / Ctrl Shift 1"),
@@ -160,6 +162,7 @@ impl AtlasView {
     pub fn shortcut_for_palette_command(&self, cmd: Command) -> String {
         use crate::config::*;
         let action = match cmd {
+            Command::NewWindow => Some(ACTION_NEW_WINDOW),
             Command::ToggleSidebar => Some(ACTION_TOGGLE_SIDEBAR),
             Command::FindInTerminal => Some(ACTION_FIND),
             Command::NewTab => Some(ACTION_NEW_TAB),
@@ -341,6 +344,10 @@ impl AtlasView {
             self.close_palette(window, cx);
         }
         match command {
+            Command::NewWindow => {
+                self.new_window(cx);
+                window.focus(&self.focus);
+            }
             Command::NewTab => {
                 let prof = self.get_default_profile();
                 self.new_tab(prof, cx);

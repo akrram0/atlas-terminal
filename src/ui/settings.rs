@@ -11,7 +11,7 @@ use gpui::{
 
 use crate::config::{
     action_display_name, default_shortcuts, format_keystroke_chord,
-    pretty_shortcut, save_app_settings, SettingsTab, ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB,
+    pretty_shortcut, save_app_settings, SettingsTab, ACTION_NEW_WINDOW, ACTION_CLEAR_SCROLLBACK, ACTION_CLOSE_TAB,
     ACTION_COPY, ACTION_FIND, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE, ACTION_FULLSCREEN,
     ACTION_NEW_TAB, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_PALETTE, ACTION_PASTE,
     ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL, ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN,
@@ -173,44 +173,18 @@ impl AtlasView {
             .into_any_element()
         };
 
-        // --- Left Sidebar (220px) ---
+        // --- Horizontal Category Strip (Top Bar Style - No Sidebar) ---
         let nav_items = [
             (SettingsTab::General, "General", icons::TERMINAL),
-            (SettingsTab::Appearance, "Appearance", icons::SLIDERS),
-            (SettingsTab::Shortcuts, "Shortcuts", icons::KEYBOARD),
+            (SettingsTab::Appearance, "Appearance & Themes", icons::SLIDERS),
+            (SettingsTab::Shortcuts, "Keyboard Shortcuts", icons::KEYBOARD),
         ];
 
-        let mut sidebar = div()
-            .id(ElementId::named_usize("settings-sidebar-scroll", 0))
-            .w(px(220.0))
-            .flex_shrink_0()
-            .h(relative(1.0))
-            .min_h(px(0.0))
-            .overflow_y_scroll()
+        let mut top_nav_pills = div()
             .flex()
-            .flex_col()
-            .gap(px(6.0))
-            .border_r_1()
-            .border_color(theme.hairline)
-            .p(px(16.0))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(10.0))
-                    .px(px(12.0))
-                    .py(px(12.0))
-                    .mb(px(12.0))
-                    .child(icons::icon(icons::SETTINGS).size(px(19.0)).text_color(theme.accent))
-                    .child(
-                        div()
-                            .text_size(px(16.0))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(sc_title)
-                            .child("Preferences"),
-                    ),
-            );
+            .flex_row()
+            .items_center()
+            .gap(px(6.0));
 
         for (nav_idx, &(tab, label, icon)) in nav_items.iter().enumerate() {
             let is_active = self.settings_tab == tab;
@@ -224,24 +198,33 @@ impl AtlasView {
             } else {
                 rgba(0x00000000)
             };
+            let item_border = if is_active {
+                theme.elevated_border
+            } else {
+                rgba(0x00000000)
+            };
             let hover_bg = theme.card_hover;
-            sidebar = sidebar.child(
+            top_nav_pills = top_nav_pills.child(
                 div()
-                    .id(ElementId::named_usize("settings-nav-item", nav_idx))
-                    .h(px(40.0))
-                    .px(px(14.0))
+                    .id(ElementId::named_usize("settings-top-nav-item", nav_idx))
+                    .h(px(32.0))
+                    .px(px(13.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(12.0))
-                    .rounded(px(8.0))
+                    .gap(px(8.0))
+                    .rounded(px(7.0))
                     .bg(item_bg)
+                    .border_1()
+                    .border_color(item_border)
                     .text_color(item_fg)
-                    .hover(move |s| s.bg(hover_bg))
-                    .child(icons::icon(icon).size(px(17.5)).text_color(item_fg))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(hover_bg).text_color(sc_nav_active_fg))
+                    .active(move |s| s.opacity(0.80))
+                    .child(icons::icon(icon).size(px(15.0)).text_color(if is_active { theme.accent } else { item_fg }))
                     .child(
                         div()
-                            .text_size(px(14.0))
+                            .text_size(px(13.0))
                             .font_weight(if is_active {
                                 FontWeight::SEMIBOLD
                             } else {
@@ -259,6 +242,50 @@ impl AtlasView {
                     .stagger_in(ElementId::named_usize("settings-nav-stagger", nav_idx), nav_idx),
             );
         }
+
+        let top_nav = div()
+            .id(ElementId::named_usize("settings-top-nav", 0))
+            .h(px(46.0))
+            .flex_shrink_0()
+            .w(relative(1.0))
+            .px(px(24.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .border_b_1()
+            .border_color(theme.hairline)
+            .child(top_nav_pills)
+            .child(
+                div()
+                    .id(ElementId::named_usize("settings-top-back-btn", 0))
+                    .h(px(30.0))
+                    .px(px(13.0))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .rounded(px(7.0))
+                    .border_1()
+                    .border_color(sc_back_border)
+                    .bg(sc_back_bg)
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(theme.card_hover))
+                    .active(move |s| s.opacity(0.80))
+                    .text_color(sc_back_fg)
+                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .child("Back to Terminal (Esc)"),
+                    )
+                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                        view.settings_open = false;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    })),
+            );
 
         // ==========================================
         // --- Tab 1: Appearance Tab ---
@@ -1238,6 +1265,7 @@ impl AtlasView {
         };
 
         let tab_window_actions = [
+            ACTION_NEW_WINDOW,
             ACTION_NEW_TAB,
             ACTION_CLOSE_TAB,
             ACTION_NEXT_TAB,
@@ -1312,7 +1340,8 @@ impl AtlasView {
         };
 
         let mut built_in_card = card().child(section_header("BUILT-IN SHORTCUTS & LINUX TILING"));
-        let built_in_list: [(&'static str, &'static str); 14] = [
+        let built_in_list: [(&'static str, &'static str); 15] = [
+            ("New Window", "Ctrl+Shift+N"),
             ("New Tab (Default Shell)", "Ctrl+T"),
             ("Close Tab / Pane", "Alt+W / Ctrl+W"),
             ("New WSL (Linux) Tab", "Ctrl+Shift+2"),
@@ -1433,9 +1462,8 @@ impl AtlasView {
 
         let content_header = div()
             .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
+            .flex_col()
+            .gap(px(4.0))
             .mb(px(22.0))
             .child(
                 div()
@@ -1450,31 +1478,13 @@ impl AtlasView {
             )
             .child(
                 div()
-                    .id(ElementId::named_usize("settings-top-back-btn", 0))
-                    .h(px(36.0))
-                    .px(px(16.0))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(8.0))
-                    .border_1()
-                    .border_color(sc_back_border)
-                    .bg(sc_back_bg)
-                    .hover(move |s| s.bg(theme.card_hover))
-                    .text_color(sc_back_fg)
-                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(16.0)))
-                    .child(
-                        div()
-                            .text_size(px(13.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Back to Terminal (Esc)"),
-                    )
-                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                        view.settings_open = false;
-                        window.focus(&view.focus);
-                        cx.notify();
-                    })),
+                    .text_size(px(13.0))
+                    .text_color(sc_desc)
+                    .child(match self.settings_tab {
+                        SettingsTab::General => "Configure default shell, startup directory, scrollback, and cursor options.",
+                        SettingsTab::Appearance => "Customize colors, themes, acrylic blur, fonts, and window styling.",
+                        SettingsTab::Shortcuts => "Customize keystrokes or review built-in navigation and window management.",
+                    }),
             );
 
         let right_pane = div()
@@ -1495,13 +1505,14 @@ impl AtlasView {
                 view.settings_scroll_target = (view.settings_scroll_target + delta).clamp(-max_y, 0.0);
                 cx.notify();
             }))
-            .p(px(32.0))
+            .p(px(28.0))
             .pb(px(88.0))
             .child(
                 div()
                     .w(relative(1.0))
                     .max_w(px(880.0))
                     .min_w(px(0.0))
+                    .mx_auto()
                     .child(content_header)
                     .child(content_body),
             );
@@ -1509,7 +1520,7 @@ impl AtlasView {
         div()
             .id(ElementId::named_usize("settings-root", 0))
             .flex()
-            .flex_row()
+            .flex_col()
             .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
@@ -1547,7 +1558,7 @@ impl AtlasView {
                     }
                 }
             }))
-            .child(sidebar)
+            .child(top_nav)
             .child(right_pane)
             .fade_in("settings-root-motion")
             .into_any_element()

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use gpui::Keystroke;
 use serde::{Deserialize, Serialize};
 
+pub const ACTION_NEW_WINDOW: &str = "new_window";
 pub const ACTION_NEW_TAB: &str = "new_tab";
 pub const ACTION_CLOSE_TAB: &str = "close_tab";
 pub const ACTION_SPLIT_HORIZONTAL: &str = "split_horizontal";
@@ -40,6 +41,7 @@ pub const ACTION_NEW_TAB_OPENCODE: &str = "new_tab_opencode";
 
 pub fn action_display_name(action: &str) -> &'static str {
     match action {
+        ACTION_NEW_WINDOW => "New Window",
         ACTION_NEW_TAB => "New Tab (Default)",
         ACTION_CLOSE_TAB => "Close Tab / Pane",
         ACTION_SPLIT_HORIZONTAL => "Split Horizontal (Rows)",
@@ -79,6 +81,7 @@ pub fn action_display_name(action: &str) -> &'static str {
 
 pub fn default_shortcuts() -> HashMap<String, String> {
     let mut m = HashMap::new();
+    m.insert(ACTION_NEW_WINDOW.to_string(), "ctrl+shift+n".to_string());
     m.insert(ACTION_NEW_TAB.to_string(), "ctrl+t".to_string());
     m.insert(ACTION_CLOSE_TAB.to_string(), "alt+w".to_string());
     m.insert(ACTION_SPLIT_VERTICAL.to_string(), "alt+enter".to_string());
