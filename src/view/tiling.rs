@@ -369,6 +369,9 @@ impl AtlasView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+                    if view.palette_open || view.settings_open {
+                        return;
+                    }
                     view.mouse_down_pane = Some(pane_down);
                     if let Some(tab) = view.tabs.get_mut(view.active) {
                         if tab.active_pane != pane_down {
@@ -485,6 +488,9 @@ impl AtlasView {
             .on_mouse_down(
                 MouseButton::Middle,
                 cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+                    if view.palette_open || view.settings_open {
+                        return;
+                    }
                     if let Some(tab) = view.tabs.get_mut(view.active) {
                         if tab.active_pane != pane_down {
                             tab.active_pane = pane_down;
@@ -521,6 +527,9 @@ impl AtlasView {
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |view, event: &MouseDownEvent, window, cx| {
+                    if view.palette_open || view.settings_open {
+                        return;
+                    }
                     if let Some(tab) = view.tabs.get_mut(view.active) {
                         if tab.active_pane != pane_rc {
                             tab.active_pane = pane_rc;

@@ -5,7 +5,7 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement,
-    Rgba, Window, canvas, div, px, relative, rgba,
+    MouseButton, Rgba, Window, canvas, div, px, relative, rgba,
 };
 
 use crate::icons;
@@ -54,6 +54,9 @@ pub fn overlay_backdrop_with_scrim(
         .absolute()
         .inset_0()
         .bg(scrim)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| {
+            cx.stop_propagation();
+        })
         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
             on_click(view, window, cx);
         }))
