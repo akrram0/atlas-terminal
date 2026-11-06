@@ -1400,9 +1400,10 @@ impl Render for AtlasView {
             root = root.child(profile_menu(self, &theme, closing, cx));
         }
         if self.palette_open {
-            root = root.child(overlay_backdrop(
+            root = root.child(crate::ui::overlay::overlay_backdrop_with_scrim(
                 2,
                 self.palette_closing,
+                rgba(0x0000008C),
                 |view, window, cx| {
                     view.close_palette(window, cx);
                 },

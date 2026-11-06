@@ -6,7 +6,7 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, IntoElement,
-    KeyDownEvent, Keystroke, MouseButton, MouseDownEvent, Window, div, px,
+    Keystroke, MouseButton, MouseDownEvent, Window, div, px,
 };
 
 use crate::config::SettingsTab;
@@ -902,11 +902,9 @@ impl AtlasView {
             .items_center()
             .gap(px(6.0))
             .h(px(28.0))
-            .px(px(8.0))
+            .px(px(10.0))
             .rounded(px(6.0))
             .bg(if cat_menu_open { theme.card_active } else { theme.soft_bg })
-            .border_1()
-            .border_color(if cat_menu_open { theme.accent } else { theme.hairline })
             .cursor_pointer()
             .hover(move |s| s.bg(theme.card_hover))
             .child(
@@ -993,8 +991,6 @@ impl AtlasView {
                 .py(px(2.0))
                 .rounded(px(4.0))
                 .bg(theme.soft_bg)
-                .border_1()
-                .border_color(theme.hairline)
                 .text_size(px(10.5))
                 .text_color(theme.faint_fg)
                 .child("Tab ⇄"),
@@ -1044,7 +1040,7 @@ impl AtlasView {
             );
         } else {
             // Floating sliding selection pill (Raycast/Spotlight smooth glide)
-            let row_height = 48.0;
+            let row_height = 46.0;
             let pill_top = 6.0 + self.palette_anim_index * row_height;
             list = list.child(
                 div()
@@ -1073,17 +1069,21 @@ impl AtlasView {
                     div()
                 } else if is_shortcut {
                     div()
-                        .text_size(px(11.5))
+                        .flex_none()
+                        .px(px(6.0))
+                        .py(px(2.0))
+                        .rounded(px(4.0))
+                        .bg(theme.soft_bg)
+                        .text_size(px(11.0))
                         .text_color(theme.faint_fg)
                         .child(item.shortcut_or_badge.clone())
                 } else {
                     div()
+                        .flex_none()
                         .px(px(7.0))
                         .py(px(2.0))
                         .rounded(px(4.0))
                         .bg(theme.soft_bg)
-                        .border_1()
-                        .border_color(theme.hairline)
                         .text_size(px(10.5))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(theme.faint_fg)
@@ -1103,18 +1103,15 @@ impl AtlasView {
                     .hover(move |style| style.bg(hover))
                     .child(
                         div()
-                            .w(px(28.0))
-                            .h(px(28.0))
+                            .w(px(24.0))
+                            .h(px(24.0))
+                            .flex_none()
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(6.0))
-                            .bg(theme.soft_bg)
-                            .border_1()
-                            .border_color(theme.hairline)
                             .child(
                                 icons::icon(item.icon)
-                                    .size(px(15.0))
+                                    .size(px(16.0))
                                     .text_color(if is_selected { theme.accent } else { theme.chrome_fg }),
                             ),
                     )
@@ -1266,17 +1263,11 @@ impl AtlasView {
                     .flex()
                     .flex_col()
                     .relative()
-                    .rounded(px(12.0))
+                    .rounded(px(14.0))
                     .bg(theme.elevated_bg)
                     .border_1()
                     .border_color(theme.elevated_border)
                     .shadow_lg()
-                    .track_focus(&self.palette_focus)
-                    .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
-                        cx.stop_propagation();
-                        let keystroke = event.keystroke.clone();
-                        view.handle_palette_key(&keystroke, window, cx);
-                    }))
                     .child(input_row)
                     .child(div().h(px(1.0)).bg(theme.hairline))
                     .child(list)

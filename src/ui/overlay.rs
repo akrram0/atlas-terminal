@@ -5,7 +5,7 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement,
-    Window, canvas, div, px, relative, rgba,
+    Rgba, Window, canvas, div, px, relative, rgba,
 };
 
 use crate::icons;
@@ -31,10 +31,21 @@ pub fn set_hover_mark(view: &mut AtlasView, mark: u64, hovered: bool, cx: &mut C
 }
 
 /// Full-screen click-catcher painted under an overlay panel; fades in with
-/// the panel, dims the chrome a touch and dismisses the overlay on any click.
+/// the panel, dims the chrome and dismisses the overlay on any click.
 pub fn overlay_backdrop(
     id: usize,
     closing: bool,
+    on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
+    cx: &mut Context<AtlasView>,
+) -> AnyElement {
+    overlay_backdrop_with_scrim(id, closing, rgba(0x00000059), on_click, cx)
+}
+
+/// Full-screen click-catcher with a customizable scrim tint and opacity.
+pub fn overlay_backdrop_with_scrim(
+    id: usize,
+    closing: bool,
+    scrim: Rgba,
     on_click: impl Fn(&mut AtlasView, &mut Window, &mut Context<AtlasView>) + 'static,
     cx: &mut Context<AtlasView>,
 ) -> AnyElement {
@@ -42,7 +53,7 @@ pub fn overlay_backdrop(
         .id(ElementId::named_usize("overlay-backdrop", id))
         .absolute()
         .inset_0()
-        .bg(rgba(0x00000059))
+        .bg(scrim)
         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
             on_click(view, window, cx);
         }))
