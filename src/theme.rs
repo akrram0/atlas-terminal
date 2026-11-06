@@ -95,6 +95,13 @@ impl Theme {
         }
     }
 
+    /// Returns true if this is a light theme based on background luminance (Rec. 709).
+    #[inline]
+    pub fn is_light(&self) -> bool {
+        let lum = 0.2126 * self.bg.r + 0.7152 * self.bg.g + 0.0722 * self.bg.b;
+        lum > 0.5
+    }
+
     /// Apple macOS Light: pristine paper sheet (#FFFFFF) over System Gray chrome (#F2F2F7),
     /// deep carbon ink (#1D1D1F), terracotta rust accent (#C05A28), and a high-contrast
     /// ANSI palette tuned for crisp legibility in light mode.
@@ -110,12 +117,12 @@ impl Theme {
             chrome_fg_active: rgb(0x1D1D1F),
             faint_fg: rgb(0x86868B),
             hairline: rgb(0xE5E5EA),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xE8E8ED),
             card_active: rgba(0xC05A281E),
             accent: rgb(0xC05A28),
             good: rgb(0x1A7F37),
             sheet_border: rgb(0xD1D1D6),
-            soft_bg: rgba(0x00000008),
+            soft_bg: rgb(0xECECF0),
             ansi: [
                 rgb(0x1D1D1F), // 0 black
                 rgb(0xCF222E), // 1 red
@@ -234,12 +241,12 @@ impl Theme {
             chrome_fg_active: rgb(0x1F1F1F),
             faint_fg: rgb(0x8F8F8F),
             hairline: rgb(0xE8E8E8),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xE8E8EB),
             card_active: rgba(0x0969DA1A),
             accent: rgb(0x0969DA),
             good: rgb(0x13A10E),
             sheet_border: rgb(0xD8D8D8),
-            soft_bg: rgba(0x00000006),
+            soft_bg: rgb(0xECECEF),
             ansi: [
                 rgb(0x1F1F1F), rgb(0xC50F1F), rgb(0x13A10E), rgb(0xC19C00),
                 rgb(0x0969DA), rgb(0x881798), rgb(0x0E7490), rgb(0x6E7781),
@@ -485,12 +492,12 @@ impl Theme {
             chrome_fg_active: rgb(0x343B58),
             faint_fg: rgb(0x8990B3),
             hairline: rgb(0xE5E8F4),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xE1E3EB),
             card_active: rgba(0x2E7DE91E),
             accent: rgb(0x2E7DE9),
             good: rgb(0x387038),
             sheet_border: rgb(0xD5D8E8),
-            soft_bg: rgba(0x00000006),
+            soft_bg: rgb(0xE6E8F0),
             ansi: [
                 rgb(0x343B58), rgb(0x8C4351), rgb(0x387038), rgb(0x8F5E15),
                 rgb(0x2E7DE9), rgb(0x7847BD), rgb(0x166775), rgb(0x68707F),
@@ -539,12 +546,12 @@ impl Theme {
             chrome_fg_active: rgb(0x4C4F69),
             faint_fg: rgb(0x9CA0B0),
             hairline: rgb(0xDCE0E8),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xE5E7EB),
             card_active: rgba(0x8839EF1E),
             accent: rgb(0x8839EF),
             good: rgb(0x40A02B),
             sheet_border: rgb(0xCCD0DA),
-            soft_bg: rgba(0x00000006),
+            soft_bg: rgb(0xEAECF0),
             ansi: [
                 rgb(0x4C4F69), rgb(0xD20F39), rgb(0x40A02B), rgb(0xDF8E1D),
                 rgb(0x1E66F5), rgb(0x8839EF), rgb(0x179299), rgb(0x9CA0B0),
@@ -593,12 +600,12 @@ impl Theme {
             chrome_fg_active: rgb(0x2E3440),
             faint_fg: rgb(0x7B88A1),
             hairline: rgb(0xE5E9F0),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xE3E7EE),
             card_active: rgba(0x5E81AC1E),
             accent: rgb(0x5E81AC),
             good: rgb(0x4E7A36),
             sheet_border: rgb(0xD8DEE9),
-            soft_bg: rgba(0x00000006),
+            soft_bg: rgb(0xE8ECF2),
             ansi: [
                 rgb(0x2E3440), rgb(0x9E3B44), rgb(0x4E7A36), rgb(0x9F7C2C),
                 rgb(0x5E81AC), rgb(0x84557A), rgb(0x497F87), rgb(0x768297),
@@ -620,12 +627,12 @@ impl Theme {
             chrome_fg_active: rgb(0x24292F),
             faint_fg: rgb(0x8C959F),
             hairline: rgb(0xAFB8C1),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xECEEF0),
             card_active: rgba(0x0969DA1A),
             accent: rgb(0x0969DA),
             good: rgb(0x1A7F37),
             sheet_border: rgb(0xD0D7DE),
-            soft_bg: rgba(0x00000006),
+            soft_bg: rgb(0xF0F2F5),
             ansi: [
                 rgb(0x24292F), rgb(0xCF222E), rgb(0x1A7F37), rgb(0x9A6700),
                 rgb(0x0969DA), rgb(0x8250DF), rgb(0x1B7C83), rgb(0x6E7781),
@@ -674,12 +681,12 @@ impl Theme {
             chrome_fg_active: rgb(0x383A42),
             faint_fg: rgb(0xA0A1A7),
             hairline: rgb(0xEAEAEB),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xE6E6E6),
             card_active: rgba(0x4078F21A),
             accent: rgb(0x4078F2),
             good: rgb(0x50A14F),
             sheet_border: rgb(0xDBDBDC),
-            soft_bg: rgba(0x00000006),
+            soft_bg: rgb(0xEBEBEB),
             ansi: [
                 rgb(0x383A42), rgb(0xE45649), rgb(0x50A14F), rgb(0xC18401),
                 rgb(0x4078F2), rgb(0xA626A4), rgb(0x0184BC), rgb(0xA0A1A7),
@@ -728,12 +735,12 @@ impl Theme {
             chrome_fg_active: rgb(0x073642),
             faint_fg: rgb(0x93A1A1),
             hairline: rgb(0xE8E0CE),
-            card_hover: rgba(0x0000000A),
+            card_hover: rgb(0xE5DFC9),
             card_active: rgba(0x268BD21A),
             accent: rgb(0x268BD2),
             good: rgb(0x859900),
             sheet_border: rgb(0xDACFBB),
-            soft_bg: rgba(0x00000006),
+            soft_bg: rgb(0xEAE4D0),
             ansi: [
                 rgb(0x073642), rgb(0xDC322F), rgb(0x859900), rgb(0xB58900),
                 rgb(0x268BD2), rgb(0xD33682), rgb(0x2AA198), rgb(0x93A1A1),
@@ -931,6 +938,23 @@ mod tests {
         let idx = registry.find_by_name_or_id("classic").expect("classic preset");
         assert_eq!(registry.preset(idx).name, "Classic");
         assert_eq!(registry.len(), 8);
+    }
+
+    #[test]
+    fn test_all_light_themes_have_solid_hover_and_soft_bg() {
+        let registry = ThemeRegistry::standard();
+        for i in 0..registry.len() {
+            let preset = registry.preset(i);
+            assert!(preset.light.is_light(), "{} light theme must be light", preset.name);
+            assert!(!preset.dark.is_light(), "{} dark theme must be dark", preset.name);
+
+            // Light themes must have 100% solid, pre-blended card_hover and soft_bg
+            // to avoid premultiplied black haloing and eroded border anti-aliasing.
+            assert_eq!(preset.light.card_hover.a, 1.0, "{} card_hover must be opaque", preset.name);
+            assert_eq!(preset.light.soft_bg.a, 1.0, "{} soft_bg must be opaque", preset.name);
+            assert_eq!(preset.light.hairline.a, 1.0, "{} hairline must be opaque", preset.name);
+            assert_eq!(preset.light.elevated_border.a, 1.0, "{} elevated_border must be opaque", preset.name);
+        }
     }
 
     #[test]

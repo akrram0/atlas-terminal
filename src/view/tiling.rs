@@ -296,7 +296,7 @@ impl AtlasView {
         let pane_up = pane_ix;
         let pane_rc = pane_ix;
 
-        let is_light = theme.bg.r > 0.7 && theme.bg.g > 0.7 && theme.bg.b > 0.7;
+        let is_light = theme.is_light();
         let pane_is_tui = Self::is_pane_tui(pane, theme);
         let pane_bg = if pane_is_tui {
             Self::detect_pane_bg(pane, theme)
@@ -314,8 +314,11 @@ impl AtlasView {
             .flex_1()
             .min_w(px(0.0))
             .min_h(px(0.0))
-            .opacity(pane.pane_expansion)
             .overflow_hidden();
+
+        if pane.pane_expansion < 0.999 {
+            cell = cell.opacity(pane.pane_expansion);
+        }
 
         if is_tiled {
             let gap = self.app_settings.tiling_gap.clamp(0.0, 16.0);

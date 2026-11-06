@@ -123,7 +123,7 @@ static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 
 /// Top-level window handle, published once `apply` finds it.
 static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
-static INITIAL_OPACITY: AtomicU32 = AtomicU32::new(f32::to_bits(0.15));
+static INITIAL_OPACITY: AtomicU32 = AtomicU32::new(f32::to_bits(1.0));
 /// Whether the app theme is dark; picks the acrylic frost tint colour.
 static DARK_MODE: AtomicBool = AtomicBool::new(true);
 /// Last observed maximize state, so the backdrop is reasserted only on

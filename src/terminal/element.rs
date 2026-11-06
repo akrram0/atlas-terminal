@@ -379,7 +379,7 @@ impl Element for TerminalElement {
         self.session.borrow_mut().max_active_row = max_active_row;
 
         window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            if is_alt_screen && self.active_bg.a > 0.05 {
+            if self.active_bg.a > 0.01 {
                 window.paint_quad(fill(bounds, self.active_bg));
             }
             for (row_index, row) in rows.iter().enumerate() {

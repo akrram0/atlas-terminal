@@ -136,6 +136,7 @@ pub struct AtlasView {
     pub(crate) island_hud_opacity: f32,
     pub(crate) island_hud_hovered: bool,
     pub(crate) last_island_hud_time: std::time::Instant,
+    pub(crate) last_background_appearance: Option<gpui::WindowBackgroundAppearance>,
     /// Tab pill currently under the pointer: its hover-only close mark.
     pub(crate) hover_tab: Option<usize>,
     /// Tab being dragged with the mouse to reorder slots.
@@ -307,6 +308,7 @@ impl AtlasView {
             island_hud_opacity: 0.0,
             island_hud_hovered: false,
             last_island_hud_time: std::time::Instant::now().checked_sub(std::time::Duration::from_secs(10)).unwrap_or_else(std::time::Instant::now),
+            last_background_appearance: None,
             hover_tab: None,
             tab_drag_origin: None,
             tab_drag_candidate: None,
@@ -867,7 +869,7 @@ impl AtlasView {
 }
 
 impl Render for AtlasView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_active = crate::rounded_corners::is_active();
         if is_active && !self.window_was_active {
             self.maybe_auto_check(true, cx);
@@ -877,13 +879,25 @@ impl Render for AtlasView {
         }
         self.window_was_active = is_active;
 
+        let is_light = self.theme.is_light();
+        let should_blur = self.app_settings.blur_enabled && self.opacity < 0.999 && !is_light;
+        let target_appearance = if should_blur {
+            gpui::WindowBackgroundAppearance::Blurred
+        } else {
+            gpui::WindowBackgroundAppearance::Opaque
+        };
+        if self.last_background_appearance != Some(target_appearance) {
+            self.last_background_appearance = Some(target_appearance);
+            window.set_background_appearance(target_appearance);
+        }
+
         // Keep the native backdrop in sync with the opacity slider. GPUI stays
         // on a transparent swapchain; `rounded_corners` applies the native
         // acrylic accent (GPUI's `Blurred` background, with the DWM system
         // backdrop as a fallback) and is a no-op whenever the slider has not
         // moved.
-        crate::rounded_corners::set_opacity(self.opacity);
-        let is_translucent = self.opacity < 0.999;
+        crate::rounded_corners::set_opacity(if should_blur { self.opacity } else { 1.0 });
+        let is_translucent = should_blur;
 
         let is_borderless = self.app_settings.tab_bar_position == "borderless";
         let is_island_visible = is_borderless && self.island_hud_opacity > 0.005;
@@ -943,24 +957,15 @@ impl Render for AtlasView {
             && self.sidebar_mode != sidebar::SidebarMode::Hidden
             && self.sidebar_current_width > 1.0;
 
-        let is_light = theme.bg.r > 0.65 && theme.bg.g > 0.65 && theme.bg.b > 0.65;
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             let alpha = self.opacity.clamp(0.0, 1.0);
             let chrome = Rgba {
                 a: alpha * 0.90,
                 ..tb.panel_bg
             };
-            let sheet = if is_light {
-                // Ensure a solid premultiplied-safe floor in light mode so DWM does not clip or wash out anti-aliased edge pixels
-                Rgba {
-                    a: (alpha * 0.90 + 0.10).clamp(0.20, 1.0),
-                    ..term_base
-                }
-            } else {
-                Rgba {
-                    a: alpha,
-                    ..term_base
-                }
+            let sheet = Rgba {
+                a: alpha,
+                ..term_base
             };
             (chrome, sheet, rgba(0x00000000))
         } else {
@@ -1066,7 +1071,7 @@ impl Render for AtlasView {
             .with_animation(
                 ElementId::named_usize("body-anim", self.settings_open as usize),
                 Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
-                |el, delta| el.opacity(delta),
+                |el, delta| if delta < 0.999 { el.opacity(delta) } else { el },
             );
 
         let is_top_tab_mode = self.app_settings.tab_bar_position == "top";

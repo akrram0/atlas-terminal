@@ -197,12 +197,12 @@ impl AtlasView {
                 let inactive_bg = if is_dark_theme {
                     rgba(0xFFFFFF0D)
                 } else {
-                    rgba(0x00000009)
+                    rgba(0x00000000)
                 };
                 let inactive_border = if is_dark_theme {
                     rgba(0xFFFFFF12)
                 } else {
-                    rgba(0x0000000E)
+                    tb.hairline
                 };
                 (inactive_bg, inactive_border, chrome_ink, chrome_ink)
             };
@@ -397,12 +397,12 @@ impl AtlasView {
                 let inactive_bg = if is_dark_theme {
                     rgba(0xFFFFFF0D)
                 } else {
-                    rgba(0x00000009)
+                    rgba(0x00000000)
                 };
                 let inactive_border = if is_dark_theme {
                     rgba(0xFFFFFF12)
                 } else {
-                    rgba(0x0000000E)
+                    tb.hairline
                 };
                 (inactive_bg, inactive_border, chrome_ink, chrome_ink)
             };
@@ -601,6 +601,9 @@ impl AtlasView {
 
         bar = bar.child(div().w(px(6.0)));
 
+        let resting_btn_bg = if is_dark_theme { tb.card_hover } else { tb.elevated_bg };
+        let resting_btn_border = if is_dark_theme { tb.hairline } else { tb.elevated_border };
+
         let search_capsule = div()
             .id(ElementId::named_usize("topbar-search-capsule", 0))
             .h(px(26.0))
@@ -610,11 +613,11 @@ impl AtlasView {
             .items_center()
             .gap(px(5.0))
             .rounded(px(6.0))
-            .bg(tb.card_hover)
+            .bg(resting_btn_bg)
             .border_1()
-            .border_color(tb.hairline)
+            .border_color(resting_btn_border)
             .text_color(tb.chrome_fg)
-            .hover(move |s| s.border_color(tb.accent).text_color(tb.chrome_fg_active))
+            .hover(move |s| s.bg(tb.card_hover).border_color(tb.accent).text_color(tb.chrome_fg_active))
             .cursor_pointer()
             .child(icons::icon(icons::SEARCH).size(px(12.5)).text_color(tb.chrome_fg))
             .child(
@@ -638,11 +641,11 @@ impl AtlasView {
             .items_center()
             .justify_center()
             .rounded(px(6.0))
-            .bg(tb.card_hover)
+            .bg(resting_btn_bg)
             .border_1()
-            .border_color(tb.hairline)
+            .border_color(resting_btn_border)
             .text_color(tb.chrome_fg)
-            .hover(move |s| s.border_color(tb.accent).text_color(tb.chrome_fg_active))
+            .hover(move |s| s.bg(tb.card_hover).border_color(tb.accent).text_color(tb.chrome_fg_active))
             .cursor_pointer()
             .child(icons::icon(theme_icon).size(px(13.5)).text_color(tb.chrome_fg))
             .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {

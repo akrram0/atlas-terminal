@@ -240,18 +240,21 @@ fn main() {
             }
         });
 
+        let loaded_settings = config::load_app_settings();
+        let should_blur = loaded_settings.blur_enabled && loaded_settings.opacity < 0.999;
+        #[cfg(windows)]
+        rounded_corners::set_opacity(if should_blur { loaded_settings.opacity } else { 1.0 });
+
         let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
-                // GPUI's native `Blurred` background maps to the acrylic
-                // accent on Windows. `rounded_corners::apply_backdrop`
-                // re-applies it on the UI thread with a nearly transparent
-                // tint and toggles it with the opacity slider; the DWM system
-                // backdrop is only the fallback when the accent API is
-                // unavailable.
-                window_background: WindowBackgroundAppearance::Blurred,
+                window_background: if should_blur {
+                    WindowBackgroundAppearance::Blurred
+                } else {
+                    WindowBackgroundAppearance::Opaque
+                },
                 window_decorations: Some(WindowDecorations::Client),
                 window_min_size: Some(size(px(640.0), px(420.0))),
                 is_resizable: true,
