@@ -594,8 +594,74 @@ pub fn git_bash_candidates() -> Vec<String> {
     candidates
 }
 
+#[cfg(windows)]
+pub fn ensure_opencode_binary_link() {
+    let local = match std::env::var_os("LOCALAPPDATA") {
+        Some(l) => PathBuf::from(l),
+        None => return,
+    };
+    let pnpm_bin = local.join("pnpm").join("bin");
+    let target_exe = pnpm_bin.join("opencode.exe");
+    if target_exe.is_file() {
+        return;
+    }
+    if !pnpm_bin.is_dir() {
+        let _ = std::fs::create_dir_all(&pnpm_bin);
+    }
+    // Search in pnpm/global/v11 for @opencode/cli/bin/opencode.exe
+    let global_v11 = local.join("pnpm").join("global").join("v11");
+    if global_v11.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&global_v11) {
+            for entry in entries.flatten() {
+                let candidate = entry
+                    .path()
+                    .join("node_modules")
+                    .join("@opencode")
+                    .join("cli")
+                    .join("bin")
+                    .join("opencode.exe");
+                if candidate.is_file() {
+                    if std::fs::hard_link(&candidate, &target_exe).is_ok()
+                        || std::fs::copy(&candidate, &target_exe).is_ok()
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    // Also check pnpm/store
+    let store_v11 = local.join("pnpm").join("store").join("v11");
+    if store_v11.is_dir() {
+        let links = store_v11.join("links").join("@opencode").join("cli");
+        if links.is_dir() {
+            if let Ok(versions) = std::fs::read_dir(&links) {
+                for v in versions.flatten() {
+                    if let Ok(hashes) = std::fs::read_dir(v.path()) {
+                        for h in hashes.flatten() {
+                            let candidate = h.path().join("bin").join("opencode.exe");
+                            if candidate.is_file() {
+                                if std::fs::hard_link(&candidate, &target_exe).is_ok()
+                                    || std::fs::copy(&candidate, &target_exe).is_ok()
+                                {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Find a CLI tool on the system using fast file existence checks.
 pub fn find_tool_in_system(tool_name: &str) -> Option<String> {
+    #[cfg(windows)]
+    if tool_name == "opencode" {
+        ensure_opencode_binary_link();
+    }
+
     // 1. Well-known package manager directories
     let mut explicit_dirs = Vec::new();
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {

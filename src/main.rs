@@ -1,6 +1,6 @@
 //! Atlas Terminal — native shell (GPUI + alacritty_terminal). No webview, no CSS.
 
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![windows_subsystem = "windows"]
 
 mod config;
 mod cwd;
