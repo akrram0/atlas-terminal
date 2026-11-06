@@ -78,6 +78,10 @@ pub struct AtlasView {
     pub(crate) font: Font,
     /// Active preset index into `registry` (settings pills + Ctrl+Shift+T).
     pub(crate) theme_id: usize,
+    /// Active dark theme preset index into `registry`.
+    pub(crate) theme_dark_id: usize,
+    /// Active light theme preset index into `registry`.
+    pub(crate) theme_light_id: usize,
     /// Color mode: "auto" (system sync), "dark", "light"
     pub(crate) theme_mode: String,
     pub(crate) last_theme_check: std::time::Instant,
@@ -226,14 +230,20 @@ impl AtlasView {
         if !app_settings.default_shell.is_empty() && app_settings.default_shell != "PowerShell" {
             user_profile.default_shell = app_settings.default_shell.clone();
         }
-        let theme_mode = if app_settings.theme_mode == "auto" {
-            "dark".to_string()
-        } else {
-            app_settings.theme_mode.clone()
+        let theme_mode = app_settings.theme_mode.clone();
+        let theme_dark_id = registry
+            .find_by_name_or_id(&app_settings.theme_dark)
+            .unwrap_or_else(|| registry.find_by_name_or_id(&app_settings.theme).unwrap_or(0));
+        let theme_light_id = registry
+            .find_by_name_or_id(&app_settings.theme_light)
+            .unwrap_or_else(|| registry.find_by_name_or_id("solarized").unwrap_or(3));
+
+        let is_light = match theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
         };
-        let theme_id = registry
-            .find_by_name_or_id(&app_settings.theme)
-            .unwrap_or(0);
+        let theme_id = if is_light { theme_light_id } else { theme_dark_id };
         let (initial_theme, is_dark) = registry.resolve(theme_id, &theme_mode);
         let cursor_style = match app_settings.cursor_shape.as_str() {
             "block" => Some(CursorShape::Block),
@@ -273,6 +283,8 @@ impl AtlasView {
             theme_transition: None,
             font,
             theme_id,
+            theme_dark_id,
+            theme_light_id,
             theme_mode,
             last_theme_check: std::time::Instant::now(),
             registry,
@@ -482,13 +494,18 @@ impl AtlasView {
                     // Auto dark/light system sync check (checks Windows registry every 1.5 seconds)
                     if view.theme_mode == "auto" && view.last_theme_check.elapsed().as_millis() > 1500 {
                         view.last_theme_check = std::time::Instant::now();
-                        let (target, is_dark) = view.registry.resolve(view.theme_id, &view.theme_mode);
-                        if (view.theme.bg.r - target.bg.r).abs() > 0.05
+                        let sys_light = crate::theme::is_system_light_mode();
+                        let target_id = if sys_light { view.theme_light_id } else { view.theme_dark_id };
+                        let (target, is_dark) = view.registry.resolve(target_id, &view.theme_mode);
+                        if target_id != view.theme_id
+                            || (view.theme.bg.r - target.bg.r).abs() > 0.05
                             || (view.theme.bg.g - target.bg.g).abs() > 0.05
                             || (view.theme.bg.b - target.bg.b).abs() > 0.05
                         {
+                            view.theme_id = target_id;
                             view.theme_transition = Some((view.theme.clone(), target, 0.0));
                             crate::rounded_corners::set_dark_mode(is_dark);
+                            view.sync_and_save_settings();
                             needs_paint = true;
                         }
                     }

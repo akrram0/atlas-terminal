@@ -204,6 +204,10 @@ pub enum SettingsTab {
 pub struct AppSettingsFile {
     #[serde(default = "default_theme_mode")]
     pub theme_mode: String,
+    #[serde(default = "default_theme_dark")]
+    pub theme_dark: String,
+    #[serde(default = "default_theme_light")]
+    pub theme_light: String,
     #[serde(default = "default_theme_name")]
     pub theme: String,
     #[serde(default = "default_font_family")]
@@ -270,6 +274,12 @@ pub struct AppSettingsFile {
 
 fn default_theme_mode() -> String {
     "dark".to_string()
+}
+fn default_theme_dark() -> String {
+    "tokyo_night".to_string()
+}
+fn default_theme_light() -> String {
+    "solarized".to_string()
 }
 fn default_theme_name() -> String {
     "tokyo_night".to_string()
@@ -345,6 +355,8 @@ impl Default for AppSettingsFile {
     fn default() -> Self {
         Self {
             theme_mode: default_theme_mode(),
+            theme_dark: default_theme_dark(),
+            theme_light: default_theme_light(),
             theme: default_theme_name(),
             font_family: default_font_family(),
             font_size: default_font_size(),
@@ -382,6 +394,12 @@ pub fn load_app_settings() -> AppSettingsFile {
     let settings_path = crate::user_data_dir().join("settings.json");
     if let Ok(content) = std::fs::read_to_string(&settings_path) {
         if let Ok(mut s) = serde_json::from_str::<AppSettingsFile>(&content) {
+            if s.theme_dark.is_empty() {
+                s.theme_dark = default_theme_dark();
+            }
+            if s.theme_light.is_empty() {
+                s.theme_light = default_theme_light();
+            }
             if s.shortcut_schema < 2 {
                 s.shortcuts = default_shortcuts();
                 s.shortcut_schema = 2;
@@ -404,5 +422,34 @@ pub fn save_app_settings(s: &AppSettingsFile) {
     let settings_path = base.join("settings.json");
     if let Ok(json) = serde_json::to_string_pretty(s) {
         let _ = std::fs::write(&settings_path, json);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_settings_theme_fields_roundtrip() {
+        let mut settings = AppSettingsFile::default();
+        settings.theme_mode = "auto".to_string();
+        settings.theme_dark = "tokyo_night".to_string();
+        settings.theme_light = "solarized".to_string();
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let loaded: AppSettingsFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.theme_mode, "auto");
+        assert_eq!(loaded.theme_dark, "tokyo_night");
+        assert_eq!(loaded.theme_light, "solarized");
+    }
+
+    #[test]
+    fn test_app_settings_backward_compatible_defaults() {
+        let legacy_json = r#"{"theme": "atlas", "font_size": 14.0}"#;
+        let loaded: AppSettingsFile = serde_json::from_str(legacy_json).unwrap();
+        assert_eq!(loaded.theme_mode, "dark");
+        assert_eq!(loaded.theme_dark, "tokyo_night");
+        assert_eq!(loaded.theme_light, "solarized");
+        assert_eq!(loaded.theme, "atlas");
     }
 }

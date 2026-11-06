@@ -63,25 +63,74 @@ impl AtlasView {
         self.active = ((self.active as i32 + delta).rem_euclid(len)) as usize;
     }
 
-    /// Cycle to the next theme preset (Ctrl+Shift+T).
+    /// Toggle between Dark and Light mode.
     pub(crate) fn toggle_theme(&mut self, cx: &mut Context<Self>) {
-        let next = self.registry.next(self.theme_id);
-        self.set_theme(next, cx);
+        let is_currently_light = self.theme.is_light();
+        let new_mode = if is_currently_light { "dark" } else { "light" };
+        self.set_theme_mode(new_mode, cx);
     }
 
-    /// Apply a registry preset and keep every mirror in sync (settings pills
-    /// and the keyboard shortcut both land here).
-    pub(crate) fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.theme_id = index.min(self.registry.len() - 1);
-        let (target, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
-        self.theme_transition = Some((self.theme.clone(), target, 0.0));
-        crate::rounded_corners::set_dark_mode(is_dark);
+    /// Set dark theme preset.
+    pub(crate) fn set_dark_theme(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.theme_dark_id = index.min(self.registry.len() - 1);
+        self.app_settings.theme_dark = self.registry.preset(self.theme_dark_id).id.to_string();
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        if !is_light {
+            self.theme_id = self.theme_dark_id;
+            let (target, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
+            self.theme_transition = Some((self.theme.clone(), target, 0.0));
+            crate::rounded_corners::set_dark_mode(is_dark);
+        }
         self.sync_and_save_settings();
         cx.notify();
     }
 
+    /// Set light theme preset.
+    pub(crate) fn set_light_theme(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.theme_light_id = index.min(self.registry.len() - 1);
+        self.app_settings.theme_light = self.registry.preset(self.theme_light_id).id.to_string();
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        if is_light {
+            self.theme_id = self.theme_light_id;
+            let (target, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
+            self.theme_transition = Some((self.theme.clone(), target, 0.0));
+            crate::rounded_corners::set_dark_mode(is_dark);
+        }
+        self.sync_and_save_settings();
+        cx.notify();
+    }
+
+    /// Apply a registry preset to the active mode.
+    #[allow(dead_code)]
+    pub(crate) fn set_theme(&mut self, index: usize, cx: &mut Context<Self>) {
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        if is_light {
+            self.set_light_theme(index, cx);
+        } else {
+            self.set_dark_theme(index, cx);
+        }
+    }
+
     pub(crate) fn set_theme_mode(&mut self, mode: &str, cx: &mut Context<Self>) {
         self.theme_mode = mode.to_string();
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        self.theme_id = if is_light { self.theme_light_id } else { self.theme_dark_id };
         let (target, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
         self.theme_transition = Some((self.theme.clone(), target, 0.0));
         crate::rounded_corners::set_dark_mode(is_dark);

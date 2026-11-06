@@ -793,6 +793,34 @@ impl Preset {
     pub fn theme(&self) -> &Theme {
         &self.dark
     }
+
+    pub fn dark_name(&self) -> &'static str {
+        match self.id {
+            "atlas" => "Atlas Dark",
+            "github" => "GitHub Dark",
+            "one" => "One Dark",
+            "solarized" => "Solarized Dark",
+            "tokyo_night" => "Tokyo Night",
+            "catppuccin" => "Catppuccin Macchiato",
+            "nord" => "Nord Dark",
+            "classic" => "Classic Black",
+            _ => self.name,
+        }
+    }
+
+    pub fn light_name(&self) -> &'static str {
+        match self.id {
+            "atlas" => "macOS Cream",
+            "github" => "GitHub Light",
+            "one" => "One Light",
+            "solarized" => "Solarized Light",
+            "tokyo_night" => "Tokyo Night Day",
+            "catppuccin" => "Catppuccin Latte",
+            "nord" => "Nord Light",
+            "classic" => "Classic Light",
+            _ => self.name,
+        }
+    }
 }
 
 pub struct ThemeRegistry {
@@ -898,6 +926,7 @@ impl ThemeRegistry {
         }
     }
 
+    #[allow(dead_code)]
     pub fn next(&self, index: usize) -> usize {
         (index + 1) % self.presets.len()
     }
@@ -962,5 +991,18 @@ mod tests {
         let gh = Theme::github_light();
         assert!(is(gh.bg, 0xFF, 0xFF, 0xFF));
         assert!(is(gh.fg, 0x24, 0x29, 0x2F));
+    }
+
+    #[test]
+    fn test_preset_names_dark_and_light() {
+        let registry = ThemeRegistry::standard();
+        for i in 0..registry.len() {
+            let preset = registry.preset(i);
+            assert!(!preset.dark_name().is_empty());
+            assert!(!preset.light_name().is_empty());
+        }
+        let atlas = registry.preset(0);
+        assert_eq!(atlas.dark_name(), "Atlas Dark");
+        assert_eq!(atlas.light_name(), "macOS Cream");
     }
 }

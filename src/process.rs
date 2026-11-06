@@ -118,10 +118,18 @@ mod imp {
     }
 
     /// Check if a process is an idle shell executable.
-    fn is_shell(name_lower: &str) -> bool {
+    pub(crate) fn is_shell(name_lower: &str) -> bool {
         matches!(
             name_lower,
-            "powershell.exe" | "pwsh.exe" | "cmd.exe" | "bash.exe" | "zsh.exe"
+            "powershell.exe"
+                | "pwsh.exe"
+                | "cmd.exe"
+                | "bash.exe"
+                | "zsh.exe"
+                | "fish.exe"
+                | "nu.exe"
+                | "wsl.exe"
+                | "wslhost.exe"
         )
     }
 
@@ -154,7 +162,13 @@ mod imp {
             "htop" => ("htop".to_string(), icons::TERMINAL),
             "ssh" => ("ssh".to_string(), icons::TERMINAL),
             "docker" => ("Docker".to_string(), icons::TERMINAL),
-            "wsl" => ("WSL".to_string(), icons::LINUX),
+            "wsl" => {
+                if let Some(distro) = crate::wsl::default_distro() {
+                    (distro.title.clone(), distro.icon)
+                } else {
+                    ("WSL".to_string(), icons::LINUX)
+                }
+            }
             _ => (base.to_string(), icons::TERMINAL),
         };
 
@@ -237,8 +251,7 @@ mod imp {
                 .filter(|d| !is_shell(&d.exe.to_ascii_lowercase()))
                 .collect();
 
-            let target = non_shells.last().copied().or_else(|| non_aux_descendants.last());
-            if let Some(target) = target {
+            if let Some(target) = non_shells.last().copied() {
                 results.insert(shell_pid, brand_for_exe(&target.exe));
             }
         }
@@ -286,6 +299,20 @@ mod tests {
             let lazygit = imp::brand_for_exe("lazygit.exe");
             assert_eq!(lazygit.display_name, "LazyGit");
             assert_eq!(lazygit.icon, crate::icons::GIT);
+
+            let wsl = imp::brand_for_exe("wsl.exe");
+            if let Some(distro) = crate::wsl::default_distro() {
+                assert_eq!(wsl.display_name, distro.title);
+                assert_eq!(wsl.icon, distro.icon);
+            } else {
+                assert_eq!(wsl.display_name, "WSL");
+                assert_eq!(wsl.icon, crate::icons::LINUX);
+            }
+
+            assert!(imp::is_shell("wsl.exe"));
+            assert!(imp::is_shell("wslhost.exe"));
+            assert!(imp::is_shell("powershell.exe"));
+            assert!(imp::is_shell("bash.exe"));
         }
     }
 

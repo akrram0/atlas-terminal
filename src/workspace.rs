@@ -306,7 +306,9 @@ pub fn session_icon(title: &str, profile: &Profile) -> &'static str {
     } else if lower.contains("fedora") {
         icons::FEDORA
     } else if lower.contains("wsl") {
-        icons::LINUX
+        wsl::default_distro()
+            .map(|distro| distro.icon)
+            .unwrap_or(icons::LINUX)
     } else if lower.contains("cmd.exe") || lower == "cmd" {
         icons::CMD
     } else if lower.contains("bash") || lower.contains("git") {
@@ -359,7 +361,21 @@ pub fn tab_name(raw: &str, fallback: &str) -> String {
     let lower = trimmed.to_ascii_lowercase();
     let shellish = matches!(
         lower.as_str(),
-        "powershell" | "pwsh" | "windows powershell" | "powershell 7" | "ubuntu" | "wsl"
+        "powershell"
+            | "pwsh"
+            | "windows powershell"
+            | "powershell 7"
+            | "ubuntu"
+            | "wsl"
+            | "arch"
+            | "archlinux"
+            | "debian"
+            | "fedora"
+            | "kali"
+            | "alpine"
+            | "bash"
+            | "zsh"
+            | "fish"
     ) || lower.contains("windows powershell");
     let promptish = trimmed.contains('@') && trimmed.contains(':');
     if trimmed.is_empty() || shellish || promptish || trimmed.contains(['\\', '/']) {

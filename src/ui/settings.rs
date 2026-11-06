@@ -38,6 +38,8 @@ impl AtlasView {
             Some(CursorShape::Hidden) => "hidden".to_string(),
         };
         self.app_settings.theme_mode = self.theme_mode.clone();
+        self.app_settings.theme_dark = self.registry.preset(self.theme_dark_id).id.to_string();
+        self.app_settings.theme_light = self.registry.preset(self.theme_light_id).id.to_string();
         self.app_settings.theme = self.registry.preset(self.theme_id).id.to_string();
         self.app_settings.font_family = self.font_family.clone();
         self.app_settings.font_size = self.font_size;
@@ -66,6 +68,17 @@ impl AtlasView {
         let loaded = crate::config::load_app_settings();
         self.last_settings_mtime = std::fs::metadata(crate::user_data_dir().join("settings.json")).and_then(|m| m.modified()).ok();
         self.theme_mode = loaded.theme_mode.clone();
+        self.theme_dark_id = self.registry.find_by_name_or_id(&loaded.theme_dark).unwrap_or(0);
+        self.theme_light_id = self.registry.find_by_name_or_id(&loaded.theme_light).unwrap_or(3);
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        self.theme_id = if is_light { self.theme_light_id } else { self.theme_dark_id };
+        let (target, is_dark) = self.registry.resolve(self.theme_id, &self.theme_mode);
+        self.theme = target;
+        crate::rounded_corners::set_dark_mode(is_dark);
         self.font_family = loaded.font_family.clone();
         self.font_size = loaded.font_size;
         self.line_height = loaded.line_height;
@@ -82,9 +95,6 @@ impl AtlasView {
             "hollow" => Some(CursorShape::HollowBlock),
             _ => None,
         };
-        if let Some(idx) = self.registry.find_by_name_or_id(&loaded.theme) {
-            self.set_theme(idx, cx);
-        }
         for tab in &mut self.tabs {
             for pane in &mut tab.panes {
                 pane.cursor_pos = None;
@@ -306,8 +316,8 @@ impl AtlasView {
             cx,
         );
 
-        // Visual Theme Cards Grid
-        let mut theme_grid = div()
+        // Visual Dark Themes Grid
+        let mut dark_theme_grid = div()
             .flex()
             .flex_row()
             .flex_wrap()
@@ -315,11 +325,9 @@ impl AtlasView {
             .p(px(14.0));
 
         for idx in 0..self.registry.len() {
-            let is_sel = self.theme_id == idx;
+            let is_sel = self.theme_dark_id == idx;
             let preset = self.registry.preset(idx);
-            let p_dark = &preset.dark;
-            let p_light = &preset.light;
-            let preview_theme = if self.theme_mode == "light" { p_light } else { p_dark };
+            let preview_theme = &preset.dark;
 
             let card_border = if is_sel {
                 theme.accent
@@ -335,7 +343,7 @@ impl AtlasView {
             };
 
             let theme_card = div()
-                .id(ElementId::named_usize("theme-card", idx))
+                .id(ElementId::named_usize("dark-theme-card", idx))
                 .w(px(180.0))
                 .flex()
                 .flex_col()
@@ -427,7 +435,7 @@ impl AtlasView {
                                 .text_size(px(13.5))
                                 .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
                                 .text_color(if is_sel { sc_title } else { sc_label })
-                                .child(preset.name),
+                                .child(preset.dark_name()),
                         )
                         .children(if is_sel {
                             Some(icons::icon(icons::CHECK).size(px(14.0)).text_color(theme.accent))
@@ -436,10 +444,144 @@ impl AtlasView {
                         }),
                 )
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                    view.set_theme(idx, cx);
+                    view.set_dark_theme(idx, cx);
                 }));
 
-            theme_grid = theme_grid.child(theme_card);
+            dark_theme_grid = dark_theme_grid.child(theme_card);
+        }
+
+        // Visual Light Themes Grid
+        let mut light_theme_grid = div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap(px(10.0))
+            .p(px(14.0));
+
+        for idx in 0..self.registry.len() {
+            let is_sel = self.theme_light_id == idx;
+            let preset = self.registry.preset(idx);
+            let preview_theme = &preset.light;
+
+            let card_border = if is_sel {
+                theme.accent
+            } else if is_dark {
+                rgba(0xFFFFFF14)
+            } else {
+                rgba(0x00000010)
+            };
+            let card_bg = if is_sel {
+                Rgba { a: 0.12, ..theme.accent }
+            } else {
+                rgba(0x00000000)
+            };
+
+            let theme_card = div()
+                .id(ElementId::named_usize("light-theme-card", idx))
+                .w(px(180.0))
+                .flex()
+                .flex_col()
+                .rounded(px(10.0))
+                .border_1()
+                .border_color(card_border)
+                .bg(card_bg)
+                .p(px(8.0))
+                .cursor_pointer()
+                .hover(move |s| s.bg(theme.card_hover))
+                .child(
+                    // Mini Window Mockup
+                    div()
+                        .h(px(72.0))
+                        .w(relative(1.0))
+                        .rounded(px(6.0))
+                        .bg(preview_theme.bg)
+                        .border_1()
+                        .border_color(preview_theme.elevated_border)
+                        .overflow_hidden()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            // Window Header
+                            div()
+                                .h(px(14.0))
+                                .px(px(6.0))
+                                .bg(preview_theme.panel_bg)
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(4.0))
+                                .child(div().w(px(4.5)).h(px(4.5)).rounded_full().bg(rgb(0xFF5F56)))
+                                .child(div().w(px(4.5)).h(px(4.5)).rounded_full().bg(rgb(0xFFBD2E)))
+                                .child(div().w(px(4.5)).h(px(4.5)).rounded_full().bg(rgb(0x27C93F))),
+                        )
+                        .child(
+                            // Terminal Body Preview
+                            div()
+                                .flex_1()
+                                .p(px(6.0))
+                                .flex()
+                                .flex_col()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(3.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(10.5))
+                                                .font_weight(FontWeight::BOLD)
+                                                .text_color(preview_theme.accent)
+                                                .child("~ $"),
+                                        )
+                                        .child(
+                                            div()
+                                                .w(px(3.5))
+                                                .h(px(9.0))
+                                                .bg(preview_theme.cursor),
+                                        ),
+                                )
+                                .child(
+                                    // 3 Swatch Dots
+                                    div()
+                                        .flex()
+                                        .flex_row()
+                                        .justify_end()
+                                        .gap(px(4.0))
+                                        .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(preview_theme.accent))
+                                        .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(preview_theme.fg))
+                                        .child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(preview_theme.chrome_fg)),
+                                ),
+                        ),
+                )
+                .child(
+                    // Label & Indicator
+                    div()
+                        .pt(px(8.0))
+                        .px(px(4.0))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(13.5))
+                                .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                                .text_color(if is_sel { sc_title } else { sc_label })
+                                .child(preset.light_name()),
+                        )
+                        .children(if is_sel {
+                            Some(icons::icon(icons::CHECK).size(px(14.0)).text_color(theme.accent))
+                        } else {
+                            None
+                        }),
+                )
+                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                    view.set_light_theme(idx, cx);
+                }));
+
+            light_theme_grid = light_theme_grid.child(theme_card);
         }
 
         // Active font display badge (user customizes font in settings.json)
@@ -625,9 +767,18 @@ impl AtlasView {
             .gap(px(16.0))
             .child(
                 card()
-                    .child(section_header("COLOR THEME"))
-                    .child(setting_row("Appearance Mode", Some("System automatic or forced dark/light"), color_mode_ctrl, false))
-                    .child(theme_grid),
+                    .child(section_header("COLOR MODE"))
+                    .child(setting_row("Theme Mode", Some("System automatic sync or manual light/dark override"), color_mode_ctrl, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("DARK THEMES"))
+                    .child(dark_theme_grid),
+            )
+            .child(
+                card()
+                    .child(section_header("LIGHT THEMES"))
+                    .child(light_theme_grid),
             )
             .child(
                 card()
