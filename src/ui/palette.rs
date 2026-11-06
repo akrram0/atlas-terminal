@@ -1,5 +1,6 @@
 //! Command palette modal overlay and command catalog.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui::prelude::*;
@@ -15,8 +16,84 @@ use crate::session::Profile;
 use crate::theme::Theme;
 use crate::view::AtlasView;
 use crate::workspace::SplitAxis;
-use crate::wsl;
 use super::animation::{ease_apple_snappy, OVERLAY_IN_MS, OVERLAY_OUT_MS};
+
+/// Category of items in the command palette (Antigravity-style switcher).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteCategory {
+    All,
+    Commands,
+    Shells,
+    Tools,
+    Recents,
+    Links,
+}
+
+impl PaletteCategory {
+    pub const ALL: [PaletteCategory; 6] = [
+        PaletteCategory::All,
+        PaletteCategory::Commands,
+        PaletteCategory::Shells,
+        PaletteCategory::Tools,
+        PaletteCategory::Recents,
+        PaletteCategory::Links,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::All => "All",
+            Self::Commands => "Commands",
+            Self::Shells => "Shells",
+            Self::Tools => "Tools",
+            Self::Recents => "Recents",
+            Self::Links => "Links",
+        }
+    }
+
+    pub fn placeholder(&self) -> &'static str {
+        match self {
+            Self::All => "Search commands, shells, tools, recents...",
+            Self::Commands => "Search commands & actions...",
+            Self::Shells => "Search shells & WSL distros...",
+            Self::Tools => "Search CLI & AI agent tools...",
+            Self::Recents => "Search recent folders...",
+            Self::Links => "Search links & URLs in buffer...",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            Self::All => icons::SEARCH,
+            Self::Commands => icons::KEYBOARD,
+            Self::Shells => icons::TERMINAL,
+            Self::Tools => icons::ANTIGRAVITY_MARK,
+            Self::Recents => icons::FOLDER,
+            Self::Links => icons::LINK,
+        }
+    }
+
+    pub fn next(&self) -> Self {
+        match self {
+            Self::All => Self::Commands,
+            Self::Commands => Self::Shells,
+            Self::Shells => Self::Tools,
+            Self::Tools => Self::Recents,
+            Self::Recents => Self::Links,
+            Self::Links => Self::All,
+        }
+    }
+
+    pub fn prev(&self) -> Self {
+        match self {
+            Self::All => Self::Links,
+            Self::Commands => Self::All,
+            Self::Shells => Self::Commands,
+            Self::Tools => Self::Shells,
+            Self::Recents => Self::Tools,
+            Self::Links => Self::Recents,
+        }
+    }
+}
 
 /// Commands offered by the palette.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -62,14 +139,105 @@ pub enum Command {
     Fullscreen,
 }
 
-/// Action to execute from the palette (a built-in command or opening a detected URL).
+/// Action to execute from the palette (a built-in command, shell, recent dir, or opening a detected URL).
 #[derive(Clone, PartialEq, Eq)]
 pub enum PaletteAction {
     Command(Command),
     OpenUrl(String),
     LaunchProfile(Profile),
     SplitProfile(SplitAxis, Profile),
+    OpenRecentDirectory(PathBuf),
     RescanEnvironment,
+}
+
+/// A structured palette item displayed in the Antigravity-style categorized list.
+#[derive(Clone, PartialEq, Eq)]
+pub struct PaletteItem {
+    pub action: PaletteAction,
+    pub category: PaletteCategory,
+    pub icon: &'static str,
+    pub title: String,
+    pub subtitle: String,
+    pub shortcut_or_badge: String,
+}
+
+pub fn command_subtitle(cmd: Command) -> &'static str {
+    match cmd {
+        Command::NewWindow => "Window · Open a fresh Atlas window",
+        Command::ToggleSidebar => "View · Toggle tab bar / sidebar mode",
+        Command::FindInTerminal => "Search · Find text in terminal output",
+        Command::NewTab => "Shell · Launch default shell tab",
+        Command::NewTabWsl => "WSL · Launch default WSL distribution",
+        Command::NewTabCmd => "Shell · Launch Command Prompt tab",
+        Command::NewTabGitBash => "Shell · Launch Git Bash session",
+        Command::NewTabOpenCode => "AI Agent · Launch OpenCode CLI",
+        Command::NewTabAntigravity => "AI Agent · Launch Antigravity CLI",
+        Command::SplitPane => "Layout · Split pane vertically (columns)",
+        Command::SplitPaneDown => "Layout · Split pane horizontally (rows)",
+        Command::SplitPaneWsl => "Layout · Split pane vertically with WSL",
+        Command::SplitPaneDownWsl => "Layout · Split pane horizontally with WSL",
+        Command::FocusNextPane => "Navigation · Focus next split pane",
+        Command::FocusPrevPane => "Navigation · Focus previous split pane",
+        Command::MaximizePane => "Layout · Toggle full pane expansion",
+        Command::Fullscreen => "Window · Toggle borderless fullscreen",
+        Command::ClosePane => "Session · Close active pane",
+        Command::CloseTab => "Session · Close active tab",
+        Command::NextTab => "Navigation · Switch to next tab",
+        Command::PrevTab => "Navigation · Switch to previous tab",
+        Command::CopySelection => "Clipboard · Copy selected text",
+        Command::PasteClipboard => "Clipboard · Paste from clipboard",
+        Command::SelectAll => "Selection · Select all in terminal viewport",
+        Command::ClearScrollback => "Buffer · Clear terminal screen & history",
+        Command::ScrollPageUp => "Navigation · Page up through buffer",
+        Command::ScrollPageDown => "Navigation · Page down through buffer",
+        Command::ScrollToTop => "Navigation · Jump to top of scrollback",
+        Command::ScrollToBottom => "Navigation · Jump to bottom of scrollback",
+        Command::OpenLatestUrl => "Links · Open latest URL detected in buffer",
+        Command::RestartTab => "Session · Restart active shell pane",
+        Command::RenameTab => "Tab · Set a custom title for this tab",
+        Command::ToggleTheme => "Appearance · Switch between Dark & Light themes",
+        Command::OpenSettings => "Settings · Configure terminal, font, and themes",
+        Command::FontInc => "Display · Increase terminal font size",
+        Command::FontDec => "Display · Decrease terminal font size",
+        Command::FontReset => "Display · Reset terminal font size to default",
+        Command::CheckUpdates => "System · Check GitHub for Atlas updates",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_palette_category_cycling() {
+        let cat = PaletteCategory::All;
+        assert_eq!(cat.next(), PaletteCategory::Commands);
+        assert_eq!(cat.next().next(), PaletteCategory::Shells);
+        assert_eq!(cat.next().next().next(), PaletteCategory::Tools);
+        assert_eq!(cat.next().next().next().next(), PaletteCategory::Recents);
+        assert_eq!(cat.next().next().next().next().next(), PaletteCategory::Links);
+        assert_eq!(cat.next().next().next().next().next().next(), PaletteCategory::All);
+
+        assert_eq!(cat.prev(), PaletteCategory::Links);
+        assert_eq!(cat.prev().prev(), PaletteCategory::Recents);
+    }
+
+    #[test]
+    fn test_palette_category_labels_and_placeholders() {
+        for cat in PaletteCategory::ALL {
+            assert!(!cat.label().is_empty());
+            assert!(!cat.placeholder().is_empty());
+            assert!(!cat.icon().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_all_commands_have_subtitles() {
+        for (cmd, _, _, _) in &COMMANDS {
+            let sub = command_subtitle(*cmd);
+            assert!(!sub.is_empty(), "command subtitle must not be empty");
+        }
+    }
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
@@ -133,6 +301,8 @@ impl AtlasView {
         self.user_profile.verify_installed();
         self.palette_open = true;
         self.palette_closing = false;
+        self.palette_category = PaletteCategory::All;
+        self.palette_category_menu_open = false;
         self.palette_query.clear();
         self.palette_index = 0;
         self.palette_anim_index = 0.0;
@@ -148,6 +318,7 @@ impl AtlasView {
             return;
         }
         self.palette_closing = true;
+        self.palette_category_menu_open = false;
         self.focus_main(window);
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -211,117 +382,187 @@ impl AtlasView {
         String::new()
     }
 
-    /// Commands matching the current query, with multi-word search and detected buffer URLs.
-    pub fn palette_matches(&self) -> Vec<(PaletteAction, &'static str, String, String)> {
-        let mut items = Vec::new();
-        for (cmd, icon, label, _) in &COMMANDS {
-            let shortcut = self.shortcut_for_palette_command(*cmd);
-            if matches!(cmd, Command::NewTabWsl | Command::SplitPaneWsl | Command::SplitPaneDownWsl) {
-                let distro_title = wsl::default_distro().map(|d| d.title.clone()).unwrap_or_else(|| "WSL".to_string());
-                let (icon, label) = match cmd {
-                    Command::NewTabWsl => (
-                        wsl::default_distro().map(|d| d.icon).unwrap_or(icons::LINUX),
-                        format!("New {} (WSL) tab", distro_title),
-                    ),
-                    Command::SplitPaneWsl => (
-                        icons::SPLIT_COLUMNS,
-                        format!("Split right with {} (WSL)", distro_title),
-                    ),
-                    Command::SplitPaneDownWsl => (
-                        icons::SPLIT_ROWS,
-                        format!("Split down with {} (WSL)", distro_title),
-                    ),
-                    _ => (icons::LINUX, "WSL".to_string()),
-                };
-                items.push((PaletteAction::Command(*cmd), icon, label, shortcut));
-            } else {
-                items.push((
-                    PaletteAction::Command(*cmd),
-                    *icon,
-                    label.to_string(),
-                    shortcut,
-                ));
+    /// Items matching the current query and active category in the Antigravity-style catalog.
+    pub fn palette_matches(&self) -> Vec<PaletteItem> {
+        let mut all_items = Vec::new();
+
+        // 1. Built-in Commands
+        for (cmd, icon, label, default_sc) in &COMMANDS {
+            let mut shortcut = self.shortcut_for_palette_command(*cmd);
+            if shortcut.is_empty() && !default_sc.is_empty() {
+                shortcut = default_sc.to_string();
             }
+            all_items.push(PaletteItem {
+                action: PaletteAction::Command(*cmd),
+                category: PaletteCategory::Commands,
+                icon: *icon,
+                title: label.to_string(),
+                subtitle: command_subtitle(*cmd).to_string(),
+                shortcut_or_badge: shortcut,
+            });
         }
 
-        // Add Rescan Environment action
-        items.push((
-            PaletteAction::RescanEnvironment,
-            icons::REFRESH,
-            "Rescan environment & installed shells".to_string(),
-            String::new(),
-        ));
+        // Rescan Environment Action
+        all_items.push(PaletteItem {
+            action: PaletteAction::RescanEnvironment,
+            category: PaletteCategory::Commands,
+            icon: icons::REFRESH,
+            title: "Rescan Environment & Shells".to_string(),
+            subtitle: "System · Re-probe installed shells, WSL distros, and developer tools".to_string(),
+            shortcut_or_badge: "Action".to_string(),
+        });
 
-        // Add dynamic WSL distros
+        // 2. Installed Shells
+        for s in &self.user_profile.shells {
+            let prof = Profile::from_name(&s.id);
+            let icon = match s.id.as_str() {
+                "pwsh" | "powershell" => icons::POWERSHELL,
+                "cmd" => icons::CMD,
+                "gitbash" => icons::GIT,
+                _ => icons::TERMINAL,
+            };
+            let badge = if s.is_default { "Default Shell" } else { "Shell" };
+            all_items.push(PaletteItem {
+                action: PaletteAction::LaunchProfile(prof),
+                category: PaletteCategory::Shells,
+                icon,
+                title: format!("New tab: {}", s.title),
+                subtitle: format!("Windows Shell · {}", s.path),
+                shortcut_or_badge: badge.to_string(),
+            });
+        }
+
+        // WSL distros
         for d in &self.user_profile.wsl_distros {
             let icon = crate::wsl::icon_for_name(&d.name);
-            items.push((
-                PaletteAction::LaunchProfile(Profile::WslDistro(d.name.clone())),
+            let badge = if d.is_default { "Default WSL" } else { "WSL" };
+            all_items.push(PaletteItem {
+                action: PaletteAction::LaunchProfile(Profile::WslDistro(d.name.clone())),
+                category: PaletteCategory::Shells,
                 icon,
-                format!("New tab: {} (WSL)", d.title),
-                String::new(),
-            ));
-            items.push((
-                PaletteAction::SplitProfile(SplitAxis::Columns, Profile::WslDistro(d.name.clone())),
-                icons::SPLIT_COLUMNS,
-                format!("Split right with {} (WSL)", d.title),
-                String::new(),
-            ));
-            items.push((
-                PaletteAction::SplitProfile(SplitAxis::Rows, Profile::WslDistro(d.name.clone())),
-                icons::SPLIT_ROWS,
-                format!("Split down with {} (WSL)", d.title),
-                String::new(),
-            ));
+                title: format!("New tab: {} (WSL)", d.title),
+                subtitle: format!("WSL Distro · {}", d.name),
+                shortcut_or_badge: badge.to_string(),
+            });
+            all_items.push(PaletteItem {
+                action: PaletteAction::SplitProfile(SplitAxis::Columns, Profile::WslDistro(d.name.clone())),
+                category: PaletteCategory::Shells,
+                icon: icons::SPLIT_COLUMNS,
+                title: format!("Split right with {} (WSL)", d.title),
+                subtitle: format!("WSL Distro · {}", d.name),
+                shortcut_or_badge: "WSL Split".to_string(),
+            });
+            all_items.push(PaletteItem {
+                action: PaletteAction::SplitProfile(SplitAxis::Rows, Profile::WslDistro(d.name.clone())),
+                category: PaletteCategory::Shells,
+                icon: icons::SPLIT_ROWS,
+                title: format!("Split down with {} (WSL)", d.title),
+                subtitle: format!("WSL Distro · {}", d.name),
+                shortcut_or_badge: "WSL Split".to_string(),
+            });
         }
 
-        // Add detected AI & developer tools
+        // 3. AI Agents & CLI Tools
         for t in &self.user_profile.tools {
-            let (prof, icon) = match t.name.as_str() {
-                "agy" | "antigravity" => (Profile::Antigravity, icons::ANTIGRAVITY_MARK),
-                "opencode" => (Profile::OpenCode, icons::OPENCODE_MARK),
-                "claude" => (Profile::Claude, icons::CLAUDE_MARK),
-                "lazygit" => (Profile::CustomTool { name: t.title.clone(), path: t.path.clone() }, icons::GIT),
-                _ => (Profile::CustomTool { name: t.title.clone(), path: t.path.clone() }, icons::TERMINAL),
+            let (prof, icon, badge) = match t.name.as_str() {
+                "agy" | "antigravity" => (Profile::Antigravity, icons::ANTIGRAVITY_MARK, "AI Agent"),
+                "opencode" => (Profile::OpenCode, icons::OPENCODE_MARK, "AI Agent"),
+                "claude" => (Profile::Claude, icons::CLAUDE_MARK, "AI Agent"),
+                "lazygit" => (
+                    Profile::CustomTool {
+                        name: t.title.clone(),
+                        path: t.path.clone(),
+                    },
+                    icons::GIT,
+                    "CLI Tool",
+                ),
+                _ => (
+                    Profile::CustomTool {
+                        name: t.title.clone(),
+                        path: t.path.clone(),
+                    },
+                    icons::TERMINAL,
+                    "CLI Tool",
+                ),
             };
-            items.push((
-                PaletteAction::LaunchProfile(prof),
+            all_items.push(PaletteItem {
+                action: PaletteAction::LaunchProfile(prof),
+                category: PaletteCategory::Tools,
                 icon,
-                format!("Launch {}", t.title),
-                String::new(),
-            ));
+                title: format!("Launch {}", t.title),
+                subtitle: format!("Tool · {}", t.path),
+                shortcut_or_badge: badge.to_string(),
+            });
         }
 
-        // Add dynamically detected URLs from active terminal viewport
+        // 4. Recent Directories
+        for dir_str in &self.user_profile.recent_directories {
+            let path = PathBuf::from(dir_str);
+            let folder_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(dir_str.as_str())
+                .to_string();
+            all_items.push(PaletteItem {
+                action: PaletteAction::OpenRecentDirectory(path),
+                category: PaletteCategory::Recents,
+                icon: icons::FOLDER,
+                title: folder_name,
+                subtitle: dir_str.clone(),
+                shortcut_or_badge: "Recent".to_string(),
+            });
+        }
+
+        // 5. Buffer URLs
         if let Some(pane) = self.active_pane() {
             let session = pane.session.borrow();
             let urls = crate::url::find_all_urls_in_viewport(&session.term);
             for url in urls {
-                let label = format!("Open link: {url}");
-                items.push((PaletteAction::OpenUrl(url), icons::LINK, label, String::new()));
+                let display_title = if url.len() > 45 {
+                    format!("{}...", &url[..42])
+                } else {
+                    url.clone()
+                };
+                all_items.push(PaletteItem {
+                    action: PaletteAction::OpenUrl(url.clone()),
+                    category: PaletteCategory::Links,
+                    icon: icons::LINK,
+                    title: format!("Open {display_title}"),
+                    subtitle: url,
+                    shortcut_or_badge: "Link".to_string(),
+                });
             }
         }
 
+        // Filter by category
+        let filtered_by_category: Vec<PaletteItem> = if self.palette_category == PaletteCategory::All {
+            all_items
+        } else {
+            all_items
+                .into_iter()
+                .filter(|item| item.category == self.palette_category)
+                .collect()
+        };
+
         let query = self.palette_query.trim().to_ascii_lowercase();
         if query.is_empty() {
-            return items.into_iter().take(12).collect();
+            return filtered_by_category.into_iter().take(15).collect();
         }
 
         let words: Vec<&str> = query.split_whitespace().collect();
-        items
+        filtered_by_category
             .into_iter()
-            .filter(|(_, _, label, shortcut)| {
-                let l = label.to_ascii_lowercase();
-                let s = shortcut.to_ascii_lowercase();
-                words.iter().all(|w| l.contains(w) || s.contains(w))
+            .filter(|item| {
+                let t = item.title.to_ascii_lowercase();
+                let sub = item.subtitle.to_ascii_lowercase();
+                let b = item.shortcut_or_badge.to_ascii_lowercase();
+                words.iter().all(|w| t.contains(w) || sub.contains(w) || b.contains(w))
             })
-            .take(12)
+            .take(15)
             .collect()
     }
 
-    /// Palette key routing: type to filter, ↑/↓ to move, Enter to run, Esc to
-    /// dismiss. Key events arrive here only while the palette holds focus, so
-    /// nothing leaks into the shell.
+    /// Palette key routing: type to filter, Tab to cycle categories, ↑/↓ to move, Enter to run, Esc to dismiss.
     pub fn handle_palette_key(
         &mut self,
         ks: &Keystroke,
@@ -329,12 +570,29 @@ impl AtlasView {
         cx: &mut Context<Self>,
     ) {
         match ks.key.as_str() {
-            "escape" => self.close_palette(window, cx),
+            "escape" => {
+                if self.palette_category_menu_open {
+                    self.palette_category_menu_open = false;
+                    cx.notify();
+                } else {
+                    self.close_palette(window, cx);
+                }
+            }
+            "tab" => {
+                if ks.modifiers.shift {
+                    self.palette_category = self.palette_category.prev();
+                } else {
+                    self.palette_category = self.palette_category.next();
+                }
+                self.palette_category_menu_open = false;
+                self.palette_index = 0;
+                cx.notify();
+            }
             "enter" => {
                 let matches = self.palette_matches();
                 let index = self.palette_index.min(matches.len().saturating_sub(1));
                 match matches.get(index).cloned() {
-                    Some((action, _, _, _)) => self.run_palette_action(action, window, cx),
+                    Some(item) => self.run_palette_action(item.action, window, cx),
                     None => self.close_palette(window, cx),
                 }
             }
@@ -378,7 +636,7 @@ impl AtlasView {
         }
     }
 
-    /// Run a palette action (command or open URL); the palette fades out on the way.
+    /// Run a palette action (command, URL, profile, or folder); the palette fades out on the way.
     pub fn run_palette_action(&mut self, action: PaletteAction, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette_open {
             self.close_palette(window, cx);
@@ -395,6 +653,11 @@ impl AtlasView {
             }
             PaletteAction::SplitProfile(axis, profile) => {
                 self.split_active_profile(axis, profile, cx);
+                self.focus_main(window);
+            }
+            PaletteAction::OpenRecentDirectory(dir) => {
+                let prof = self.get_default_profile();
+                self.new_tab_with_cwd(prof, Some(dir), cx);
                 self.focus_main(window);
             }
             PaletteAction::RescanEnvironment => {
@@ -598,6 +861,40 @@ impl AtlasView {
     pub fn palette(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let matches = self.palette_matches();
         let closing = self.palette_closing;
+        let active_cat = self.palette_category;
+        let cat_menu_open = self.palette_category_menu_open;
+
+        // Category pill button on left
+        let cat_btn = div()
+            .id(ElementId::named_usize("palette-category-btn", 0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .h(px(28.0))
+            .px(px(8.0))
+            .rounded(px(6.0))
+            .bg(if cat_menu_open { theme.card_active } else { theme.soft_bg })
+            .border_1()
+            .border_color(if cat_menu_open { theme.accent } else { theme.hairline })
+            .cursor_pointer()
+            .hover(move |s| s.bg(theme.card_hover))
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(theme.chrome_fg_active)
+                    .child(active_cat.label()),
+            )
+            .child(
+                icons::icon(icons::CHEVRON_DOWN)
+                    .size(px(10.0))
+                    .text_color(theme.faint_fg),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, _, cx| {
+                view.palette_category_menu_open = !view.palette_category_menu_open;
+                cx.notify();
+            }));
 
         let mut text_row = div()
             .flex()
@@ -605,14 +902,14 @@ impl AtlasView {
             .items_center()
             .gap(px(3.0))
             .flex_1()
-            .text_size(px(14.5));
+            .text_size(px(14.0));
         if self.palette_query.is_empty() {
             if self.cursor_on {
                 text_row = text_row.child(
                     div().w(px(2.0)).h(px(19.0)).rounded_full().bg(theme.accent),
                 );
             }
-            text_row = text_row.child(div().text_color(theme.faint_fg).child("Type a command…"));
+            text_row = text_row.child(div().text_color(theme.faint_fg).child(active_cat.placeholder()));
         } else {
             text_row = text_row.child(
                 div()
@@ -626,74 +923,260 @@ impl AtlasView {
             }
         }
 
+        // Right side hints & clear button
+        let mut right_section = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(8.0));
+
+        if !self.palette_query.is_empty() {
+            right_section = right_section.child(
+                div()
+                    .id(ElementId::named_usize("palette-clear-btn", 0))
+                    .p(px(4.0))
+                    .rounded(px(4.0))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(theme.card_hover))
+                    .child(icons::icon(icons::CLOSE).size(px(13.0)).text_color(theme.faint_fg))
+                    .on_click(cx.listener(|view, _: &ClickEvent, _, cx| {
+                        view.palette_query.clear();
+                        view.palette_index = 0;
+                        cx.notify();
+                    })),
+            );
+        }
+
+        right_section = right_section.child(
+            div()
+                .px(px(6.0))
+                .py(px(2.0))
+                .rounded(px(4.0))
+                .bg(theme.soft_bg)
+                .border_1()
+                .border_color(theme.hairline)
+                .text_size(px(10.5))
+                .text_color(theme.faint_fg)
+                .child("Tab ⇄"),
+        );
+
         let input_row = div()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(12.0))
+            .gap(px(10.0))
             .h(px(52.0))
-            .px(px(18.0))
+            .px(px(14.0))
             .text_color(theme.chrome_fg)
-            .child(icons::icon(icons::SEARCH).size(px(16.5)).text_color(theme.chrome_fg))
-            .child(text_row);
+            .child(cat_btn)
+            .child(text_row)
+            .child(right_section);
 
         let mut list = div().flex().flex_col().p(px(6.0)).relative();
         if matches.is_empty() {
             list = list.child(
                 div()
-                    .px(px(14.0))
-                    .py(px(12.0))
-                    .text_size(px(13.0))
-                    .text_color(theme.faint_fg)
-                    .child("No matching commands"),
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .py(px(28.0))
+                    .gap(px(6.0))
+                    .child(
+                        icons::icon(icons::SEARCH)
+                            .size(px(22.0))
+                            .text_color(theme.faint_fg),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .text_color(theme.faint_fg)
+                            .child("No matching items"),
+                    ),
             );
         } else {
             // Floating sliding selection pill (Raycast/Spotlight smooth glide)
-            let pill_top = 6.0 + self.palette_anim_index * 42.0;
+            let row_height = 48.0;
+            let pill_top = 6.0 + self.palette_anim_index * row_height;
             list = list.child(
                 div()
                     .absolute()
                     .left(px(6.0))
                     .right(px(6.0))
                     .top(px(pill_top))
-                    .h(px(42.0))
+                    .h(px(row_height))
                     .rounded(px(8.0))
                     .bg(theme.card_active),
             );
 
-            for (index, (action, icon, label, shortcut)) in matches.into_iter().enumerate() {
+            for (index, item) in matches.into_iter().enumerate() {
+                let action = item.action.clone();
                 let hover = theme.card_hover;
+                let is_selected = index == self.palette_index;
+
+                let is_shortcut = !item.shortcut_or_badge.is_empty()
+                    && (item.shortcut_or_badge.contains("Ctrl")
+                        || item.shortcut_or_badge.contains("Alt")
+                        || item.shortcut_or_badge.contains("Shift")
+                        || item.shortcut_or_badge == "F11"
+                        || item.shortcut_or_badge == "R");
+
+                let right_badge = if item.shortcut_or_badge.is_empty() {
+                    div()
+                } else if is_shortcut {
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(theme.faint_fg)
+                        .child(item.shortcut_or_badge.clone())
+                } else {
+                    div()
+                        .px(px(7.0))
+                        .py(px(2.0))
+                        .rounded(px(4.0))
+                        .bg(theme.soft_bg)
+                        .border_1()
+                        .border_color(theme.hairline)
+                        .text_size(px(10.5))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(theme.faint_fg)
+                        .child(item.shortcut_or_badge.clone())
+                };
+
                 let row = div()
-                    .id(ElementId::named_usize("palette-command", index))
-                    .h(px(42.0))
-                    .px(px(14.0))
+                    .id(ElementId::named_usize("palette-item", index))
+                    .h(px(row_height))
+                    .px(px(12.0))
                     .flex()
                     .flex_row()
                     .items_center()
                     .gap(px(12.0))
                     .rounded(px(8.0))
-                    .text_color(theme.chrome_fg)
+                    .cursor_pointer()
                     .hover(move |style| style.bg(hover))
-                    .child(icons::icon(icon).size(px(16.0)).text_color(theme.chrome_fg))
+                    .child(
+                        div()
+                            .w(px(28.0))
+                            .h(px(28.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(6.0))
+                            .bg(theme.soft_bg)
+                            .border_1()
+                            .border_color(theme.hairline)
+                            .child(
+                                icons::icon(item.icon)
+                                    .size(px(15.0))
+                                    .text_color(if is_selected { theme.accent } else { theme.chrome_fg }),
+                            ),
+                    )
                     .child(
                         div()
                             .flex_1()
-                            .text_size(px(14.0))
-                            .text_color(theme.chrome_fg_active)
-                            .child(label),
+                            .flex()
+                            .flex_col()
+                            .justify_center()
+                            .gap(px(1.5))
+                            .child(
+                                div()
+                                    .text_size(px(13.5))
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(theme.chrome_fg_active)
+                                    .line_height(px(16.0))
+                                    .child(item.title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .text_color(theme.faint_fg)
+                                    .line_height(px(14.0))
+                                    .child(item.subtitle),
+                            ),
                     )
-                    .child(
-                        div()
-                            .text_size(px(12.0))
-                            .text_color(theme.faint_fg)
-                            .child(shortcut),
-                    )
+                    .child(right_badge)
                     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                         view.run_palette_action(action.clone(), window, cx);
                     }));
                 list = list.child(row.stagger_in(ElementId::named_usize("palette-cmd-stagger", index), index));
             }
         }
+
+        // Floating category dropdown menu
+        let category_dropdown = if cat_menu_open {
+            let mut menu = div()
+                .id(ElementId::named_usize("palette-cat-menu", 0))
+                .absolute()
+                .top(px(46.0))
+                .left(px(14.0))
+                .w(px(160.0))
+                .flex()
+                .flex_col()
+                .gap(px(2.0))
+                .p(px(4.0))
+                .rounded(px(10.0))
+                .bg(theme.elevated_bg)
+                .border_1()
+                .border_color(theme.elevated_border)
+                .shadow_lg();
+
+            for cat in PaletteCategory::ALL {
+                let is_sel = cat == active_cat;
+                let hover = theme.card_hover;
+                let mut item = div()
+                    .id(ElementId::named_usize("palette-cat-choice", cat as usize))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .h(px(30.0))
+                    .px(px(8.0))
+                    .rounded(px(6.0))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(hover));
+
+                if is_sel {
+                    item = item.bg(theme.card_active);
+                }
+
+                let item = item
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                icons::icon(cat.icon())
+                                    .size(px(13.0))
+                                    .text_color(if is_sel { theme.accent } else { theme.chrome_fg }),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.5))
+                                    .font_weight(if is_sel { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                    .text_color(if is_sel { theme.chrome_fg_active } else { theme.chrome_fg })
+                                    .child(cat.label()),
+                            ),
+                    )
+                    .when(is_sel, |this| {
+                        this.child(
+                            icons::icon(icons::CHECK)
+                                .size(px(12.0))
+                                .text_color(theme.accent),
+                        )
+                    })
+                    .on_click(cx.listener(move |view, _: &ClickEvent, _, cx| {
+                        view.palette_category = cat;
+                        view.palette_category_menu_open = false;
+                        view.palette_index = 0;
+                        cx.notify();
+                    }));
+                menu = menu.child(item);
+            }
+            Some(menu)
+        } else {
+            None
+        };
 
         div()
             .absolute()
@@ -706,9 +1189,10 @@ impl AtlasView {
             .child(
                 div()
                     .id(ElementId::named_usize("palette-panel", 0))
-                    .w(px(600.0))
+                    .w(px(640.0))
                     .flex()
                     .flex_col()
+                    .relative()
                     .rounded(px(12.0))
                     .bg(theme.elevated_bg)
                     .border_1()
@@ -716,12 +1200,14 @@ impl AtlasView {
                     .shadow_lg()
                     .track_focus(&self.palette_focus)
                     .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                        cx.stop_propagation();
                         let keystroke = event.keystroke.clone();
                         view.handle_palette_key(&keystroke, window, cx);
                     }))
                     .child(input_row)
                     .child(div().h(px(1.0)).bg(theme.hairline))
-                    .child(list),
+                    .child(list)
+                    .when_some(category_dropdown, |this, menu| this.child(menu)),
             )
             .with_animation(
                 ElementId::named_usize("palette-anim", closing as usize),

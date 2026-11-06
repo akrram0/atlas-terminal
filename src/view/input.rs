@@ -489,14 +489,12 @@ impl AtlasView {
             return;
         }
 
-        // When palette is active, route all keystrokes exclusively to the palette handler.
-        // Prevent any typed characters from leaking into the underlying shell PTY or triggering terminal actions.
+        // When palette is active, swallow global window input so it doesn't execute twice.
+        // The palette panel element itself tracks focus and handles keystrokes with stop_propagation.
         if self.palette_open {
             if modifiers.control && (key == "k" || key == "K") {
                 self.close_palette(window, cx);
-                return;
             }
-            self.handle_palette_key(ks, window, cx);
             return;
         }
 

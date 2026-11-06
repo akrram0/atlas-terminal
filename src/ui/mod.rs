@@ -22,4 +22,4 @@ pub use fonts::{icon_font, terminal_font, FONT_CASCADE, FONT_FALLBACK, FONT_SIZE
 #[allow(unused_imports)]
 pub use overlay::{caption_spacer, overlay_backdrop, profile_menu, set_hover_mark, HOVER_MARK_CAPSULE_CHEVRON, HOVER_MARK_CAPSULE_PLUS, HOVER_MARK_WINDOW};
 #[allow(unused_imports)]
-pub use palette::{Command, COMMANDS};
+pub use palette::{Command, COMMANDS, PaletteAction, PaletteCategory, PaletteItem};

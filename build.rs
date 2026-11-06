@@ -48,8 +48,12 @@ fn main() {
         return;
     }
 
-    let Some(rc) = find_rc() else {
-        println!("cargo:warning=rc.exe not found — the exe will not embed assets/atlas.ico");
+    let (compiler, is_windres) = if let Some(rc) = find_rc() {
+        (rc, false)
+    } else if let Some(windres) = find_windres() {
+        (windres, true)
+    } else {
+        println!("cargo:warning=Neither rc.exe nor windres found — the exe will not embed assets/atlas.ico");
         return;
     };
 
@@ -57,19 +61,48 @@ fn main() {
     let assets = manifest.join("assets");
     let res = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("atlas.res");
 
-    let status = Command::new(&rc)
-        .current_dir(&assets)
-        .arg("/nologo")
-        .arg(format!("/fo{}", res.display()))
-        .arg("atlas.rc")
-        .status()
-        .unwrap_or_else(|err| panic!("failed to run {}: {err}", rc.display()));
+    let status = if is_windres {
+        Command::new(&compiler)
+            .current_dir(&assets)
+            .args(["-O", "coff", "-i", "atlas.rc", "-o"])
+            .arg(&res)
+            .status()
+            .unwrap_or_else(|err| panic!("failed to run {}: {err}", compiler.display()))
+    } else {
+        Command::new(&compiler)
+            .current_dir(&assets)
+            .arg("/nologo")
+            .arg(format!("/fo{}", res.display()))
+            .arg("atlas.rc")
+            .status()
+            .unwrap_or_else(|err| panic!("failed to run {}: {err}", compiler.display()))
+    };
     if !status.success() {
-        panic!("rc.exe failed with {status}");
+        panic!("Resource compiler failed with {status}");
     }
 
     println!("cargo:rustc-link-arg={}", res.display());
-    println!("cargo:warning=embedded assets/atlas.ico via {}", rc.display());
+    println!("cargo:warning=embedded assets/atlas.ico via {}", compiler.display());
+}
+
+fn find_windres() -> Option<PathBuf> {
+    if let Some(wr) = std::env::var_os("WINDRES") {
+        let wr = PathBuf::from(wr);
+        if wr.is_file() {
+            return Some(wr);
+        }
+    }
+    if let Ok(output) = Command::new("where.exe").arg("windres").output() {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let candidate = PathBuf::from(line.trim());
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Find `rc.exe`: `$RC`, then the newest Windows Kits 10 SDK, then Visual

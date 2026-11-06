@@ -95,6 +95,8 @@ pub struct AtlasView {
     pub(crate) profile_menu: bool,
     /// Command palette (Ctrl+K / top-bar search icon).
     pub(crate) palette_open: bool,
+    pub(crate) palette_category: crate::ui::palette::PaletteCategory,
+    pub(crate) palette_category_menu_open: bool,
     pub(crate) palette_query: String,
     pub(crate) palette_index: usize,
     /// Smoothly gliding floating pill index in the command palette.
@@ -292,6 +294,8 @@ impl AtlasView {
             settings_tab_open: false,
             profile_menu: false,
             palette_open: false,
+            palette_category: crate::ui::palette::PaletteCategory::All,
+            palette_category_menu_open: false,
             palette_query: String::new(),
             palette_index: 0,
             palette_anim_index: 0.0,
