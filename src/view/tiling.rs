@@ -737,6 +737,9 @@ impl AtlasView {
             }))
             .on_scroll_wheel(cx.listener(
                 move |view, event: &ScrollWheelEvent, _window, cx| {
+                    if view.palette_open || view.settings_open || view.profile_menu {
+                        return;
+                    }
                     if event.modifiers.control {
                         let delta = match event.delta {
                             gpui::ScrollDelta::Lines(d) => d.y,

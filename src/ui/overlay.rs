@@ -54,6 +54,9 @@ pub fn overlay_backdrop_with_scrim(
         .absolute()
         .inset_0()
         .bg(scrim)
+        .on_scroll_wheel(|_event, _window, cx| {
+            cx.stop_propagation();
+        })
         .on_mouse_down(MouseButton::Left, |_, _, cx| {
             cx.stop_propagation();
         })

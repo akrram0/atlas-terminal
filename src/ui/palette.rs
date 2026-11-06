@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use gpui::prelude::*;
 use gpui::{
-    Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, IntoElement,
-    KeyDownEvent, Keystroke, MouseButton, MouseDownEvent, Window, div, px,
+    Animation, AnimationExt, AnyElement, Context, ElementId, IntoElement,
+    Keystroke, MouseButton, MouseDownEvent, Window, div, px,
 };
 
 use crate::config::SettingsTab;
@@ -24,18 +24,14 @@ pub enum PaletteCategory {
     Commands,
     Shells,
     Tools,
-    Recents,
-    Links,
 }
 
 impl PaletteCategory {
-    pub const ALL: [PaletteCategory; 6] = [
+    pub const ALL: [PaletteCategory; 4] = [
         PaletteCategory::All,
         PaletteCategory::Commands,
         PaletteCategory::Shells,
         PaletteCategory::Tools,
-        PaletteCategory::Recents,
-        PaletteCategory::Links,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -44,19 +40,15 @@ impl PaletteCategory {
             Self::Commands => "Commands",
             Self::Shells => "Shells",
             Self::Tools => "Tools",
-            Self::Recents => "Recents",
-            Self::Links => "Links",
         }
     }
 
     pub fn placeholder(&self) -> &'static str {
         match self {
-            Self::All => "Search commands, shells, tools, recents...",
-            Self::Commands => "Search commands & actions...",
-            Self::Shells => "Search shells & WSL distros...",
-            Self::Tools => "Search CLI & AI agent tools...",
-            Self::Recents => "Search recent folders...",
-            Self::Links => "Search links & URLs in buffer...",
+            Self::All => "Search commands, shells, and tools...",
+            Self::Commands => "Search terminal commands & actions...",
+            Self::Shells => "Search installed shells & WSL distros...",
+            Self::Tools => "Search AI agents & developer tools...",
         }
     }
 
@@ -66,8 +58,6 @@ impl PaletteCategory {
             Self::Commands => icons::KEYBOARD,
             Self::Shells => icons::TERMINAL,
             Self::Tools => icons::ANTIGRAVITY_MARK,
-            Self::Recents => icons::FOLDER,
-            Self::Links => icons::LINK,
         }
     }
 
@@ -76,20 +66,16 @@ impl PaletteCategory {
             Self::All => Self::Commands,
             Self::Commands => Self::Shells,
             Self::Shells => Self::Tools,
-            Self::Tools => Self::Recents,
-            Self::Recents => Self::Links,
-            Self::Links => Self::All,
+            Self::Tools => Self::All,
         }
     }
 
     pub fn prev(&self) -> Self {
         match self {
-            Self::All => Self::Links,
+            Self::All => Self::Tools,
             Self::Commands => Self::All,
             Self::Shells => Self::Commands,
             Self::Tools => Self::Shells,
-            Self::Recents => Self::Tools,
-            Self::Links => Self::Recents,
         }
     }
 }
@@ -142,9 +128,11 @@ pub enum Command {
 #[derive(Clone, PartialEq, Eq)]
 pub enum PaletteAction {
     Command(Command),
+    #[allow(dead_code)]
     OpenUrl(String),
     LaunchProfile(Profile),
     SplitProfile(SplitAxis, Profile),
+    #[allow(dead_code)]
     OpenRecentDirectory(PathBuf),
     RescanEnvironment,
 }
@@ -213,12 +201,11 @@ mod tests {
         assert_eq!(cat.next(), PaletteCategory::Commands);
         assert_eq!(cat.next().next(), PaletteCategory::Shells);
         assert_eq!(cat.next().next().next(), PaletteCategory::Tools);
-        assert_eq!(cat.next().next().next().next(), PaletteCategory::Recents);
-        assert_eq!(cat.next().next().next().next().next(), PaletteCategory::Links);
-        assert_eq!(cat.next().next().next().next().next().next(), PaletteCategory::All);
+        assert_eq!(cat.next().next().next().next(), PaletteCategory::All);
 
-        assert_eq!(cat.prev(), PaletteCategory::Links);
-        assert_eq!(cat.prev().prev(), PaletteCategory::Recents);
+        assert_eq!(cat.prev(), PaletteCategory::Tools);
+        assert_eq!(cat.prev().prev(), PaletteCategory::Shells);
+        assert_eq!(cat.prev().prev().prev(), PaletteCategory::Commands);
     }
 
     #[test]
@@ -495,45 +482,6 @@ impl AtlasView {
             });
         }
 
-        // 4. Recent Directories
-        for dir_str in &self.user_profile.recent_directories {
-            let path = PathBuf::from(dir_str);
-            let folder_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(dir_str.as_str())
-                .to_string();
-            all_items.push(PaletteItem {
-                action: PaletteAction::OpenRecentDirectory(path),
-                category: PaletteCategory::Recents,
-                icon: icons::FOLDER,
-                title: folder_name,
-                subtitle: dir_str.clone(),
-                shortcut_or_badge: "Recent".to_string(),
-            });
-        }
-
-        // 5. Buffer URLs
-        if let Some(pane) = self.active_pane() {
-            let session = pane.session.borrow();
-            let urls = crate::url::find_all_urls_in_viewport(&session.term);
-            for url in urls {
-                let display_title = if url.len() > 45 {
-                    format!("{}...", &url[..42])
-                } else {
-                    url.clone()
-                };
-                all_items.push(PaletteItem {
-                    action: PaletteAction::OpenUrl(url.clone()),
-                    category: PaletteCategory::Links,
-                    icon: icons::LINK,
-                    title: format!("Open {display_title}"),
-                    subtitle: url,
-                    shortcut_or_badge: "Link".to_string(),
-                });
-            }
-        }
-
         // Filter by category
         let filtered_by_category: Vec<PaletteItem> = if self.palette_category == PaletteCategory::All {
             all_items
@@ -564,19 +512,21 @@ impl AtlasView {
 
     /// Keep active item in visible view while navigating up/down in the command palette.
     fn scroll_palette_to_active(&mut self) {
-        let row_h = 44.0;
+        let row_h = 46.0;
+        let gap = 3.0;
+        let slot_h = row_h + gap;
         let viewport_h = 380.0;
         let cur_offset_y = f32::from(self.palette_scroll_handle.offset().y);
         let scroll_top = if cur_offset_y <= 0.0 { -cur_offset_y } else { cur_offset_y };
         let scroll_bottom = scroll_top + viewport_h;
-        let item_top = self.palette_index as f32 * row_h;
+        let item_top = self.palette_index as f32 * slot_h;
         let item_bottom = item_top + row_h;
 
         if item_top < scroll_top {
             let new_y = -item_top;
             self.palette_scroll_handle.set_offset(gpui::Point { x: px(0.0), y: px(new_y) });
         } else if item_bottom > scroll_bottom {
-            let new_y = -(item_bottom - viewport_h);
+            let new_y = -(item_bottom - viewport_h + 12.0);
             self.palette_scroll_handle.set_offset(gpui::Point { x: px(0.0), y: px(new_y) });
         }
     }
@@ -642,13 +592,19 @@ impl AtlasView {
                     // it as an immutable key), so type it by hand.
                     let raw_typed: String = if ks.key == "space" {
                         " ".to_string()
+                    } else if let Some(text) = ks.key_char.as_deref() {
+                        let filtered: String = text.chars().filter(|c| !c.is_control()).collect();
+                        if !filtered.is_empty() {
+                            filtered
+                        } else if ks.key.chars().count() == 1 && !ks.key.chars().next().unwrap().is_control() {
+                            ks.key.clone()
+                        } else {
+                            String::new()
+                        }
+                    } else if ks.key.chars().count() == 1 && !ks.key.chars().next().unwrap().is_control() {
+                        ks.key.clone()
                     } else {
-                        ks.key_char
-                            .as_deref()
-                            .map(|text| {
-                                text.chars().filter(|c| !c.is_control()).collect()
-                            })
-                            .unwrap_or_default()
+                        String::new()
                     };
                     let typed = crate::keymap::adjust_for_caps_lock(&raw_typed, ks.modifiers.shift);
                     if !typed.is_empty() {
@@ -1006,7 +962,9 @@ impl AtlasView {
             .id(ElementId::named_usize("palette-list", 0))
             .flex()
             .flex_col()
-            .p(px(6.0))
+            .px(px(8.0))
+            .py(px(6.0))
+            .gap(px(3.0))
             .relative()
             .max_h(px(380.0))
             .overflow_y_scroll()
@@ -1036,7 +994,6 @@ impl AtlasView {
         } else {
             for (index, item) in matches.into_iter().enumerate() {
                 let action = item.action.clone();
-                let hover = theme.card_hover;
                 let is_selected = index == self.palette_index;
 
                 let is_shortcut = !item.shortcut_or_badge.is_empty()
@@ -1048,32 +1005,22 @@ impl AtlasView {
 
                 let right_badge = if item.shortcut_or_badge.is_empty() {
                     div()
-                } else if is_shortcut {
-                    div()
-                        .flex_none()
-                        .px(px(6.0))
-                        .py(px(2.0))
-                        .rounded(px(4.0))
-                        .bg(theme.soft_bg)
-                        .text_size(px(11.0))
-                        .text_color(theme.faint_fg)
-                        .child(item.shortcut_or_badge.clone())
                 } else {
                     div()
                         .flex_none()
                         .px(px(7.0))
-                        .py(px(2.0))
-                        .rounded(px(4.0))
+                        .py(px(2.5))
+                        .rounded(px(5.0))
                         .bg(theme.soft_bg)
-                        .text_size(px(10.5))
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(theme.faint_fg)
+                        .text_size(px(11.0))
+                        .font_weight(if is_shortcut { gpui::FontWeight::NORMAL } else { gpui::FontWeight::MEDIUM })
+                        .text_color(if is_selected { theme.chrome_fg_active } else { theme.faint_fg })
                         .child(item.shortcut_or_badge.clone())
                 };
 
                 let row = div()
                     .id(ElementId::named_usize("palette-item", index))
-                    .h(px(44.0))
+                    .h(px(46.0))
                     .px(px(12.0))
                     .flex()
                     .flex_row()
@@ -1082,11 +1029,10 @@ impl AtlasView {
                     .rounded(px(8.0))
                     .cursor_pointer()
                     .when(is_selected, |this| this.bg(theme.card_active))
-                    .when(!is_selected, move |this| this.hover(move |style| style.bg(hover)))
                     .child(
                         div()
-                            .w(px(24.0))
-                            .h(px(24.0))
+                            .w(px(26.0))
+                            .h(px(26.0))
                             .flex_none()
                             .flex()
                             .items_center()
@@ -1103,7 +1049,7 @@ impl AtlasView {
                             .flex()
                             .flex_col()
                             .justify_center()
-                            .gap(px(1.5))
+                            .gap(px(2.0))
                             .child(
                                 div()
                                     .text_size(px(13.5))
@@ -1114,25 +1060,24 @@ impl AtlasView {
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.faint_fg)
+                                    .text_size(px(11.5))
+                                    .text_color(if is_selected { theme.chrome_fg } else { theme.faint_fg })
                                     .line_height(px(14.0))
                                     .child(item.subtitle),
                             ),
                     )
                     .child(right_badge)
+                    .on_mouse_move(cx.listener(move |view, _, _window, cx| {
+                        if view.palette_index != index {
+                            view.palette_index = index;
+                            cx.notify();
+                        }
+                    }))
                     .on_mouse_down(MouseButton::Left, cx.listener({
                         let action = action.clone();
                         move |view, _, window, cx| {
                             cx.stop_propagation();
                             view.palette_index = index;
-                            view.run_palette_action(action.clone(), window, cx);
-                        }
-                    }))
-                    .on_click(cx.listener({
-                        let action = action.clone();
-                        move |view, _: &ClickEvent, window, cx| {
-                            cx.stop_propagation();
                             view.run_palette_action(action.clone(), window, cx);
                         }
                     }));
@@ -1159,16 +1104,22 @@ impl AtlasView {
                 .absolute()
                 .top(px(44.0))
                 .left(px(12.0))
-                .w(px(160.0))
+                .w(px(170.0))
                 .flex()
                 .flex_col()
-                .gap(px(2.0))
-                .p(px(4.0))
+                .gap(px(3.0))
+                .p(px(6.0))
                 .rounded(px(10.0))
                 .bg(theme.elevated_bg)
                 .border_1()
                 .border_color(theme.elevated_border)
-                .shadow_xl();
+                .shadow_xl()
+                .on_scroll_wheel(|_event, _window, cx| {
+                    cx.stop_propagation();
+                })
+                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                    cx.stop_propagation();
+                });
 
             for cat in PaletteCategory::ALL {
                 let is_sel = cat == active_cat;
@@ -1179,14 +1130,15 @@ impl AtlasView {
                     .flex_row()
                     .items_center()
                     .justify_between()
-                    .h(px(30.0))
-                    .px(px(8.0))
+                    .h(px(32.0))
+                    .px(px(10.0))
                     .rounded(px(6.0))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(hover));
+                    .cursor_pointer();
 
                 if is_sel {
                     item = item.bg(theme.card_active);
+                } else {
+                    item = item.hover(move |s| s.bg(hover));
                 }
 
                 let item = item
@@ -1254,20 +1206,12 @@ impl AtlasView {
                     .border_color(theme.elevated_border)
                     .shadow_xl()
                     .track_focus(&self.palette_focus)
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                    .on_scroll_wheel(|_event, _window, cx| {
                         cx.stop_propagation();
                     })
-                    .on_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
+                    .on_mouse_down(MouseButton::Left, cx.listener(|view, _, window, cx| {
                         cx.stop_propagation();
-                        let ks = &event.keystroke;
-                        if (ks.modifiers.control && (ks.key == "k" || ks.key == "K"))
-                            || (ks.modifiers.control && ks.modifiers.shift && (ks.key == "p" || ks.key == "P"))
-                            || ks.key == "escape"
-                        {
-                            view.close_palette(window, cx);
-                            return;
-                        }
-                        view.handle_palette_key(ks, window, cx);
+                        window.focus(&view.palette_focus);
                     }))
                     .child(input_row)
                     .child(div().h(px(1.0)).bg(theme.hairline))
