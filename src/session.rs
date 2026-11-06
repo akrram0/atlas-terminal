@@ -150,22 +150,6 @@ impl Profile {
 }
 
 #[cfg(windows)]
-fn ensure_pnpm_opencode_manifest(pnpm_root: &std::path::Path) {
-    if !pnpm_root.is_dir() {
-        return;
-    }
-    let pkg_json = pnpm_root.join("package.json");
-    let needs_write = match std::fs::read_to_string(&pkg_json) {
-        Ok(content) => !content.contains("@opencode/cli") && !content.contains("@opencode-ai/cli"),
-        Err(_) => true,
-    };
-    if needs_write {
-        let manifest = "{\n  \"name\": \"@opencode/cli\",\n  \"bin\": {\n    \"opencode\": \"./bin/opencode.exe\"\n  }\n}\n";
-        let _ = std::fs::write(&pkg_json, manifest);
-    }
-}
-
-#[cfg(windows)]
 pub struct JobObject {
     handle: *mut core::ffi::c_void,
 }
@@ -570,13 +554,9 @@ impl Session {
                         added = true;
                     }
                     let pnpm_root = PathBuf::from(&local_app_data).join("pnpm");
-                    if pnpm_root.is_dir() {
-                        #[cfg(windows)]
-                        ensure_pnpm_opencode_manifest(&pnpm_root);
-                        if !paths.contains(&pnpm_root) {
-                            paths.insert(0, pnpm_root);
-                            added = true;
-                        }
+                    if pnpm_root.is_dir() && !paths.contains(&pnpm_root) {
+                        paths.insert(0, pnpm_root);
+                        added = true;
                     }
                     let winget_links = PathBuf::from(&local_app_data).join("Microsoft").join("WinGet").join("Links");
                     if winget_links.is_dir() && !paths.contains(&winget_links) {

@@ -6,7 +6,7 @@ use std::time::Duration;
 use gpui::prelude::*;
 use gpui::{
     Animation, AnimationExt, AnyElement, ClickEvent, Context, ElementId, IntoElement,
-    KeyDownEvent, Keystroke, Window, div, px,
+    KeyDownEvent, Keystroke, MouseButton, MouseDownEvent, Window, div, px,
 };
 
 use crate::config::SettingsTab;
@@ -306,6 +306,7 @@ impl AtlasView {
         self.palette_query.clear();
         self.palette_index = 0;
         self.palette_anim_index = 0.0;
+        self.palette_scroll_handle.set_offset(gpui::Point::default());
         self.profile_menu = false;
         window.focus(&self.palette_focus);
         cx.notify();
@@ -546,7 +547,7 @@ impl AtlasView {
 
         let query = self.palette_query.trim().to_ascii_lowercase();
         if query.is_empty() {
-            return filtered_by_category.into_iter().take(15).collect();
+            return filtered_by_category.into_iter().take(100).collect();
         }
 
         let words: Vec<&str> = query.split_whitespace().collect();
@@ -558,8 +559,28 @@ impl AtlasView {
                 let b = item.shortcut_or_badge.to_ascii_lowercase();
                 words.iter().all(|w| t.contains(w) || sub.contains(w) || b.contains(w))
             })
-            .take(15)
+            .take(100)
             .collect()
+    }
+
+    /// Keep active item in visible view while navigating up/down in the command palette.
+    fn scroll_palette_to_active(&mut self) {
+        let row_h = 48.0;
+        let viewport_h = 384.0;
+        let cur_offset_y = f32::from(self.palette_scroll_handle.offset().y);
+        let scroll_top = if cur_offset_y <= 0.0 { -cur_offset_y } else { cur_offset_y };
+        let scroll_bottom = scroll_top + viewport_h;
+        let item_top = self.palette_index as f32 * row_h;
+        let item_bottom = item_top + row_h;
+
+        if item_top < scroll_top {
+            let new_y = -item_top;
+            self.palette_scroll_handle.set_offset(gpui::Point { x: px(0.0), y: px(new_y) });
+        } else if item_bottom > scroll_bottom {
+            let new_y = -(item_bottom - viewport_h);
+            self.palette_scroll_handle.set_offset(gpui::Point { x: px(0.0), y: px(new_y) });
+        }
+        self.palette_scroll_handle.scroll_to_item(self.palette_index);
     }
 
     /// Palette key routing: type to filter, Tab to cycle categories, ↑/↓ to move, Enter to run, Esc to dismiss.
@@ -586,6 +607,8 @@ impl AtlasView {
                 }
                 self.palette_category_menu_open = false;
                 self.palette_index = 0;
+                self.palette_anim_index = 0.0;
+                self.palette_scroll_handle.set_offset(gpui::Point::default());
                 cx.notify();
             }
             "enter" => {
@@ -598,16 +621,20 @@ impl AtlasView {
             }
             "up" => {
                 self.palette_index = self.palette_index.saturating_sub(1);
+                self.scroll_palette_to_active();
                 cx.notify();
             }
             "down" => {
                 let last = self.palette_matches().len().saturating_sub(1);
                 self.palette_index = (self.palette_index + 1).min(last);
+                self.scroll_palette_to_active();
                 cx.notify();
             }
             "backspace" => {
                 if self.palette_query.pop().is_some() {
                     self.palette_index = 0;
+                    self.palette_anim_index = 0.0;
+                    self.palette_scroll_handle.set_offset(gpui::Point::default());
                 }
                 cx.notify();
             }
@@ -629,6 +656,8 @@ impl AtlasView {
                     if !typed.is_empty() {
                         self.palette_query.push_str(&typed);
                         self.palette_index = 0;
+                        self.palette_anim_index = 0.0;
+                        self.palette_scroll_handle.set_offset(gpui::Point::default());
                         cx.notify();
                     }
                 }
@@ -867,6 +896,7 @@ impl AtlasView {
         // Category pill button on left
         let cat_btn = div()
             .id(ElementId::named_usize("palette-category-btn", 0))
+            .flex_none()
             .flex()
             .flex_row()
             .items_center()
@@ -891,8 +921,16 @@ impl AtlasView {
                     .size(px(10.0))
                     .text_color(theme.faint_fg),
             )
-            .on_click(cx.listener(|view, _: &ClickEvent, _, cx| {
+            .on_mouse_down(MouseButton::Left, cx.listener(|view, _: &MouseDownEvent, window, cx| {
+                cx.stop_propagation();
                 view.palette_category_menu_open = !view.palette_category_menu_open;
+                window.focus(&view.palette_focus);
+                cx.notify();
+            }))
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                cx.stop_propagation();
+                view.palette_category_menu_open = !view.palette_category_menu_open;
+                window.focus(&view.palette_focus);
                 cx.notify();
             }));
 
@@ -942,6 +980,8 @@ impl AtlasView {
                     .on_click(cx.listener(|view, _: &ClickEvent, _, cx| {
                         view.palette_query.clear();
                         view.palette_index = 0;
+                        view.palette_anim_index = 0.0;
+                        view.palette_scroll_handle.set_offset(gpui::Point::default());
                         cx.notify();
                     })),
             );
@@ -972,7 +1012,15 @@ impl AtlasView {
             .child(text_row)
             .child(right_section);
 
-        let mut list = div().flex().flex_col().p(px(6.0)).relative();
+        let mut list = div()
+            .id(ElementId::named_usize("palette-list", 0))
+            .flex()
+            .flex_col()
+            .p(px(6.0))
+            .relative()
+            .max_h(px(384.0))
+            .overflow_y_scroll()
+            .track_scroll(&self.palette_scroll_handle);
         if matches.is_empty() {
             list = list.child(
                 div()
@@ -1102,7 +1150,18 @@ impl AtlasView {
         }
 
         // Floating category dropdown menu
-        let category_dropdown = if cat_menu_open {
+        let (category_dropdown, category_backdrop) = if cat_menu_open {
+            let backdrop = div()
+                .id(ElementId::named_usize("palette-cat-backdrop", 0))
+                .absolute()
+                .inset_0()
+                .on_mouse_down(MouseButton::Left, cx.listener(|view, _: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    view.palette_category_menu_open = false;
+                    window.focus(&view.palette_focus);
+                    cx.notify();
+                }));
+
             let mut menu = div()
                 .id(ElementId::named_usize("palette-cat-menu", 0))
                 .absolute()
@@ -1165,17 +1224,31 @@ impl AtlasView {
                                 .text_color(theme.accent),
                         )
                     })
-                    .on_click(cx.listener(move |view, _: &ClickEvent, _, cx| {
+                    .on_mouse_down(MouseButton::Left, cx.listener(move |view, _: &MouseDownEvent, window, cx| {
+                        cx.stop_propagation();
                         view.palette_category = cat;
                         view.palette_category_menu_open = false;
                         view.palette_index = 0;
+                        view.palette_anim_index = 0.0;
+                        view.palette_scroll_handle.set_offset(gpui::Point::default());
+                        window.focus(&view.palette_focus);
+                        cx.notify();
+                    }))
+                    .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
+                        cx.stop_propagation();
+                        view.palette_category = cat;
+                        view.palette_category_menu_open = false;
+                        view.palette_index = 0;
+                        view.palette_anim_index = 0.0;
+                        view.palette_scroll_handle.set_offset(gpui::Point::default());
+                        window.focus(&view.palette_focus);
                         cx.notify();
                     }));
                 menu = menu.child(item);
             }
-            Some(menu)
+            (Some(menu), Some(backdrop))
         } else {
-            None
+            (None, None)
         };
 
         div()
@@ -1207,6 +1280,7 @@ impl AtlasView {
                     .child(input_row)
                     .child(div().h(px(1.0)).bg(theme.hairline))
                     .child(list)
+                    .when_some(category_backdrop, |this, b| this.child(b))
                     .when_some(category_dropdown, |this, menu| this.child(menu)),
             )
             .with_animation(
