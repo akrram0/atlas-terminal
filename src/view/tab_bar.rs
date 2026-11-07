@@ -159,7 +159,18 @@ impl AtlasView {
         }
 
         bar = bar.child(capsule);
-        bar = bar.child(div().w(px(6.0)));
+        bar = bar.child(div().w(px(6.0)).flex_none());
+
+        let mut tabs_tray = div()
+            .id(ElementId::named_usize("topbar-tabs-tray", 0))
+            .flex_1()
+            .min_w(px(0.0))
+            .h(bar_h)
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(4.0))
+            .overflow_hidden();
 
         // Horizontal tabs: active tab is a clean rounded rect (elevated bg + subtle border)
         // carrying the running process's own mark; inactive tabs are quiet with folder icon.
@@ -219,12 +230,14 @@ impl AtlasView {
             let is_dragged = self.tab_is_dragging && self.tab_drag_origin == Some(ix);
             let (max_w, min_w, px_pad, opacity) = if tab.closing {
                 let scale = (1.0 - EASE_OUT.eval(tab.close_progress)).max(0.0);
-                (200.0 * scale, 0.0, 10.0 * scale, scale)
+                (180.0 * scale, 0.0, 8.0 * scale, scale)
             } else if is_dragged {
-                // Squeezed Uno Card in-hand state: visibly contracts from 200px to 130px
-                (130.0, 96.0, 7.0, 0.95)
+                // Squeezed Uno Card in-hand state: visibly contracts
+                (130.0, 48.0, 6.0, 0.95)
+            } else if active {
+                (180.0, 68.0, 8.0, 1.0)
             } else {
-                (200.0, 128.0, 10.0, 1.0)
+                (160.0, 40.0, 6.0, 1.0)
             };
 
             let mut pill = div()
@@ -234,7 +247,7 @@ impl AtlasView {
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
+                .gap(px(6.0))
                 .px(px(px_pad))
                 .max_w(px(max_w))
                 .min_w(px(min_w))
@@ -317,12 +330,14 @@ impl AtlasView {
             pill = pill
                 .child(
                     div()
+                        .flex_none()
                         .text_color(pill_icon)
-                        .child(icons::icon(icon).size(px(16.5)).text_color(pill_icon)),
+                        .child(icons::icon(icon).size(px(16.0)).text_color(pill_icon)),
                 )
                 .child(
                     div()
                         .flex_1()
+                        .min_w(px(0.0))
                         .text_size(px(12.5))
                         .font_weight(if active {
                             FontWeight::MEDIUM
@@ -333,7 +348,11 @@ impl AtlasView {
                         .child(label),
                 );
 
-            let close_alpha = tab.close_hover_progress.clamp(0.0, 1.0);
+            let close_alpha = if active {
+                tab.close_hover_progress.clamp(0.4, 1.0)
+            } else {
+                tab.close_hover_progress.clamp(0.0, 1.0)
+            };
             if !tab.closing {
                 pill = pill.child(
                     div()
@@ -379,13 +398,18 @@ impl AtlasView {
                 ),
                 is_dragged,
             ).into_any_element();
-            bar = bar.child(tab_element);
+            tabs_tray = tabs_tray.child(tab_element);
         }
 
         // Settings tab pill: stays mounted on the tab bar until the user explicitly closes it.
         // Styled 1:1 identically to terminal tabs (matching Windows Terminal).
         if self.settings_tab_open {
             let active = self.settings_open;
+            let (max_w, min_w) = if active {
+                (180.0, 68.0)
+            } else {
+                (160.0, 40.0)
+            };
             let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
                 (
                     tb.elevated_bg,
@@ -420,10 +444,10 @@ impl AtlasView {
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(8.0))
-                .px(px(10.0))
-                .max_w(px(200.0))
-                .min_w(px(128.0))
+                .gap(px(6.0))
+                .px(px(8.0))
+                .max_w(px(max_w))
+                .min_w(px(min_w))
                 .overflow_hidden()
                 .flex_shrink()
                 .rounded(px(7.0))
@@ -462,12 +486,14 @@ impl AtlasView {
                 )
                 .child(
                     div()
+                        .flex_none()
                         .text_color(pill_icon)
                         .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(pill_icon)),
                 )
                 .child(
                     div()
                         .flex_1()
+                        .min_w(px(0.0))
                         .text_size(px(12.5))
                         .font_weight(if active {
                             FontWeight::MEDIUM
@@ -516,12 +542,21 @@ impl AtlasView {
                 );
             }
 
-            bar = bar.child(settings_pill.tab_pill_expand("settings-tab-pill-motion"));
+            tabs_tray = tabs_tray.child(settings_pill.tab_pill_expand("settings-tab-pill-motion"));
         }
 
-        bar = bar.child(caption_spacer(0));
+        tabs_tray = tabs_tray.child(caption_spacer(0));
+        bar = bar.child(tabs_tray);
 
-        bar = bar.child(div().w(px(6.0)));
+        // Dedicated guaranteed drag spacer: ensures the window remains draggable even
+        // when many tabs are open.
+        bar = bar.child(
+            div()
+                .w(px(24.0))
+                .h(bar_h)
+                .flex_none()
+                .child(caption_spacer(1)),
+        );
 
         let resting_btn_bg = if is_dark_theme { tb.card_hover } else { tb.elevated_bg };
         let resting_btn_border = if is_dark_theme { tb.hairline } else { tb.elevated_border };
@@ -551,7 +586,6 @@ impl AtlasView {
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                 view.open_palette(window, cx);
             }));
-        bar = bar.child(search_capsule);
 
         let is_dark_mode = (0.2126 * tb.elevated_bg.r + 0.7152 * tb.elevated_bg.g + 0.0722 * tb.elevated_bg.b) < 0.45;
         let theme_icon = if is_dark_mode { icons::SUN } else { icons::MOON };
@@ -573,8 +607,6 @@ impl AtlasView {
             .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                 view.toggle_theme(cx);
             }));
-        bar = bar.child(theme_btn);
-        bar = bar.child(div().w(px(6.0)));
 
         // Window controls: clean 44px wide native vector controls filling top bar height
         let controls = [
@@ -589,6 +621,18 @@ impl AtlasView {
             ),
             (icons::CLOSE, true),
         ];
+
+        let mut right_cluster = div()
+            .id(ElementId::named_usize("topbar-right-cluster", 0))
+            .flex_none()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .child(search_capsule)
+            .child(theme_btn)
+            .child(div().w(px(2.0)).flex_none());
+
         for (index, (icon_path, is_close)) in controls.into_iter().enumerate() {
             let button_theme = theme.clone();
             let hover_id = HOVER_MARK_WINDOW + index as u64;
@@ -628,8 +672,10 @@ impl AtlasView {
                     crate::rounded_corners::window_button(index);
                     cx.notify();
                 }));
-            bar = bar.child(ctrl);
+            right_cluster = right_cluster.child(ctrl);
         }
+
+        bar = bar.child(right_cluster);
 
         bar
     }

@@ -158,6 +158,8 @@ impl AtlasView {
             }
             row.child(
                 div()
+                    .flex_1()
+                    .min_w(px(0.0))
                     .flex()
                     .flex_col()
                     .gap(px(3.0))
@@ -175,7 +177,11 @@ impl AtlasView {
                             .child(d)
                     })),
             )
-            .child(control)
+            .child(
+                div()
+                    .flex_none()
+                    .child(control)
+            )
             .into_any_element()
         };
 
@@ -1755,6 +1761,8 @@ impl AtlasView {
                         .id(ElementId::named_usize("tool-badge-btn", id))
                         .h(px(26.0))
                         .px(px(9.0))
+                        .max_w(px(260.0))
+                        .overflow_hidden()
                         .flex()
                         .items_center()
                         .justify_center()
@@ -1771,24 +1779,32 @@ impl AtlasView {
                         .text_color(theme.accent)
                         .cursor_pointer()
                         .hover(|s| s.opacity(0.85))
-                        .child(cmd)
+                        .child(
+                            div()
+                                .truncate()
+                                .child(cmd)
+                        )
                         .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                             cx.write_to_clipboard(gpui::ClipboardItem::new_string(cmd_copy.clone()));
                             view.show_update_toast(format!("Copied '{cmd_copy}' to clipboard"), true, cx);
                         }))
                 )
-                .child(pill_button(
-                    "Run in Tab".to_string(),
-                    id,
-                    false,
-                    theme,
-                    move |view, cx| {
-                        view.settings_open = false;
-                        view.write_to_shell(format!("{cmd_text}\r").as_bytes());
-                        cx.notify();
-                    },
-                    cx,
-                ))
+                .child(
+                    div()
+                        .flex_none()
+                        .child(pill_button(
+                            "Run in Tab".to_string(),
+                            id,
+                            false,
+                            theme,
+                            move |view, cx| {
+                                view.settings_open = false;
+                                view.write_to_shell(format!("{cmd_text}\r").as_bytes());
+                                cx.notify();
+                            },
+                            cx,
+                        ))
+                )
                 .into_any_element()
         };
 
@@ -1878,7 +1894,7 @@ impl AtlasView {
             .child(setting_row(
                 "Dynamic Island HUD Bridge",
                 Some("Trigger macOS-style notifications, progress bars, and status pulses via OSC 1338"),
-                tool_action_row("atlas hud notify \"Atlas\" \"Dynamic Island notification active!\"", 705),
+                tool_action_row("atlas hud notify \"Atlas\" \"Task completed!\"", 705),
                 false,
             ))
             .child(setting_row(

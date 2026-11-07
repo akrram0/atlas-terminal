@@ -393,7 +393,6 @@ impl Element for TerminalElement {
                 let mut span_start = 0usize;
                 let active_bg = self.active_bg;
                 let mut span_bg = active_bg;
-                let is_bottom_row = row_index + 1 >= max_rows;
                 let is_tui = is_alt_screen || active_bg.a > 0.01;
                 let flush = |col: usize, span_start: usize, span_bg: Rgba, window: &mut Window| {
                     let should_skip = if is_tui {
@@ -402,11 +401,9 @@ impl Element for TerminalElement {
                         span_bg == default_bg || span_bg == active_bg
                     };
                     if !should_skip && col > span_start {
-                        let is_left_edge = span_start == 0;
-                        let is_right_edge = col >= cols;
-                        let rx0 = if is_left_edge { f32::from(bounds.left()) } else { x(span_start) };
-                        let rx1 = if is_right_edge { f32::from(bounds.right()) } else { x(col) };
-                        let ry1 = if is_bottom_row { f32::from(bounds.bottom()) } else { y1 };
+                        let rx0 = x(span_start);
+                        let rx1 = x(col);
+                        let ry1 = y1;
 
                         let quad = fill(
                             Bounds::from_corners(
@@ -430,8 +427,7 @@ impl Element for TerminalElement {
 
                 // Selection highlight layer: paints seamlessly behind intact text runs
                 // so text shaping and character advances never jitter during drag selection.
-                // Never paint selection highlight on empty void rows below active content.
-                let sel_span = if (!is_alt_screen && offset == 0 && row_index >= max_active_row) || selection_range.is_none() {
+                let sel_span = if selection_range.is_none() {
                     None
                 } else if let Some(ref range) = selection_range {
                     let row_line = Line(row_index as i32 - offset);

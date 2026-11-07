@@ -319,45 +319,25 @@ impl AtlasView {
         let cols = session.cols.max(1);
         let rows = session.rows.max(1);
 
-        let is_alt = session.term.mode().contains(TermMode::ALT_SCREEN);
-        let max_active = session.max_active_row;
-        let active_rows = if !is_alt && max_active > 0 {
-            max_active.min(rows)
-        } else {
-            rows
-        };
-
         let rel_y = my - top;
         let raw_row = (rel_y / cell_height).floor() as isize;
-        let is_below_content = !is_alt && max_active > 0 && raw_row >= max_active as isize;
+        let screen_row = raw_row.clamp(0, (rows.saturating_sub(1)) as isize) as i32;
 
-        let screen_row = if my < top {
-            0
-        } else {
-            raw_row.clamp(0, (active_rows.saturating_sub(1)) as isize) as i32
-        };
-
-        let (col, side) = if is_below_content {
-            (cols.saturating_sub(1), Side::Right)
-        } else if mx < left {
+        let rel_x = mx - left;
+        let raw_col = (rel_x / cell_width).floor() as isize;
+        let (col, side) = if raw_col < 0 {
             (0, Side::Left)
+        } else if raw_col >= cols as isize {
+            (cols.saturating_sub(1), Side::Right)
         } else {
-            let rel_x = mx - left;
-            let raw_col = (rel_x / cell_width).floor() as isize;
-            if raw_col >= cols as isize {
-                (cols.saturating_sub(1), Side::Right)
-            } else if raw_col < 0 {
-                (0, Side::Left)
+            let c = raw_col as usize;
+            let in_cell_x = rel_x - (c as f32 * cell_width);
+            let side = if in_cell_x < (cell_width * 0.5) {
+                Side::Left
             } else {
-                let c = raw_col as usize;
-                let in_cell_x = rel_x - (c as f32 * cell_width);
-                let side = if in_cell_x < (cell_width * 0.5) {
-                    Side::Left
-                } else {
-                    Side::Right
-                };
-                (c, side)
-            }
+                Side::Right
+            };
+            (c, side)
         };
 
         let offset = session.term.renderable_content().display_offset as i32;

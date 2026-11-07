@@ -58,13 +58,82 @@
       <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
     </div>
 
-    <!-- Latest Release: v0.2.23 -->
+    <!-- Latest Release: v0.2.24 -->
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.2.24</span>
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
+            <span class="status-dot"></span> Latest Stable
+          </span>
+        </div>
+        <div class="release-date">Published 2026-11-07</div>
+      </div>
+
+      <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
+        Official release stabilizing top bar multi-tab responsiveness, titlebar window dragging, bottom-row terminal rendering precision, and Settings card layouts.
+      </p>
+
+      <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
+        <li><strong>Multi-Tab Top Bar Overflow &amp; Resiliency</strong>: Encapsulated tabs in an auto-shrinking flex tray with dynamic min-width constraints (down to 40px for inactive tabs, 68px for active). Opening 5+ tabs in floating or compact windows will never push window controls off-screen.</li>
+        <li><strong>Pinned Window Controls</strong>: Search capsule, theme toggle, and native window buttons (Minimize, Maximize, Close) are pinned in an unconstrained flex cluster, ensuring full access and clickability at all times.</li>
+        <li><strong>Guaranteed Window Dragging</strong>: Integrated dual titlebar caption drag bands (including a dedicated drag spacer between tabs and window controls) so floating windows can always be grabbed and moved anywhere.</li>
+        <li><strong>Pixel-Perfect Bottom-Row Rendering</strong>: Eliminated artificial bounding box stretching on the bottom-most terminal line, ensuring progress bars (e.g. <code>winget upgrade</code>) and ANSI background spans never bleed downward into empty padding.</li>
+        <li><strong>Clean Bottom-Row Mouse Selection</strong>: Streamlined mouse coordinate resolution to grid cells, fixing a glitch where selecting the second-to-last line grabbed the last line.</li>
+        <li><strong>Settings Tools Card Responsiveness</strong>: Constrained command badges with truncation to prevent long commands from overflowing cards or clipping the "Run in Tab" action button.</li>
+      </ul>
+
+      <!-- Asset Downloads Grid -->
+      <div class="asset-download-grid">
+        <!-- Windows Setup Installer -->
+        <div class="asset-card">
+          <div class="asset-name">AtlasTerminal-Setup-0.2.24.exe</div>
+          <div class="asset-meta">Standard Windows Installer • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.24/AtlasTerminal-Setup-0.2.24.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Installer</span>
+            </a>
+          </div>
+          <div class="checksum-box">
+            <span class="checksum-label">SHA-256 Checksum</span>
+            <span class="checksum-value">Automated CI/CD build checksum published with GitHub release</span>
+          </div>
+        </div>
+
+        <!-- Portable Standalone Executable -->
+        <div class="asset-card">
+          <div class="asset-name">atlas-terminal.exe</div>
+          <div class="asset-meta">Portable Standalone Executable • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.24/atlas-terminal.exe" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Standalone</span>
+            </a>
+          </div>
+          <div class="checksum-box">
+            <span class="checksum-label">SHA-256 Checksum</span>
+            <span class="checksum-value">Automated CI/CD build checksum published with GitHub release</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Release: v0.2.23 -->
     <div class="release-card">
       <div class="release-header">
         <div class="release-title">
           <span>v0.2.23</span>
-          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
-            <span class="status-dot"></span> Latest Stable
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.1);color:var(--muted);">
+            Previous Stable
           </span>
         </div>
         <div class="release-date">Published 2026-11-07</div>

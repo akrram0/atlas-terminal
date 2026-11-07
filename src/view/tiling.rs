@@ -424,39 +424,6 @@ impl AtlasView {
                             }
                         }
                     }
-                    let is_in_void = if let Some(tab) = view.tabs.get(view.active) {
-                        if let Some(p) = tab.panes.get(pane_down) {
-                            let s = p.session.borrow();
-                            let is_alt = s.term.mode().contains(TermMode::ALT_SCREEN);
-                            let is_scrolled = s.term.renderable_content().display_offset > 0;
-                            if let Some((_, top, _, cell_h)) = s.grid_bounds {
-                                let raw = ((f32::from(event.position.y) - top) / cell_h)
-                                    .floor() as isize;
-                                !is_alt
-                                    && !is_scrolled
-                                    && s.max_active_row > 0
-                                    && raw >= s.max_active_row as isize
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
-
-                    if is_in_void {
-                        if let Some(tab) = view.tabs.get_mut(view.active) {
-                            if let Some(p) = tab.panes.get_mut(pane_down) {
-                                p.session.borrow_mut().clear_selection();
-                            }
-                        }
-                        view.mouse_down_point = None;
-                        view.mouse_down_pane = None;
-                        cx.notify();
-                        return;
-                    }
 
                     if let Some((pt, side)) = view.point_from_mouse(event.position, pane_down) {
                         if let Some(tab) = view.tabs.get_mut(view.active) {
