@@ -88,6 +88,7 @@ icon_assets![
     (RADAR, "radar"),
     (CLOUD_DOWNLOAD, "cloud-download"),
     (WINDOW_NEW, "window-new"),
+    (SATELLITE, "satellite"),
 ];
 
 /// Render an embedded vector icon element.

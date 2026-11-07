@@ -207,6 +207,7 @@ pub enum SettingsTab {
     General,
     Appearance,
     Shortcuts,
+    Tools,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -14,6 +14,7 @@ mod session;
 mod terminal;
 mod theme;
 pub mod tiling;
+pub mod tools;
 mod ui;
 pub mod updater;
 pub mod url;
@@ -183,6 +184,12 @@ fn main() {
     if let Some(code) = updater::run_patch_cli() {
         std::process::exit(code);
     }
+
+    // Atlas Satellites: subterminal tools dispatcher (atlas -v, atlas port, atlas img, etc.)
+    if tools::maybe_handle_cli() {
+        std::process::exit(0);
+    }
+
     // Drop leftover staged/rollback update executables from a previous update.
     updater::cleanup_update_backup();
 

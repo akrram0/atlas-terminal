@@ -895,6 +895,10 @@ impl ThemeRegistry {
         self.presets.len()
     }
 
+    pub fn presets(&self) -> &[Preset] {
+        &self.presets
+    }
+
     pub fn preset(&self, index: usize) -> &Preset {
         &self.presets[index.min(self.presets.len() - 1)]
     }

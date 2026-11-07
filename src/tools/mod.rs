@@ -1,0 +1,218 @@
+//! Atlas Satellites: Subterminal companion tools suite.
+//!
+//! Inspired by Kitty's "kittens", Atlas provides embedded zero-overhead companion
+//! tools for system diagnostics, developer workflows, and visual terminal extensions.
+
+use std::io::Write;
+
+pub mod dev;
+pub mod system;
+pub mod visual;
+
+/// Attempt to intercept and execute a companion CLI tool if arguments match.
+/// Returns `true` if a tool was executed and the main GUI app should exit immediately.
+pub fn maybe_handle_cli() -> bool {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty() {
+        return false;
+    }
+
+    let first = &args[0];
+
+    // Check if the argument is a path or existing directory (which launches the GUI terminal in that dir)
+    if std::path::Path::new(first).is_dir() {
+        return false;
+    }
+
+    // Check known commands
+    let is_tool_cmd = match first.as_str() {
+        // Global flags
+        "-v" | "--version" | "-h" | "--help" | "help" | "tools" | "satellites" => true,
+        // System domain
+        "version" | "info" | "env" | "theme" | "config" | "hud" | "island" | "bench" | "test-render" => true,
+        // Dev domain
+        "port" | "ports" | "jwt" | "qr" | "json" | "jq" | "diff" => true,
+        // Visual domain
+        "img" | "image" | "view" | "pick" | "hints" | "ai" | "ask" | "fix" => true,
+        _ => false,
+    };
+
+    if !is_tool_cmd {
+        return false;
+    }
+
+    // Attach to parent console and configure standard handles
+    attach_parent_console();
+
+    let subargs = if args.len() > 1 { &args[1..] } else { &[] };
+
+    let handled = match first.as_str() {
+        "-v" | "--version" | "version" => {
+            system::version::run();
+            true
+        }
+        "-h" | "--help" | "help" | "tools" | "satellites" => {
+            print_tools_help();
+            true
+        }
+        cmd => {
+            if system::dispatch(cmd, subargs) {
+                true
+            } else if dev::dispatch(cmd, subargs) {
+                true
+            } else if visual::dispatch(cmd, subargs) {
+                true
+            } else {
+                print_tools_help();
+                true
+            }
+        }
+    };
+
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+
+    handled
+}
+
+pub fn print_tools_help() {
+    let version = env!("CARGO_PKG_VERSION");
+    println!();
+    println!("\x1b[1;36m  Atlas Satellites — Subterminal Tools Suite (v{})\x1b[0m", version);
+    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("  \x1b[1mUSAGE:\x1b[0m");
+    println!("    atlas <command> [arguments...]");
+    println!("    atlas-terminal <command> [arguments...]");
+    println!();
+    println!("  \x1b[1;33mSYSTEM TOOLS:\x1b[0m");
+    println!("    \x1b[1;36mversion, -v\x1b[0m       Rich system, GPU & runtime specification card");
+    println!("    \x1b[1;36minfo, env\x1b[0m         Toolchain, detected shells & PTY environment audit");
+    println!("    \x1b[1;36mtheme\x1b[0m             Inspect, list, and switch UI themes");
+    println!("    \x1b[1;36mconfig\x1b[0m            Configuration getter, setter & direct editor");
+    println!("    \x1b[1;36mhud, island\x1b[0m       Dynamic Island notification & status pulse trigger");
+    println!("    \x1b[1;36mbench\x1b[0m             PTY throughput & 24-bit truecolor render bench");
+    println!();
+    println!("  \x1b[1;32mDEVELOPER PRODUCTIVITY TOOLS:\x1b[0m");
+    println!("    \x1b[1;36mport\x1b[0m              Active listening port inspector & 1-shot process killer");
+    println!("    \x1b[1;36mjwt\x1b[0m               Offline, privacy-safe JSON Web Token inspector");
+    println!("    \x1b[1;36mqr\x1b[0m                Terminal QR code generator for URLs and auth secrets");
+    println!("    \x1b[1;36mjson, jq\x1b[0m          Colorized JSON formatter and key query selector");
+    println!("    \x1b[1;36mdiff\x1b[0m              Terminal diff viewer with line numbers and syntax");
+    println!();
+    println!("  \x1b[1;35mVISUAL SATELLITES:\x1b[0m");
+    println!("    \x1b[1;36mimg, view\x1b[0m         Inline image viewer (OSC 1337 GPU texture & 24-bit halfblocks)");
+    println!("    \x1b[1;36mpick, hints\x1b[0m       Screen token extractor (URLs, Git SHAs, paths, IPs)");
+    println!("    \x1b[1;36mai\x1b[0m                Terminal AI companion (atlas ai ask, fix, explain)");
+    println!();
+}
+
+#[cfg(windows)]
+fn attach_parent_console() {
+    unsafe {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn AttachConsole(dwProcessId: u32) -> i32;
+            fn SetStdHandle(nStdHandle: u32, hHandle: *mut core::ffi::c_void) -> i32;
+            fn CreateFileW(
+                lpFileName: *const u16,
+                dwDesiredAccess: u32,
+                dwShareMode: u32,
+                lpSecurityAttributes: *mut core::ffi::c_void,
+                dwCreationDisposition: u32,
+                dwFlagsAndAttributes: u32,
+                hTemplateFile: *mut core::ffi::c_void,
+            ) -> *mut core::ffi::c_void;
+            fn GetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, lpMode: *mut u32) -> i32;
+            fn SetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, dwMode: u32) -> i32;
+        }
+
+        const ATTACH_PARENT_PROCESS: u32 = 0xFFFFFFFF;
+        const STD_OUTPUT_HANDLE: u32 = 0xFFFFFFF5;
+        const STD_ERROR_HANDLE: u32 = 0xFFFFFFF4;
+        const STD_INPUT_HANDLE: u32 = 0xFFFFFFF6;
+
+        const GENERIC_READ: u32 = 0x80000000;
+        const GENERIC_WRITE: u32 = 0x40000000;
+        const FILE_SHARE_READ: u32 = 0x00000001;
+        const FILE_SHARE_WRITE: u32 = 0x00000002;
+        const OPEN_EXISTING: u32 = 3;
+        const INVALID_HANDLE_VALUE: *mut core::ffi::c_void = -1isize as *mut core::ffi::c_void;
+        const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
+
+        // Try to attach to the parent console if invoked from terminal
+        let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+
+        let conout_name: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
+        let conout = CreateFileW(
+            conout_name.as_ptr(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            0,
+            std::ptr::null_mut(),
+        );
+
+        if !conout.is_null() && conout != INVALID_HANDLE_VALUE {
+            SetStdHandle(STD_OUTPUT_HANDLE, conout);
+            SetStdHandle(STD_ERROR_HANDLE, conout);
+
+            let mut mode: u32 = 0;
+            if GetConsoleMode(conout, &mut mode) != 0 {
+                SetConsoleMode(conout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+        }
+
+        let conin_name: Vec<u16> = "CONIN$\0".encode_utf16().collect();
+        let conin = CreateFileW(
+            conin_name.as_ptr(),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null_mut(),
+            OPEN_EXISTING,
+            0,
+            std::ptr::null_mut(),
+        );
+        if !conin.is_null() && conin != INVALID_HANDLE_VALUE {
+            SetStdHandle(STD_INPUT_HANDLE, conin);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn attach_parent_console() {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_print_tools_help_does_not_panic() {
+        print_tools_help();
+    }
+
+    #[test]
+    fn test_system_dispatch_version() {
+        assert!(system::dispatch("version", &[]));
+        assert!(system::dispatch("info", &[]));
+        assert!(system::dispatch("theme", &["list".to_string()]));
+        assert!(system::dispatch("config", &["path".to_string()]));
+        assert!(system::dispatch("bench", &[]));
+    }
+
+    #[test]
+    fn test_dev_dispatch_help() {
+        assert!(dev::dispatch("port", &["--help".to_string()]));
+        assert!(dev::dispatch("jwt", &["--help".to_string()]));
+        assert!(dev::dispatch("qr", &["--help".to_string()]));
+        assert!(dev::dispatch("json", &["--help".to_string()]));
+        assert!(dev::dispatch("diff", &["--help".to_string()]));
+    }
+
+    #[test]
+    fn test_visual_dispatch_help() {
+        assert!(visual::dispatch("img", &["--help".to_string()]));
+        assert!(visual::dispatch("pick", &["--help".to_string()]));
+        assert!(visual::dispatch("ai", &["--help".to_string()]));
+    }
+}

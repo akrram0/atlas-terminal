@@ -189,6 +189,7 @@ impl AtlasView {
             (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance & Themes", icons::SLIDERS),
             (SettingsTab::Shortcuts, "Keyboard Shortcuts", icons::KEYBOARD),
+            (SettingsTab::Tools, "Tools & Satellites", icons::SATELLITE),
         ];
 
         let mut top_nav_pills = div()
@@ -1653,6 +1654,191 @@ impl AtlasView {
             .child(zoom_card);
 
         // ==========================================
+        // --- Tab 4: Tools & Satellites Tab ---
+        // ==========================================
+
+        let cmd_badge = |cmd: &'static str| -> AnyElement {
+            div()
+                .h(px(24.0))
+                .px(px(8.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(5.0))
+                .bg(if is_dark {
+                    Rgba { r: 0.16, g: 0.18, b: 0.22, a: 0.9 }
+                } else {
+                    Rgba { r: 0.88, g: 0.90, b: 0.94, a: 0.9 }
+                })
+                .border_1()
+                .border_color(theme.hairline)
+                .text_size(px(12.0))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(theme.accent)
+                .child(cmd)
+                .into_any_element()
+        };
+
+        let status_badge = div()
+            .h(px(24.0))
+            .px(px(8.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(5.0))
+            .bg(Rgba { a: 0.12, ..theme.accent })
+            .text_size(px(12.0))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(theme.accent)
+            .child(format!("Embedded (v{})", env!("CARGO_PKG_VERSION")))
+            .into_any_element();
+
+        let terminal_integ_badge = div()
+            .h(px(24.0))
+            .px(px(8.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(5.0))
+            .bg(if is_dark {
+                Rgba { r: 0.12, g: 0.28, b: 0.16, a: 0.3 }
+            } else {
+                Rgba { r: 0.82, g: 0.94, b: 0.85, a: 0.8 }
+            })
+            .text_size(px(12.0))
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(if is_dark {
+                Rgba { r: 0.45, g: 0.85, b: 0.55, a: 1.0 }
+            } else {
+                Rgba { r: 0.15, g: 0.60, b: 0.25, a: 1.0 }
+            })
+            .child("ConPTY Attached")
+            .into_any_element();
+
+        let tools_overview_card = card()
+            .child(section_header("CLI ARCHITECTURE & RUNTIME"))
+            .child(setting_row(
+                "Satellite Status",
+                Some("Zero-overhead companion tools compiled directly into the core Atlas binary"),
+                status_badge,
+                false,
+            ))
+            .child(setting_row(
+                "Console Attachment",
+                Some("Auto-attaches to parent console (PowerShell, CMD, Git Bash, WSL)"),
+                terminal_integ_badge,
+                false,
+            ))
+            .child(setting_row(
+                "Global Invocation Syntax",
+                Some("Execute subterminal tools with 'atlas <command>' or 'atlas-terminal <command>'"),
+                cmd_badge("atlas <cmd>"),
+                true,
+            ));
+
+        let system_tools_card = card()
+            .child(section_header("SYSTEM TOOLS"))
+            .child(setting_row(
+                "System & Architecture Specs",
+                Some("Detailed system, GPU backend, memory & build specifications"),
+                cmd_badge("atlas -v"),
+                false,
+            ))
+            .child(setting_row(
+                "Environment & Toolchains",
+                Some("Audit discovered shells, WSL distros, and dev CLI toolchains"),
+                cmd_badge("atlas info"),
+                false,
+            ))
+            .child(setting_row(
+                "Theme Swatch Manager",
+                Some("Inspect theme palettes, switch active themes, and toggle dark/light"),
+                cmd_badge("atlas theme"),
+                false,
+            ))
+            .child(setting_row(
+                "Direct Settings Access",
+                Some("Inspect, query, modify, or edit settings.json directly from terminal"),
+                cmd_badge("atlas config"),
+                false,
+            ))
+            .child(setting_row(
+                "Dynamic Island HUD Bridge",
+                Some("Trigger macOS-style notifications, progress bars, and status pulses via OSC 1338"),
+                cmd_badge("atlas hud"),
+                false,
+            ))
+            .child(setting_row(
+                "Throughput & Color Benchmark",
+                Some("Measure PTY write throughput and verify 24-bit truecolor rendering"),
+                cmd_badge("atlas bench"),
+                true,
+            ));
+
+        let dev_tools_card = card()
+            .child(section_header("DEVELOPER PRODUCTIVITY TOOLS"))
+            .child(setting_row(
+                "Port Inspector & Killer",
+                Some("Inspect listening TCP ports or kill processes instantly (atlas port kill <port>)"),
+                cmd_badge("atlas port"),
+                false,
+            ))
+            .child(setting_row(
+                "Offline JWT Debugger",
+                Some("Inspect JSON Web Tokens with offline safety and expiration countdown"),
+                cmd_badge("atlas jwt"),
+                false,
+            ))
+            .child(setting_row(
+                "Terminal QR Generator",
+                Some("Generate terminal QR codes for Wi-Fi, auth tokens, or mobile handoff"),
+                cmd_badge("atlas qr"),
+                false,
+            ))
+            .child(setting_row(
+                "JSON Colorizer & Query",
+                Some("Syntax-highlighted pretty printer with dot-notation field queries"),
+                cmd_badge("atlas json"),
+                false,
+            ))
+            .child(setting_row(
+                "Terminal Side-by-Side Diff",
+                Some("Fast line-by-line diff viewer with line numbers and syntax highlighting"),
+                cmd_badge("atlas diff"),
+                true,
+            ));
+
+        let visual_tools_card = card()
+            .child(section_header("VISUAL SATELLITES"))
+            .child(setting_row(
+                "Inline Image Satellite",
+                Some("GPU-accelerated OSC 1337 image rendering with 24-bit half-block fallback"),
+                cmd_badge("atlas img"),
+                false,
+            ))
+            .child(setting_row(
+                "Screen Token Picker",
+                Some("Extract URLs, Git commit hashes, paths, and IPs with 1-shot key hints"),
+                cmd_badge("atlas pick"),
+                false,
+            ))
+            .child(setting_row(
+                "Terminal AI Companion",
+                Some("Command explanations, error diagnostic advisor, and CLI assistance"),
+                cmd_badge("atlas ai"),
+                true,
+            ));
+
+        let tools_view = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .child(tools_overview_card)
+            .child(system_tools_card)
+            .child(dev_tools_card)
+            .child(visual_tools_card);
+
+        // ==========================================
         // --- Body / Content Framing ---
         // ==========================================
 
@@ -1663,6 +1849,7 @@ impl AtlasView {
                 SettingsTab::General => general_view.into_any_element(),
                 SettingsTab::Appearance => appearance_view.into_any_element(),
                 SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
+                SettingsTab::Tools => tools_view.into_any_element(),
             })
             .slide_up(ElementId::named_usize("settings-tab-pane", self.settings_tab as usize))
             .into_any_element();
@@ -1681,6 +1868,7 @@ impl AtlasView {
                         SettingsTab::General => "General Preferences",
                         SettingsTab::Appearance => "Appearance & Themes",
                         SettingsTab::Shortcuts => "Keyboard Shortcuts",
+                        SettingsTab::Tools => "Tools & Satellites",
                     }),
             )
             .child(
@@ -1691,6 +1879,7 @@ impl AtlasView {
                         SettingsTab::General => "Configure default shell, startup directory, scrollback, and cursor options.",
                         SettingsTab::Appearance => "Customize colors, themes, acrylic blur, fonts, and window styling.",
                         SettingsTab::Shortcuts => "Customize keystrokes or review built-in navigation and window management.",
+                        SettingsTab::Tools => "Zero-overhead companion tools for system diagnostics, dev workflows, and visual terminal extensions.",
                     }),
             );
 

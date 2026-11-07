@@ -700,7 +700,7 @@ pub fn find_tool_in_system(tool_name: &str) -> Option<String> {
     find_executable_on_path(tool_name)
 }
 
-fn find_executable_on_path(name: &str) -> Option<String> {
+pub fn find_executable_on_path(name: &str) -> Option<String> {
     let path_var = std::env::var_os("PATH")?;
     let extensions = [".exe", ".cmd", ".bat", ""];
 
