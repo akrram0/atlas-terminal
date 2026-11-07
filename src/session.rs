@@ -472,6 +472,7 @@ impl Session {
                          $OutputEncoding=[System.Text.Encoding]::UTF8; \
                          [Console]::InputEncoding=[System.Text.Encoding]::UTF8; \
                          try { if ($PSStyle.Progress) { $PSStyle.Progress.View = 'Classic' } } catch {}; \
+                         function global:atlas { & \"$env:ATLAS_EXE\" @args }; \
                          $atlas_old = (Get-Command prompt -ErrorAction SilentlyContinue).ScriptBlock; \
                          function prompt { \
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
@@ -547,6 +548,20 @@ impl Session {
             if let Some(path) = std::env::var_os("PATH") {
                 let mut paths = std::env::split_paths(&path).collect::<Vec<_>>();
                 let mut added = false;
+                if let Ok(exe) = std::env::current_exe() {
+                    cmd.env("ATLAS_EXE", &exe);
+                    if let Some(exe_dir) = exe.parent() {
+                        let shim = exe_dir.join("atlas.cmd");
+                        if !shim.exists() {
+                            let _ = std::fs::write(&shim, "@echo off\r\n\"%~dp0atlas-terminal.exe\" %*\r\n");
+                        }
+                        let exe_dir_buf = exe_dir.to_path_buf();
+                        if !paths.contains(&exe_dir_buf) {
+                            paths.insert(0, exe_dir_buf);
+                            added = true;
+                        }
+                    }
+                }
                 if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
                     let pnpm_bin = PathBuf::from(&local_app_data).join("pnpm").join("bin");
                     if pnpm_bin.is_dir() && !paths.contains(&pnpm_bin) {
@@ -608,7 +623,7 @@ impl Session {
                 // this, fastfetch and other CLIs inside WSL see no terminal
                 // identity at all (TERM_PROGRAM is what they report).
                 let mut wsl_env = std::env::var("WSLENV").unwrap_or_default();
-                for var in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "TERM"] {
+                for var in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "TERM", "ATLAS_EXE"] {
                     // Already listed, with or without a WSLENV flag (`/p`, `/u`…).
                     let listed = wsl_env
                         .split(':')

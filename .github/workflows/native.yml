@@ -13,6 +13,7 @@ on:
       - main
       - dev
       - feat/smart-updater
+      - feat/atlas-tools
     tags:
       - 'v*'
     paths-ignore:
@@ -705,7 +706,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release (Rolling Preview vs Official Stable)
-        if: success() && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+        if: success() && (startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/feat/atlas-tools')
         shell: pwsh
         working-directory: .
         env:

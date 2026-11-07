@@ -1657,25 +1657,54 @@ impl AtlasView {
         // --- Tab 4: Tools & Satellites Tab ---
         // ==========================================
 
-        let cmd_badge = |cmd: &'static str| -> AnyElement {
+        let mut tool_action_row = |cmd: &'static str, id: usize| -> AnyElement {
+            let cmd_text = cmd.to_string();
+            let cmd_copy = cmd.to_string();
             div()
-                .h(px(24.0))
-                .px(px(8.0))
                 .flex()
+                .flex_row()
                 .items_center()
-                .justify_center()
-                .rounded(px(5.0))
-                .bg(if is_dark {
-                    Rgba { r: 0.16, g: 0.18, b: 0.22, a: 0.9 }
-                } else {
-                    Rgba { r: 0.88, g: 0.90, b: 0.94, a: 0.9 }
-                })
-                .border_1()
-                .border_color(theme.hairline)
-                .text_size(px(12.0))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(theme.accent)
-                .child(cmd)
+                .gap(px(8.0))
+                .child(
+                    div()
+                        .id(ElementId::named_usize("tool-badge-btn", id))
+                        .h(px(26.0))
+                        .px(px(9.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(5.0))
+                        .bg(if is_dark {
+                            Rgba { r: 0.16, g: 0.18, b: 0.22, a: 0.9 }
+                        } else {
+                            Rgba { r: 0.88, g: 0.90, b: 0.94, a: 0.9 }
+                        })
+                        .border_1()
+                        .border_color(theme.hairline)
+                        .text_size(px(12.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(theme.accent)
+                        .cursor_pointer()
+                        .hover(|s| s.opacity(0.85))
+                        .child(cmd)
+                        .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(cmd_copy.clone()));
+                            view.update_toast = Some((format!("Copied '{cmd_copy}' to clipboard"), false, std::time::Instant::now()));
+                            cx.notify();
+                        }))
+                )
+                .child(pill_button(
+                    "Run in Tab".to_string(),
+                    id,
+                    false,
+                    theme,
+                    move |view, cx| {
+                        view.settings_open = false;
+                        view.write_to_shell(format!("{cmd_text}\r").as_bytes());
+                        cx.notify();
+                    },
+                    cx,
+                ))
                 .into_any_element()
         };
 
@@ -1732,7 +1761,7 @@ impl AtlasView {
             .child(setting_row(
                 "Global Invocation Syntax",
                 Some("Execute subterminal tools with 'atlas <command>' or 'atlas-terminal <command>'"),
-                cmd_badge("atlas <cmd>"),
+                tool_action_row("atlas tools", 700),
                 true,
             ));
 
@@ -1741,37 +1770,37 @@ impl AtlasView {
             .child(setting_row(
                 "System & Architecture Specs",
                 Some("Detailed system, GPU backend, memory & build specifications"),
-                cmd_badge("atlas -v"),
+                tool_action_row("atlas -v", 701),
                 false,
             ))
             .child(setting_row(
                 "Environment & Toolchains",
                 Some("Audit discovered shells, WSL distros, and dev CLI toolchains"),
-                cmd_badge("atlas info"),
+                tool_action_row("atlas info", 702),
                 false,
             ))
             .child(setting_row(
                 "Theme Swatch Manager",
                 Some("Inspect theme palettes, switch active themes, and toggle dark/light"),
-                cmd_badge("atlas theme"),
+                tool_action_row("atlas theme list", 703),
                 false,
             ))
             .child(setting_row(
                 "Direct Settings Access",
                 Some("Inspect, query, modify, or edit settings.json directly from terminal"),
-                cmd_badge("atlas config"),
+                tool_action_row("atlas config path", 704),
                 false,
             ))
             .child(setting_row(
                 "Dynamic Island HUD Bridge",
                 Some("Trigger macOS-style notifications, progress bars, and status pulses via OSC 1338"),
-                cmd_badge("atlas hud"),
+                tool_action_row("atlas hud notify \"Atlas\" \"Dynamic Island notification active!\"", 705),
                 false,
             ))
             .child(setting_row(
                 "Throughput & Color Benchmark",
                 Some("Measure PTY write throughput and verify 24-bit truecolor rendering"),
-                cmd_badge("atlas bench"),
+                tool_action_row("atlas bench", 706),
                 true,
             ));
 
@@ -1780,31 +1809,31 @@ impl AtlasView {
             .child(setting_row(
                 "Port Inspector & Killer",
                 Some("Inspect listening TCP ports or kill processes instantly (atlas port kill <port>)"),
-                cmd_badge("atlas port"),
+                tool_action_row("atlas port", 707),
                 false,
             ))
             .child(setting_row(
                 "Offline JWT Debugger",
                 Some("Inspect JSON Web Tokens with offline safety and expiration countdown"),
-                cmd_badge("atlas jwt"),
+                tool_action_row("atlas jwt --help", 708),
                 false,
             ))
             .child(setting_row(
                 "Terminal QR Generator",
                 Some("Generate terminal QR codes for Wi-Fi, auth tokens, or mobile handoff"),
-                cmd_badge("atlas qr"),
+                tool_action_row("atlas qr \"https://github.com/akrram0/atlas-terminal\"", 709),
                 false,
             ))
             .child(setting_row(
                 "JSON Colorizer & Query",
                 Some("Syntax-highlighted pretty printer with dot-notation field queries"),
-                cmd_badge("atlas json"),
+                tool_action_row("atlas json --help", 710),
                 false,
             ))
             .child(setting_row(
                 "Terminal Side-by-Side Diff",
                 Some("Fast line-by-line diff viewer with line numbers and syntax highlighting"),
-                cmd_badge("atlas diff"),
+                tool_action_row("atlas diff --help", 711),
                 true,
             ));
 
@@ -1813,19 +1842,19 @@ impl AtlasView {
             .child(setting_row(
                 "Inline Image Satellite",
                 Some("GPU-accelerated OSC 1337 image rendering with 24-bit half-block fallback"),
-                cmd_badge("atlas img"),
+                tool_action_row("atlas img --help", 712),
                 false,
             ))
             .child(setting_row(
                 "Screen Token Picker",
                 Some("Extract URLs, Git commit hashes, paths, and IPs with 1-shot key hints"),
-                cmd_badge("atlas pick"),
+                tool_action_row("atlas pick --help", 713),
                 false,
             ))
             .child(setting_row(
                 "Terminal AI Companion",
                 Some("Command explanations, error diagnostic advisor, and CLI assistance"),
-                cmd_badge("atlas ai"),
+                tool_action_row("atlas ai ask \"how to list git branches\"", 714),
                 true,
             ));
 
