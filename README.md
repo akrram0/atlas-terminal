@@ -146,7 +146,10 @@ VISUAL SATELLITES:
 All metrics below are empirical measurements taken on **Windows 11 Pro 64-bit** (AMD Ryzen 5 / Intel Core processor, NVMe SSD). You can reproduce and verify these tests directly on your own system using the included benchmark harness:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1
+irm https://raw.githubusercontent.com/akrram0/atlas-terminal/main/scripts/benchmark.ps1 | iex
+
+# Or run the built-in PTY throughput benchmark inside Atlas:
+atlas bench
 ```
 
 | Metric | Atlas Terminal | Windows Terminal | Alacritty | WezTerm | Hyper (Electron) |

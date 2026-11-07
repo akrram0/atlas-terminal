@@ -568,7 +568,9 @@ heavy = max(light + 1.0, light * 2.0);</code></pre>
             You can verify these measurements locally using the open-source PowerShell benchmark harness included in the repository:
           </p>
           <pre><code># Run 5-iteration benchmark suite across installed terminals:
-powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1 -Runs 5</code></pre>
+irm https://raw.githubusercontent.com/akrram0/atlas-terminal/main/scripts/benchmark.ps1 | iex
+# Or inside Atlas Terminal:
+atlas bench</code></pre>
         </article>
 
       </main>

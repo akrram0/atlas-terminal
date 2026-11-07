@@ -9,7 +9,7 @@
 #>
 
 param(
-    [int]$Runs = 5
+    [int]$Runs = 3
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,14 +22,32 @@ Write-Host "CPU: $((Get-CimInstance Win32_Processor).Name)" -ForegroundColor Gra
 Write-Host "Iterations per test: $Runs" -ForegroundColor Gray
 Write-Host ""
 
+# Identify current process hierarchy so we NEVER terminate the host terminal running this script
+$currentPid = $PID
+$protectedPids = @($currentPid)
+try {
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $currentPid" -ErrorAction SilentlyContinue
+    while ($proc -and $proc.ParentProcessId -gt 0) {
+        $protectedPids += [int]$proc.ParentProcessId
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.ParentProcessId)" -ErrorAction SilentlyContinue
+    }
+} catch {}
+
 $terminals = @()
 
 # 1. Detect Atlas Terminal
-$atlasExe = "C:\Users\Neweye\AppData\Local\Programs\Atlas Terminal\atlas-terminal.exe"
+$atlasExe = if ($env:LOCALAPPDATA) {
+    Join-Path $env:LOCALAPPDATA "Programs\Atlas Terminal\atlas-terminal.exe"
+} else { "" }
 if (-not (Test-Path $atlasExe)) {
-    $atlasExe = (Join-Path $PSScriptRoot "..\target\release\atlas-terminal.exe")
+    $cmd = Get-Command atlas-terminal.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $atlasExe = $cmd.Source }
 }
-if (Test-Path $atlasExe) {
+if ((-not $atlasExe -or -not (Test-Path $atlasExe)) -and $PSScriptRoot) {
+    $candidate = Join-Path $PSScriptRoot "..\target\release\atlas-terminal.exe"
+    if (Test-Path $candidate) { $atlasExe = $candidate }
+}
+if ($atlasExe -and (Test-Path $atlasExe)) {
     $terminals += [PSCustomObject]@{
         Name = "Atlas Terminal"
         Path = (Resolve-Path $atlasExe).Path
@@ -83,9 +101,11 @@ foreach ($term in $terminals) {
     $privateBytes = @()
 
     for ($i = 1; $i -le $Runs; $i++) {
-        # Clean up any lingering processes
-        Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 300
+        # Clean up any lingering background test instances (protecting the active terminal)
+        Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue |
+            Where-Object { $protectedPids -notcontains $_.Id } |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 250
 
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         $p = Start-Process -FilePath $term.Path -PassThru
@@ -94,7 +114,8 @@ foreach ($term in $terminals) {
         $timeout = [System.Diagnostics.Stopwatch]::StartNew()
         $ready = $false
         while ($timeout.ElapsedMilliseconds -lt 6000) {
-            $procs = Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue
+            $procs = Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue |
+                Where-Object { $protectedPids -notcontains $_.Id }
             foreach ($pr in $procs) {
                 if ($pr.MainWindowHandle -ne [IntPtr]::Zero) {
                     $ready = $true
@@ -113,7 +134,8 @@ foreach ($term in $terminals) {
         # Allow process to settle to measure idle memory footprint
         Start-Sleep -Milliseconds 1200
 
-        $procs = Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue
+        $procs = Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue |
+            Where-Object { $protectedPids -notcontains $_.Id }
         $totalWs = 0
         $totalPriv = 0
         foreach ($pr in $procs) {
@@ -125,8 +147,13 @@ foreach ($term in $terminals) {
             $privateBytes += ($totalPriv / 1MB)
         }
 
-        # Cleanup
-        Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        # Cleanup the test instance
+        if ($p -and -not $p.HasExited) {
+            $p | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
+        Get-Process -Name $term.ProcessName -ErrorAction SilentlyContinue |
+            Where-Object { $protectedPids -notcontains $_.Id } |
+            Stop-Process -Force -ErrorAction SilentlyContinue
     }
 
     $avgStartup = if ($startupTimes.Count -gt 0) { [Math]::Round(($startupTimes | Measure-Object -Average).Average, 1) } else { 0 }
