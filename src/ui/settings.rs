@@ -96,11 +96,6 @@ impl AtlasView {
             "hollow" => Some(CursorShape::HollowBlock),
             _ => None,
         };
-        for tab in &mut self.tabs {
-            for pane in &mut tab.panes {
-                pane.cursor_pos = None;
-            }
-        }
         crate::rounded_corners::set_opacity(self.opacity);
         self.updater_settings.channel = match loaded.update_channel.as_str() {
             "preview" => crate::updater::UpdateChannel::Preview,

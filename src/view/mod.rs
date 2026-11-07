@@ -883,11 +883,17 @@ impl AtlasView {
             return;
         }
         let path = crate::user_data_dir().join("settings.json");
-        if let Ok(m) = std::fs::metadata(&path) {
-            if let Ok(mtime) = m.modified() {
-                if self.last_settings_mtime.map_or(true, |last| mtime > last) {
-                    self.last_settings_mtime = Some(mtime);
-                    self.reload_settings_from_disk(cx);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if crate::config::is_saved_settings_hash(&content) {
+                return;
+            }
+            if let Ok(m) = std::fs::metadata(&path) {
+                if let Ok(mtime) = m.modified() {
+                    if self.last_settings_mtime.map_or(true, |last| mtime > last) {
+                        self.last_settings_mtime = Some(mtime);
+                        crate::config::update_saved_settings_hash(&content);
+                        self.reload_settings_from_disk(cx);
+                    }
                 }
             }
         }

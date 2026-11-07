@@ -269,6 +269,9 @@ fn main() {
         });
 
         let loaded_settings = config::load_app_settings();
+        if let Ok(content) = std::fs::read_to_string(user_data_dir().join("settings.json")) {
+            config::update_saved_settings_hash(&content);
+        }
         let loaded_opacity = view::normalize_opacity(loaded_settings.opacity);
         let should_blur = (loaded_settings.blur_enabled || loaded_opacity < 0.999) && loaded_opacity < 0.999;
         #[cfg(windows)]

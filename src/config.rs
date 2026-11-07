@@ -1,6 +1,26 @@
 //! Application configuration, settings persistence, shortcuts and key chords.
 
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static LAST_SAVED_SETTINGS_HASH: AtomicU64 = AtomicU64::new(0);
+
+pub fn hash_settings_str(s: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    std::hash::Hash::hash_slice(s.as_bytes(), &mut hasher);
+    hasher.finish()
+}
+
+pub fn is_saved_settings_hash(content: &str) -> bool {
+    let h = hash_settings_str(content);
+    let last = LAST_SAVED_SETTINGS_HASH.load(Ordering::SeqCst);
+    last != 0 && h == last
+}
+
+pub fn update_saved_settings_hash(content: &str) {
+    LAST_SAVED_SETTINGS_HASH.store(hash_settings_str(content), Ordering::SeqCst);
+}
 use gpui::Keystroke;
 use serde::{Deserialize, Serialize};
 
@@ -439,6 +459,7 @@ pub fn save_app_settings(s: &AppSettingsFile) {
     let bak_path = base.join("settings.json.bak");
 
     if let Ok(json) = serde_json::to_string_pretty(s) {
+        update_saved_settings_hash(&json);
         if settings_path.exists() {
             let _ = std::fs::copy(&settings_path, &bak_path);
         }

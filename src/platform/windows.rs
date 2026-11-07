@@ -251,12 +251,30 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
 
         let mut policy = if enabled {
             let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::Relaxed));
+            let zoomed = IsZoomed(hwnd) != 0;
             if op <= 0.005 {
                 // 0% Opacity: Pure transparent glass without acrylic blur or noise
                 AccentPolicy {
                     accent_state: ACCENT_ENABLE_TRANSPARENTGRADIENT,
                     accent_flags: 2,
                     gradient_color: 0,
+                    animation_id: 0,
+                }
+            } else if zoomed || op <= 0.05 {
+                // When maximized (zoomed) or at fine-grained transparent range (1%-5%),
+                // Microsoft DWM forces ACCENT_ENABLE_ACRYLICBLURBEHIND to drop to an opaque solid fallback color!
+                // Using ACCENT_ENABLE_TRANSPARENTGRADIENT preserves genuine transparency across all monitor bounds
+                // so the user's opacity preference is NEVER overridden by a solid black screen.
+                let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
+                let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
+                    0x0a0c10
+                } else {
+                    0xF2F4F7
+                };
+                AccentPolicy {
+                    accent_state: ACCENT_ENABLE_TRANSPARENTGRADIENT,
+                    accent_flags: 2,
+                    gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
                     animation_id: 0,
                 }
             } else {
@@ -681,7 +699,7 @@ unsafe extern "system" fn window_proc(
             let mut rect = Rect::default();
             // Safety: `hwnd` is live for the duration of the call.
             if unsafe { GetWindowRect(hwnd, &mut rect) } != 0 {
-                let zoomed = unsafe { IsZoomed(hwnd) } != 0;
+                let zoomed = IsZoomed(hwnd) != 0;
                 if !zoomed {
                     if let Some(hit) = resize_hit_test(hwnd, x, y) {
                         return hit;
@@ -758,7 +776,7 @@ unsafe extern "system" fn window_proc(
             // A maximize/restore transition can leave DWM with a stale or
             // dropped accent. Reassert it once per state change (never on
             // every resize: re-applying a visible accent briefly flashes).
-            let zoomed = unsafe { IsZoomed(hwnd) } != 0;
+            let zoomed = IsZoomed(hwnd) != 0;
             if LAST_ZOOMED.swap(zoomed, Ordering::SeqCst) != zoomed {
                 let opacity = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
                 if opacity < 0.999 {
