@@ -373,7 +373,11 @@ fn default_interval_mins() -> u32 {
     60
 }
 fn default_update_channel() -> String {
-    "stable".to_string()
+    if option_env!("ATLAS_BUILD_COMMIT").is_some() {
+        "preview".to_string()
+    } else {
+        "stable".to_string()
+    }
 }
 fn default_editor() -> String {
     "auto".to_string()

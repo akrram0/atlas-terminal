@@ -25,7 +25,11 @@ pub enum UpdateChannel {
 
 impl Default for UpdateChannel {
     fn default() -> Self {
-        Self::Stable
+        if option_env!("ATLAS_BUILD_COMMIT").is_some() {
+            Self::Preview
+        } else {
+            Self::Stable
+        }
     }
 }
 

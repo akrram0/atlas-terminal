@@ -7,8 +7,15 @@ pub fn run() {
     let default_shell = crate::config::load_app_settings().default_shell;
     let shell_name = if default_shell.is_empty() { "Windows PowerShell".to_string() } else { default_shell };
 
+    let release_label = if let Some(commit) = option_env!("ATLAS_BUILD_COMMIT") {
+        let short = if commit.len() >= 7 { &commit[..7] } else { commit };
+        format!("(preview build {short})")
+    } else {
+        "(stable release)".to_string()
+    };
+
     println!();
-    println!("\x1b[1;36m  ▲ Atlas Terminal\x1b[0m \x1b[1;32mv{}\x1b[0m \x1b[2m(stable release)\x1b[0m", version);
+    println!("\x1b[1;36m  ▲ Atlas Terminal\x1b[0m \x1b[1;32mv{}\x1b[0m \x1b[2m{}\x1b[0m", version, release_label);
     println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
     println!("  \x1b[1;37mEngine:\x1b[0m       GPUI 0.2.2 • DirectX DirectComposition (Hardware)");
     println!("  \x1b[1;37mTarget:\x1b[0m       {}", target);
