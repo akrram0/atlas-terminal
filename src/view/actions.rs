@@ -35,13 +35,13 @@ impl AtlasView {
             })
             .filter(|(cols, rows)| *cols > 0 && *rows > 0)
             .unwrap_or_else(|| {
-                // Compute initial grid columns/rows from the default window bounds (1100x720)
+                // Compute initial grid columns/rows from the window bounds
                 // and font metrics so the child shell never spawns in an undersized 80x24 box.
                 let cell_w = 7.8f32;
                 let effective_font = self.tab_font_size(self.active);
                 let cell_h = (effective_font * self.line_height).round().max(1.0);
-                let cols = ((1100.0 - 16.0) / cell_w).floor().max(80.0) as usize;
-                let rows = ((720.0 - 70.0) / cell_h).floor().max(35.0) as usize;
+                let cols = ((self.app_settings.window_width - 16.0) / cell_w).floor().max(80.0) as usize;
+                let rows = ((self.app_settings.window_height - 70.0) / cell_h).floor().max(24.0) as usize;
                 (cols, rows)
             })
     }
@@ -49,7 +49,7 @@ impl AtlasView {
     pub fn new_tab(&mut self, profile: Profile, cx: &mut Context<Self>) {
         let (verified, warning) = self.user_profile.verify_or_fallback(&profile);
         if let Some(msg) = warning {
-            self.update_toast = Some((msg, false, std::time::Instant::now()));
+            self.show_update_toast(msg, false, cx);
         }
         self.new_tab_with_cwd(verified, None, cx);
     }
@@ -521,7 +521,41 @@ impl AtlasView {
                     match msg {
                         SessionMsg::Output(bytes) => {
                             view.cursor_last_typing = std::time::Instant::now();
-                            pane.session.borrow_mut().feed(&bytes);
+                            let huds: Vec<String> = {
+                                let mut sess = pane.session.borrow_mut();
+                                sess.feed(&bytes);
+                                sess.hud_notifications.drain(..).collect()
+                            };
+                            for hud_json in huds {
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&hud_json) {
+                                    let title = val["title"].as_str().unwrap_or("Atlas Terminal");
+                                    let msg = val["message"].as_str().unwrap_or("");
+                                    let status = val["status"].as_str().unwrap_or("info");
+                                    let action = val["action"].as_str().unwrap_or("notify");
+                                    let is_ok = status != "error";
+                                    if action == "pulse" {
+                                        view.trigger_island_hud(cx);
+                                    } else if action == "progress" {
+                                        let percent = val["percent"].as_i64().unwrap_or(100);
+                                        let label = val["label"].as_str().unwrap_or("");
+                                        let display = if label.is_empty() {
+                                            format!("Progress: {percent}%")
+                                        } else {
+                                            format!("{label}: {percent}%")
+                                        };
+                                        view.show_update_toast(display, is_ok, cx);
+                                        view.trigger_island_hud(cx);
+                                    } else {
+                                        let display = if msg.is_empty() {
+                                            title.to_string()
+                                        } else {
+                                            format!("{title}: {msg}")
+                                        };
+                                        view.show_update_toast(display, is_ok, cx);
+                                        view.trigger_island_hud(cx);
+                                    }
+                                }
+                            }
                         }
                         SessionMsg::Event(Event::Title(title)) => {
                             let trimmed_new = title.trim();
@@ -679,8 +713,7 @@ impl AtlasView {
     }
 
     pub fn rescan_environment(&mut self, cx: &mut Context<Self>) {
-        self.update_toast = Some(("Rescanning environment & shells...".to_string(), false, std::time::Instant::now()));
-        cx.notify();
+        self.show_update_toast("Rescanning environment & shells...".to_string(), true, cx);
         cx.spawn(async move |this, cx| {
             let (tx, rx) = smol::channel::bounded(1);
             crate::discovery::scan_background(move |env| {
@@ -690,8 +723,7 @@ impl AtlasView {
                 let _ = this.update(cx, |view, cx| {
                     view.user_profile.reconcile(fresh_env);
                     view.user_profile.save();
-                    view.update_toast = Some(("Environment discovery up to date".to_string(), false, std::time::Instant::now()));
-                    cx.notify();
+                    view.show_update_toast("Environment discovery up to date".to_string(), true, cx);
                 });
             }
         }).detach();

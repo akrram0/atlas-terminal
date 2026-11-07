@@ -59,6 +59,7 @@ pub enum OscScannerEvent {
     Bytes(Vec<u8>),
     Image(DecodedImage),
     SideBySideCompensation,
+    HudNotification(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +72,8 @@ enum ScannerState {
     PayloadEscape,
     PostImage,
     DropUntilEnd,
+    HudPayload,
+    HudEscape,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -167,8 +170,6 @@ impl Osc1337Scanner {
         let mut events = Vec::new();
         let mut clean_bytes = Vec::with_capacity(input.len());
 
-        const PREFIX: &[u8] = b"1337;File=";
-
         for &byte in input {
             match self.state {
                 ScannerState::Ground => {
@@ -195,19 +196,15 @@ impl Osc1337Scanner {
                 ScannerState::Osc => {
                     self.header_buf.push(byte);
                     let len = self.header_buf.len();
-                    if len <= PREFIX.len() {
-                        if self.header_buf[..len] != PREFIX[..len] {
-                            // Prefix mismatch: not an OSC 1337 File= command.
-                            // Pass through ESC, ']', and buffered header bytes.
-                            clean_bytes.push(0x1B);
-                            clean_bytes.push(b']');
-                            clean_bytes.extend_from_slice(&self.header_buf);
-                            self.header_buf.clear();
-                            self.state = ScannerState::Ground;
-                        } else if len == PREFIX.len() {
-                            // Matched "1337;File="!
-                            // Immediately flush all preceding clean bytes so terminal
-                            // executes all prior cursor positioning/clears BEFORE image placement.
+
+                    const PREFIX_IMG: &[u8] = b"1337;File=";
+                    const PREFIX_HUD: &[u8] = b"1338;hud;";
+
+                    let could_be_img = len <= PREFIX_IMG.len() && self.header_buf[..len] == PREFIX_IMG[..len];
+                    let could_be_hud = len <= PREFIX_HUD.len() && self.header_buf[..len] == PREFIX_HUD[..len];
+
+                    if could_be_img {
+                        if len == PREFIX_IMG.len() {
                             if !clean_bytes.is_empty() {
                                 events.push(OscScannerEvent::Bytes(std::mem::take(&mut clean_bytes)));
                             }
@@ -215,6 +212,48 @@ impl Osc1337Scanner {
                             self.params_buf.clear();
                             self.state = ScannerState::Params;
                         }
+                    } else if could_be_hud {
+                        if len == PREFIX_HUD.len() {
+                            if !clean_bytes.is_empty() {
+                                events.push(OscScannerEvent::Bytes(std::mem::take(&mut clean_bytes)));
+                            }
+                            self.header_buf.clear();
+                            self.payload_buf.clear();
+                            self.state = ScannerState::HudPayload;
+                        }
+                    } else {
+                        // Mismatch with both OSC 1337 and OSC 1338: pass through
+                        clean_bytes.push(0x1B);
+                        clean_bytes.push(b']');
+                        clean_bytes.extend_from_slice(&self.header_buf);
+                        self.header_buf.clear();
+                        self.state = ScannerState::Ground;
+                    }
+                }
+                ScannerState::HudPayload => {
+                    if byte == 0x07 {
+                        // BEL terminated
+                        let payload = String::from_utf8_lossy(&self.payload_buf).to_string();
+                        events.push(OscScannerEvent::HudNotification(payload));
+                        self.payload_buf.clear();
+                        self.state = ScannerState::Ground;
+                    } else if byte == 0x1B {
+                        self.state = ScannerState::HudEscape;
+                    } else if self.payload_buf.len() < 8192 {
+                        self.payload_buf.push(byte);
+                    }
+                }
+                ScannerState::HudEscape => {
+                    if byte == b'\\' {
+                        // ST terminated
+                        let payload = String::from_utf8_lossy(&self.payload_buf).to_string();
+                        events.push(OscScannerEvent::HudNotification(payload));
+                        self.payload_buf.clear();
+                        self.state = ScannerState::Ground;
+                    } else {
+                        self.payload_buf.push(0x1B);
+                        self.payload_buf.push(byte);
+                        self.state = ScannerState::HudPayload;
                     }
                 }
                 ScannerState::Params => {
@@ -629,6 +668,7 @@ mod tests {
                     OscScannerEvent::Bytes(b) => all_clean.extend_from_slice(&b),
                     OscScannerEvent::Image(img) => all_images.push(img),
                     OscScannerEvent::SideBySideCompensation => {}
+                    OscScannerEvent::HudNotification(_) => {}
                 }
             }
         }
@@ -653,6 +693,7 @@ mod tests {
                     OscScannerEvent::Bytes(b) => all_clean.extend_from_slice(&b),
                     OscScannerEvent::Image(_) => images_count += 1,
                     OscScannerEvent::SideBySideCompensation => compensation_count += 1,
+                    OscScannerEvent::HudNotification(_) => {}
                 }
             }
         }
@@ -828,6 +869,28 @@ mod tests {
         match &ev2[1] {
             OscScannerEvent::Bytes(b) => assert_eq!(b, b"\x1b[42CNeweye@PC"),
             _ => panic!("Expected specs in chunk 2"),
+        }
+    }
+
+    #[test]
+    fn test_osc1338_hud_notification() {
+        let mut scanner = Osc1337Scanner::new();
+        let seq = b"prompt>\x1b]1338;hud;{\"action\":\"notify\",\"title\":\"Atlas\",\"message\":\"Hello!\"}\x07more text";
+        let events = scanner.process(seq);
+        assert_eq!(events.len(), 3);
+        match &events[0] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"prompt>"),
+            _ => panic!("Expected Bytes"),
+        }
+        match &events[1] {
+            OscScannerEvent::HudNotification(json) => {
+                assert!(json.contains("Hello!"));
+            }
+            _ => panic!("Expected HudNotification"),
+        }
+        match &events[2] {
+            OscScannerEvent::Bytes(b) => assert_eq!(b, b"more text"),
+            _ => panic!("Expected Bytes"),
         }
     }
 }

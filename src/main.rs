@@ -277,7 +277,9 @@ fn main() {
         #[cfg(windows)]
         rounded_corners::set_opacity(if should_blur { loaded_opacity } else { 1.0 });
 
-        let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
+        let win_w = loaded_settings.window_width.clamp(480.0, 3840.0);
+        let win_h = loaded_settings.window_height.clamp(280.0, 2160.0);
+        let bounds = Bounds::centered(None, size(px(win_w), px(win_h)), cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

@@ -292,6 +292,10 @@ pub struct AppSettingsFile {
     pub update_check_interval_mins: u32,
     #[serde(default = "default_update_channel")]
     pub update_channel: String,
+    #[serde(default = "default_window_width")]
+    pub window_width: f32,
+    #[serde(default = "default_window_height")]
+    pub window_height: f32,
     #[serde(default)]
     pub last_check_time: Option<u64>,
     #[serde(default)]
@@ -380,6 +384,12 @@ fn default_notify_on_complete() -> bool {
 fn default_notify_threshold_secs() -> u64 {
     10
 }
+fn default_window_width() -> f32 {
+    880.0
+}
+fn default_window_height() -> f32 {
+    540.0
+}
 
 impl Default for AppSettingsFile {
     fn default() -> Self {
@@ -412,6 +422,8 @@ impl Default for AppSettingsFile {
             auto_check_updates: default_auto_check(),
             update_check_interval_mins: default_interval_mins(),
             update_channel: default_update_channel(),
+            window_width: default_window_width(),
+            window_height: default_window_height(),
             last_check_time: None,
             etag: None,
             last_seen_version: None,

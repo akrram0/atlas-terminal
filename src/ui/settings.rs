@@ -1692,8 +1692,7 @@ impl AtlasView {
                         .child(cmd)
                         .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                             cx.write_to_clipboard(gpui::ClipboardItem::new_string(cmd_copy.clone()));
-                            view.update_toast = Some((format!("Copied '{cmd_copy}' to clipboard"), false, std::time::Instant::now()));
-                            cx.notify();
+                            view.show_update_toast(format!("Copied '{cmd_copy}' to clipboard"), true, cx);
                         }))
                 )
                 .child(pill_button(

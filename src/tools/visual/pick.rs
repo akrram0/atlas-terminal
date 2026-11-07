@@ -21,9 +21,37 @@ pub fn run(args: &[String]) {
         return;
     }
 
-    let input = if args.len() == 1 && !args[0].starts_with('-') {
-        args[0].clone()
+    let mut text_parts = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--url" | "-u" | "--link" | "--path" | "-p" => {
+                if i + 1 < args.len() {
+                    text_parts.push(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            arg if !arg.starts_with('-') => {
+                text_parts.push(arg.to_string());
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    let input = if !text_parts.is_empty() {
+        text_parts.join(" ")
     } else {
+        use std::io::IsTerminal;
+        if io::stdin().is_terminal() {
+            println!("Usage: atlas pick [options] [text]");
+            println!("  Extracts URLs, paths, Git commits, and IPs from terminal output or stdin.");
+            println!();
+            println!("Examples:");
+            println!("  atlas pick --url https://github.com/atlas-terminal");
+            println!("  git log | atlas pick");
+            return;
+        }
         let mut buffer = String::new();
         let _ = io::stdin().read_to_string(&mut buffer);
         buffer

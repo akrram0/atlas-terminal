@@ -301,45 +301,29 @@ pub fn find_all_urls_in_viewport<T: EventListener>(term: &Term<T>) -> Vec<String
     urls
 }
 
-/// Open a URL using native OS facilities.
+/// Open a URL safely using native OS facilities in a detached background thread.
 pub fn open_url(url: &str) {
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::OsStrExt;
-        let wide: Vec<u16> = std::ffi::OsStr::new(url)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        let op: Vec<u16> = std::ffi::OsStr::new("open")
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        unsafe {
-            #[link(name = "shell32")]
-            unsafe extern "system" {
-                fn ShellExecuteW(
-                    hwnd: *mut std::ffi::c_void,
-                    lpOperation: *const u16,
-                    lpFile: *const u16,
-                    lpParameters: *const u16,
-                    lpDirectory: *const u16,
-                    nShowCmd: i32,
-                ) -> *mut std::ffi::c_void;
-            }
-            ShellExecuteW(
-                std::ptr::null_mut(),
-                op.as_ptr(),
-                wide.as_ptr(),
-                std::ptr::null(),
-                std::ptr::null(),
-                1,
-            );
+    let clean_url = url.trim().to_string();
+    if clean_url.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            let _ = std::process::Command::new("cmd.exe")
+                .args(["/c", "start", "", &clean_url])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
         }
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = url;
-    }
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&clean_url)
+                .spawn();
+        }
+    });
 }
 
 pub fn open_target(target: &str, editor_pref: &str, cwd: Option<&std::path::Path>) {

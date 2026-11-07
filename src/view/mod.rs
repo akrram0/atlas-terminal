@@ -952,6 +952,20 @@ impl Render for AtlasView {
         let theme = self.theme.clone();
         let zoomed = crate::rounded_corners::is_zoomed();
 
+        // Track and persist resized window dimensions when floating (not zoomed/maximized)
+        let cur_bounds = window.bounds();
+        let cur_w = f32::from(cur_bounds.size.width);
+        let cur_h = f32::from(cur_bounds.size.height);
+        if !zoomed && cur_w >= 480.0 && cur_h >= 280.0 {
+            if (self.app_settings.window_width - cur_w).abs() > 25.0
+                || (self.app_settings.window_height - cur_h).abs() > 25.0
+            {
+                self.app_settings.window_width = cur_w.round();
+                self.app_settings.window_height = cur_h.round();
+                crate::config::save_app_settings(&self.app_settings);
+            }
+        }
+
         // Detect dominant background of the active terminal session via robust histogram sampling
         let active_bg = if let Some(tab) = self.tabs.get(self.active) {
             if let Some(pane) = tab.panes.get(tab.active_pane) {
@@ -1461,8 +1475,14 @@ impl Render for AtlasView {
             root = root.child(self.confirm_close_dialog(&theme, cx));
         }
 
-        if let Some((ref msg, is_ok, _)) = self.update_toast {
-            root = root.child(self.render_update_toast(msg, is_ok, &theme, cx));
+        if let Some((ref msg, is_ok, inst)) = self.update_toast {
+            let is_busy_updater = matches!(
+                self.update_download_state,
+                UpdateDownloadState::ReadyToRestart { .. } | UpdateDownloadState::Downloading { .. }
+            );
+            if is_busy_updater || inst.elapsed() < std::time::Duration::from_millis(4200) {
+                root = root.child(self.render_update_toast(msg, is_ok, &theme, cx));
+            }
         }
 
         if self.search_open {

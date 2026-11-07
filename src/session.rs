@@ -353,6 +353,8 @@ pub struct Session {
     pub max_active_row: usize,
     /// Active inline images anchored to the terminal scrollback grid.
     pub placed_images: Vec<PlacedImage>,
+    /// Pending HUD notifications parsed from OSC 1338 stream sequences.
+    pub hud_notifications: Vec<String>,
     next_image_id: usize,
     osc_scanner: Osc1337Scanner,
     writer: Option<Box<dyn Write + Send>>,
@@ -744,6 +746,7 @@ impl Session {
                 grid_bounds: None,
                 max_active_row: 0,
                 placed_images: Vec::new(),
+                hud_notifications: Vec::new(),
                 next_image_id: 1,
                 osc_scanner: Osc1337Scanner::new(),
                 writer: Some(writer),
@@ -784,6 +787,9 @@ impl Session {
                 }
                 OscScannerEvent::SideBySideCompensation => {
                     // Fastfetch side-by-side compensation sequence detected and absorbed.
+                }
+                OscScannerEvent::HudNotification(payload) => {
+                    self.hud_notifications.push(payload);
                 }
                 OscScannerEvent::Image(decoded) => {
                     let is_alt_screen = self.term.mode().contains(TermMode::ALT_SCREEN);

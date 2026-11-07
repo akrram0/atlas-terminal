@@ -204,25 +204,32 @@ impl AtlasView {
     pub fn adjust_font_size(&mut self, new_size: f32, cx: &mut Context<Self>) {
         let clamped = new_size.clamp(8.0, 36.0);
         self.scroll_anim = None;
+        self.font_size = clamped;
+        self.app_settings.font_size = clamped;
+        crate::config::save_app_settings(&self.app_settings);
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.font_size = Some(clamped);
             for pane in &mut tab.panes {
                 pane.cursor_pos = None;
             }
-        } else {
-            self.font_size = clamped;
         }
+        self.show_update_toast(format!("Font size: {:.0}px", clamped), true, cx);
         cx.notify();
     }
 
     pub fn reset_font_size(&mut self, cx: &mut Context<Self>) {
         self.scroll_anim = None;
+        let default_sz = crate::config::AppSettingsFile::default().font_size;
+        self.font_size = default_sz;
+        self.app_settings.font_size = default_sz;
+        crate::config::save_app_settings(&self.app_settings);
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.font_size = None;
             for pane in &mut tab.panes {
                 pane.cursor_pos = None;
             }
         }
+        self.show_update_toast(format!("Font size reset: {:.0}px", default_sz), true, cx);
         cx.notify();
     }
 
@@ -267,11 +274,14 @@ impl AtlasView {
         };
 
         if urls.is_empty() {
+            self.show_update_toast("No URLs found in visible terminal buffer".to_string(), false, cx);
             return;
         }
 
         if urls.len() == 1 {
-            crate::url::open_url(&urls[0]);
+            let u = urls[0].clone();
+            self.show_update_toast(format!("Opening {u}"), true, cx);
+            crate::url::open_url(&u);
             self.focus_main(window);
         } else {
             self.palette_open = true;
