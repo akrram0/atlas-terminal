@@ -69,7 +69,7 @@ impl AtlasView {
         let is_currently_light = self.theme.is_light();
         let new_mode = if is_currently_light { "dark" } else { "light" };
         self.set_theme_mode(new_mode, cx);
-        let preset_name = self.registry.preset(self.theme_id).name;
+        let preset_name = self.registry.preset(self.theme_id).name.clone();
         let mode_label = if new_mode == "light" { "Light Mode" } else { "Dark Mode" };
         self.show_update_toast(format!("{} ({})", mode_label, preset_name), true, cx);
     }

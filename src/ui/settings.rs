@@ -429,10 +429,32 @@ impl AtlasView {
                         .justify_between()
                         .child(
                             div()
-                                .text_size(px(13.5))
-                                .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-                                .text_color(if is_sel { sc_title } else { sc_label })
-                                .child(preset.dark_name()),
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .text_size(px(13.5))
+                                        .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                                        .text_color(if is_sel { sc_title } else { sc_label })
+                                        .child(preset.dark_name().to_string()),
+                                )
+                                .children(if preset.is_custom {
+                                    Some(
+                                        div()
+                                            .px(px(5.0))
+                                            .py(px(1.0))
+                                            .rounded(px(4.0))
+                                            .bg(theme.soft_bg)
+                                            .text_size(px(10.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme.accent)
+                                            .child("Custom"),
+                                    )
+                                } else {
+                                    None
+                                }),
                         )
                         .children(if is_sel {
                             Some(icons::icon(icons::CHECK).size(px(14.0)).text_color(theme.accent))
@@ -563,10 +585,32 @@ impl AtlasView {
                         .justify_between()
                         .child(
                             div()
-                                .text_size(px(13.5))
-                                .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-                                .text_color(if is_sel { sc_title } else { sc_label })
-                                .child(preset.light_name()),
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(6.0))
+                                .child(
+                                    div()
+                                        .text_size(px(13.5))
+                                        .font_weight(if is_sel { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                                        .text_color(if is_sel { sc_title } else { sc_label })
+                                        .child(preset.light_name().to_string()),
+                                )
+                                .children(if preset.is_custom {
+                                    Some(
+                                        div()
+                                            .px(px(5.0))
+                                            .py(px(1.0))
+                                            .rounded(px(4.0))
+                                            .bg(theme.soft_bg)
+                                            .text_size(px(10.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme.accent)
+                                            .child("Custom"),
+                                    )
+                                } else {
+                                    None
+                                }),
                         )
                         .children(if is_sel {
                             Some(icons::icon(icons::CHECK).size(px(14.0)).text_color(theme.accent))
@@ -784,6 +828,44 @@ impl AtlasView {
                 card()
                     .child(section_header("LIGHT THEMES"))
                     .child(light_theme_grid),
+            )
+            .child(
+                card()
+                    .child(section_header("CUSTOM THEMES"))
+                    .child(setting_row(
+                        "Themes Directory",
+                        Some("Drop any .json theme file into ~/.config/atlas/themes or import via 'atlas theme install'"),
+                        div()
+                            .id(ElementId::named_usize("open-themes-folder-btn", 0))
+                            .h(px(28.0))
+                            .px(px(12.0))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(6.0))
+                            .rounded(px(6.0))
+                            .bg(theme.soft_bg)
+                            .border_1()
+                            .border_color(theme.elevated_border)
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(theme.card_hover))
+                            .child(icons::icon(icons::FOLDER).size(px(14.0)).text_color(theme.chrome_fg_active))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.chrome_fg_active)
+                                    .child("Open Themes Folder"),
+                            )
+                            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                                let path = crate::user_data_dir().join("themes");
+                                open_folder(&path);
+                                view.registry = crate::theme::ThemeRegistry::standard();
+                                cx.notify();
+                            }))
+                            .into_any_element(),
+                        true,
+                    )),
             )
             .child(
                 card()

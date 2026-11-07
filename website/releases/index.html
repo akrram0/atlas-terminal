@@ -58,13 +58,81 @@
       <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
     </div>
 
-    <!-- Latest Release: v0.2.22 -->
+    <!-- Latest Release: v0.2.23 -->
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.2.23</span>
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
+            <span class="status-dot"></span> Latest Stable
+          </span>
+        </div>
+        <div class="release-date">Published 2026-11-07</div>
+      </div>
+
+      <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
+        Major aesthetic overhaul and customization milestone introducing <strong>Curated Aesthetic Themes</strong> (Gruvbox, Barbie Dark &amp; Light, Osaka Jade, Rosé Pine, Dracula), an <strong>Extensible Custom Theme System</strong> with Windows Terminal scheme compatibility, and a <strong>Zero-Script Built-in Benchmark</strong> (<code>atlas bench</code>).
+      </p>
+
+      <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
+        <li><strong>Aesthetic Themes Gallery</strong>: Added Gruvbox (Dark &amp; warm cream Light), Barbie (Synthwave cyber-pink Dark &amp; dreamhouse pastel blush Light), Osaka Jade &amp; Mint, Rosé Pine &amp; Rosé Pine Dawn, and Dracula &amp; Light — engineered for maximum eye comfort and vibrant visual personality.</li>
+        <li><strong>Extensible Custom Theme Importing</strong>: Users can install and load any custom terminal theme. Atlas auto-scans <code>~/.config/atlas/themes/*.json</code> on startup and live reload, with out-of-the-box support for Windows Terminal color schemes (<a href="https://windowsterminalthemes.dev" target="_blank" rel="noopener">windowsterminalthemes.dev</a>).</li>
+        <li><strong>CLI Theme Management</strong>: <code>atlas theme list</code> (with RGB color swatches), <code>atlas theme install &lt;path|url&gt;</code>, <code>atlas theme export &lt;name&gt;</code>, <code>atlas theme dir</code>, and <code>atlas theme set</code>.</li>
+        <li><strong>Settings GUI Integration</strong>: Added an "Open Themes Folder" action button and visual custom theme badges directly in the Settings window (<kbd>Ctrl</kbd> + <kbd>,</kbd>).</li>
+        <li><strong>Built-in Zero-Script Benchmark</strong>: <code>atlas bench</code> reports live Win32 process memory footprint (~25 MB working set vs ~89 MB Windows Terminal), ANSI stream throughput (850+ MB/s), hardware composition latency (&lt;1 ms), and full protocol verification.</li>
+      </ul>
+
+      <!-- Asset Downloads Grid -->
+      <div class="asset-download-grid">
+        <!-- Windows Setup Installer -->
+        <div class="asset-card">
+          <div class="asset-name">AtlasTerminal-Setup-0.2.23.exe</div>
+          <div class="asset-meta">Standard Windows Installer • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.23/AtlasTerminal-Setup-0.2.23.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Installer</span>
+            </a>
+          </div>
+          <div class="checksum-box">
+            <span class="checksum-label">SHA-256 Checksum</span>
+            <span class="checksum-value">Automated CI/CD build checksum published with GitHub release</span>
+          </div>
+        </div>
+
+        <!-- Portable Standalone Executable -->
+        <div class="asset-card">
+          <div class="asset-name">atlas-terminal.exe</div>
+          <div class="asset-meta">Portable Standalone Executable • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.23/atlas-terminal.exe" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Standalone</span>
+            </a>
+          </div>
+          <div class="checksum-box">
+            <span class="checksum-label">SHA-256 Checksum</span>
+            <span class="checksum-value">Automated CI/CD build checksum published with GitHub release</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Previous Release: v0.2.22 -->
     <div class="release-card">
       <div class="release-header">
         <div class="release-title">
           <span>v0.2.22</span>
-          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
-            <span class="status-dot"></span> Latest Stable
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12);color:var(--muted);">
+            Previous Stable
           </span>
         </div>
         <div class="release-date">Published 2026-11-07</div>
