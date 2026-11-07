@@ -994,23 +994,38 @@ impl Render for AtlasView {
             && self.sidebar_current_width > 1.0;
 
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
-            let alpha = self.opacity.clamp(0.0, 1.0);
-            let chrome = if alpha <= 0.005 {
-                Rgba {
+            let op = self.opacity.clamp(0.0, 1.0);
+            if op <= 0.005 {
+                let chrome = Rgba {
                     a: 0.0,
                     ..tb.panel_bg
-                }
+                };
+                let sheet = Rgba {
+                    a: 0.0,
+                    ..term_base
+                };
+                (chrome, sheet, rgba(0x00000000))
             } else {
-                Rgba {
-                    a: (alpha * 0.95).clamp(0.0, 1.0),
+                let sheet_alpha = if op <= 0.05 {
+                    (0.02 + op * 2.0).clamp(0.0, 1.0)
+                } else {
+                    (0.12 + (op - 0.05) * 0.926).clamp(0.0, 1.0)
+                };
+                let chrome_alpha = if op <= 0.05 {
+                    (0.06 + op * 2.0).clamp(0.0, 1.0)
+                } else {
+                    (0.16 + (op - 0.05) * 0.884).clamp(0.0, 1.0)
+                };
+                let chrome = Rgba {
+                    a: chrome_alpha,
                     ..tb.panel_bg
-                }
-            };
-            let sheet = Rgba {
-                a: alpha,
-                ..term_base
-            };
-            (chrome, sheet, rgba(0x00000000))
+                };
+                let sheet = Rgba {
+                    a: sheet_alpha,
+                    ..term_base
+                };
+                (chrome, sheet, rgba(0x00000000))
+            }
         } else {
             (tb.panel_bg, term_base, tb.panel_bg)
         };

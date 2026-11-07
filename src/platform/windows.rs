@@ -232,6 +232,7 @@ struct WindowCompositionAttributeData {
 const WCA_ACCENT_POLICY: u32 = 19;
 const ACCENT_DISABLED: u32 = 0;
 const ACCENT_ENABLE_TRANSPARENTGRADIENT: u32 = 2;
+const ACCENT_ENABLE_BLURBEHIND: u32 = 3;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 
 unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
@@ -260,25 +261,33 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
                     gradient_color: 0,
                     animation_id: 0,
                 }
-            } else if zoomed || op <= 0.05 {
-                // When maximized (zoomed) or at fine-grained transparent range (1%-5%),
-                // Microsoft DWM forces ACCENT_ENABLE_ACRYLICBLURBEHIND to drop to an opaque solid fallback color!
-                // Using ACCENT_ENABLE_TRANSPARENTGRADIENT preserves genuine transparency across all monitor bounds
-                // so the user's opacity preference is NEVER overridden by a solid black screen.
-                let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
+            } else if zoomed {
+                // When maximized (zoomed):
+                // ACCENT_ENABLE_ACRYLICBLURBEHIND drops to solid opaque fallback in Windows DWM!
+                // ACCENT_ENABLE_BLURBEHIND preserves DWM blur across full screen without turning black.
+                let alpha = if op <= 0.05 {
+                    (15.0 + op * 400.0) as u32
+                } else {
+                    ((op.clamp(0.0, 1.0)) * 255.0) as u32
+                };
                 let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
                     0x0a0c10
                 } else {
                     0xF2F4F7
                 };
                 AccentPolicy {
-                    accent_state: ACCENT_ENABLE_TRANSPARENTGRADIENT,
+                    accent_state: ACCENT_ENABLE_BLURBEHIND,
                     accent_flags: 2,
                     gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
                     animation_id: 0,
                 }
             } else {
-                let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
+                // When floating/windowed: full Fluent Acrylic blur with noise texture
+                let alpha = if op <= 0.05 {
+                    (15.0 + op * 400.0) as u32
+                } else {
+                    ((op.clamp(0.0, 1.0)) * 255.0) as u32
+                };
                 let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
                     0x0a0c10
                 } else {
