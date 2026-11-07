@@ -804,3 +804,24 @@ jobs:
           Upload-ReleaseAsset $previewTag $manifest
 
           Write-Output "Successfully updated ROLLING CLOUD PREVIEW ($previewTag)"
+
+          # =========================================================
+          # PRUNE OBSOLETE RELEASES (Retain: 2 Stable + 1 Preview)
+          # =========================================================
+          Write-Output "==> Enforcing release retention policy: 2 stable releases + 1 preview"
+          try {
+            $rawReleases = gh release list --limit 100 --json tagName,isPrerelease,id
+            if ($rawReleases) {
+              $allRels = $rawReleases | ConvertFrom-Json
+              $stableRels = @($allRels | Where-Object { -not $_.isPrerelease })
+              if ($stableRels.Count -gt 2) {
+                $obsolete = $stableRels | Select-Object -Skip 2
+                foreach ($rel in $obsolete) {
+                  Write-Output "Pruning obsolete stable release: $($rel.tagName)"
+                  gh release delete $rel.tagName --yes --cleanup-tag
+                }
+              }
+            }
+          } catch {
+            Write-Warning "Failed to prune older releases: $_"
+          }

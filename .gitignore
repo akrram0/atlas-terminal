@@ -11,20 +11,43 @@ installer/Output/
 .env
 .env.*
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
+# OS & Temp
 .DS_Store
 Thumbs.db
 Desktop.ini
+*.tmp
+*.temp
+*~
+*.bak
+*.orig
+
+# Local configuration overrides (should not be committed to repo)
+portable.txt
+settings.json
+profile.json
+
+# Scratch & test media
+extracted_icon.png
+test_*.png
+
+# Native objects & symbols
+*.res
+*.obj
+*.o
+*.ilk
 
 # Debug
 *.pdb
 *.log
+
+# IDE & Editors
+.vscode/
+.idea/
+.zed/
+.helix/
+*.swp
+*.swo
+*.sublime-*
 
 # Design System documentation
 design-system/
