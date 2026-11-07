@@ -472,8 +472,22 @@ impl Session {
                          $OutputEncoding=[System.Text.Encoding]::UTF8; \
                          [Console]::InputEncoding=[System.Text.Encoding]::UTF8; \
                          try { if ($PSStyle.Progress) { $PSStyle.Progress.View = 'Classic' } } catch {}; \
-                         function global:atlas { & \"$env:ATLAS_EXE\" @args | Out-Host }; \
-                         function global:atlas-terminal { & \"$env:ATLAS_EXE\" @args | Out-Host }; \
+                         function global:atlas { \
+                             if (Test-Path \"$env:ATLAS_DIR\\atlas.exe\") { \
+                                 & \"$env:ATLAS_DIR\\atlas.exe\" @args \
+                             } else { \
+                                 $p = Start-Process -FilePath \"$env:ATLAS_EXE\" -ArgumentList $args -NoNewWindow -Wait -PassThru; \
+                                 $global:LASTEXITCODE = $p.ExitCode \
+                             } \
+                         }; \
+                         function global:atlas-terminal { \
+                             if (Test-Path \"$env:ATLAS_DIR\\atlas.exe\") { \
+                                 & \"$env:ATLAS_DIR\\atlas.exe\" @args \
+                             } else { \
+                                 $p = Start-Process -FilePath \"$env:ATLAS_EXE\" -ArgumentList $args -NoNewWindow -Wait -PassThru; \
+                                 $global:LASTEXITCODE = $p.ExitCode \
+                             } \
+                         }; \
                          $atlas_old = (Get-Command prompt -ErrorAction SilentlyContinue).ScriptBlock; \
                          function prompt { \
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
@@ -552,10 +566,15 @@ impl Session {
                 if let Ok(exe) = std::env::current_exe() {
                     cmd.env("ATLAS_EXE", &exe);
                     if let Some(exe_dir) = exe.parent() {
-                        let shim = exe_dir.join("atlas.cmd");
-                        if !shim.exists() {
-                            let _ = std::fs::write(&shim, "@echo off\r\n\"%~dp0atlas-terminal.exe\" %*\r\n");
-                        }
+                        cmd.env("ATLAS_DIR", exe_dir);
+                        let shim_cmd = exe_dir.join("atlas.cmd");
+                        let cmd_content = "@echo off\r\nif exist \"%~dp0atlas.exe\" (\r\n  \"%~dp0atlas.exe\" %*\r\n) else (\r\n  start /b /wait \"\" \"%~dp0atlas-terminal.exe\" %*\r\n)\r\n";
+                        let _ = std::fs::write(&shim_cmd, cmd_content);
+
+                        let shim_sh = exe_dir.join("atlas");
+                        let sh_content = "#!/usr/bin/env sh\nif [ -f \"$(dirname \"$0\")/atlas.exe\" ]; then\n  exec \"$(dirname \"$0\")/atlas.exe\" \"$@\"\nelse\n  exec \"$(dirname \"$0\")/atlas-terminal.exe\" \"$@\"\nfi\n";
+                        let _ = std::fs::write(&shim_sh, sh_content);
+
                         let exe_dir_buf = exe_dir.to_path_buf();
                         if !paths.contains(&exe_dir_buf) {
                             paths.insert(0, exe_dir_buf);
@@ -624,7 +643,7 @@ impl Session {
                 // this, fastfetch and other CLIs inside WSL see no terminal
                 // identity at all (TERM_PROGRAM is what they report).
                 let mut wsl_env = std::env::var("WSLENV").unwrap_or_default();
-                for var in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "TERM", "ATLAS_EXE"] {
+                for var in ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "TERM", "ATLAS_EXE", "ATLAS_DIR"] {
                     // Already listed, with or without a WSLENV flag (`/p`, `/u`…).
                     let listed = wsl_env
                         .split(':')

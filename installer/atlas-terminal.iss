@@ -62,8 +62,9 @@ Name: "addtopath"; Description: "Add Atlas Terminal to PATH (current user)"; Gro
 Name: "contextmenu"; Description: "Add ""Open Atlas Terminal here"" to Explorer context menu"; GroupDescription: "System integration:"
 
 [Files]
-; Main binary
+; Main binaries
 Source: "..\target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\target\release\atlas.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Documentation & license
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion

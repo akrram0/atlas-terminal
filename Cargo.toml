@@ -10,6 +10,10 @@ license = "MIT"
 name = "atlas-terminal"
 path = "src/main.rs"
 
+[[bin]]
+name = "atlas"
+path = "src/bin/atlas.rs"
+
 [dependencies]
 gpui = "0.2.2"
 alacritty_terminal = "0.26"

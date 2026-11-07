@@ -149,7 +149,7 @@ jobs:
         env:
           ATLAS_BUILD_COMMIT: ${{ github.sha }}
         run: |
-          cargo build --release --bin atlas-terminal 2>&1 | Tee-Object -FilePath build-output.log
+          cargo build --release --bin atlas-terminal --bin atlas 2>&1 | Tee-Object -FilePath build-output.log
           $code = $LASTEXITCODE
           if ($code -ne 0) {
             "## cargo build failed (exit $code)" >> $env:GITHUB_STEP_SUMMARY
@@ -310,11 +310,16 @@ jobs:
 
           $termExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas-terminal.exe"
           Copy-Item $termExe (Join-Path $zipStaging "atlas-terminal.exe")
+          $cliExe = Join-Path $env:GITHUB_WORKSPACE "target\release\atlas.exe"
+          if (Test-Path $cliExe) {
+            Copy-Item $cliExe (Join-Path $zipStaging "atlas.exe")
+          }
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") (Join-Path $zipStaging "LICENSE")
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "README.md") (Join-Path $zipStaging "README.md")
           Copy-Item -Recurse (Join-Path $env:GITHUB_WORKSPACE "assets") (Join-Path $zipStaging "assets")
 
-          $sourceFileCount = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "assets") -Recurse -File).Count + 3
+          $hasCli = if (Test-Path $cliExe) { 1 } else { 0 }
+          $sourceFileCount = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE "assets") -Recurse -File).Count + 3 + $hasCli
           $stagedFileCount = @(Get-ChildItem -LiteralPath $zipStaging -Recurse -File).Count
           if ($stagedFileCount -ne $sourceFileCount) {
             throw "Zip staging incomplete: $stagedFileCount files staged, expected $sourceFileCount"
@@ -695,6 +700,7 @@ jobs:
           path: |
             target/release/atlas-terminal.exe
             target/release/atlas-native.exe
+            target/release/atlas.exe
           if-no-files-found: error
 
       - name: Upload distribution packages

@@ -262,13 +262,21 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
                     animation_id: 0,
                 }
             } else if zoomed {
-                // When maximized (zoomed):
-                // ACCENT_ENABLE_ACRYLICBLURBEHIND drops to solid opaque fallback in Windows DWM!
-                // ACCENT_ENABLE_BLURBEHIND preserves DWM blur across full screen without turning black.
+                // When maximized (zoomed) or fullscreen:
+                // ACCENT_ENABLE_BLURBEHIND (state 3) is obsolete in modern Windows DWM (Win 10 1809+ / Win 11)
+                // and causes DWM to paint an opaque solid black fallback surface.
+                // ACCENT_ENABLE_TRANSPARENTGRADIENT (state 2) with accent_flags: 2 keeps DirectComposition
+                // per-pixel alpha pass-through active across the entire screen, preventing any solid black wall.
+                let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
+                let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
+                    0x0a0c10
+                } else {
+                    0xF2F4F7
+                };
                 AccentPolicy {
-                    accent_state: ACCENT_ENABLE_BLURBEHIND,
+                    accent_state: ACCENT_ENABLE_TRANSPARENTGRADIENT,
                     accent_flags: 2,
-                    gradient_color: 0,
+                    gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
                     animation_id: 0,
                 }
             } else {
