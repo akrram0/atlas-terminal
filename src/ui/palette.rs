@@ -988,9 +988,9 @@ impl AtlasView {
             .id(ElementId::named_usize("palette-list", 0))
             .flex()
             .flex_col()
-            .px(px(8.0))
-            .py(px(6.0))
-            .gap(px(3.0))
+            .px(px(10.0))
+            .py(px(8.0))
+            .gap(px(4.0))
             .relative()
             .max_h(px(380.0))
             .overflow_y_scroll()
@@ -1044,9 +1044,11 @@ impl AtlasView {
                         .child(item.shortcut_or_badge.clone())
                 };
 
+                let hover_bg = theme.card_hover;
+                let active_bg = theme.card_active;
                 let row = div()
                     .id(ElementId::named_usize("palette-item", index))
-                    .h(px(46.0))
+                    .h(px(44.0))
                     .px(px(12.0))
                     .flex()
                     .flex_row()
@@ -1054,7 +1056,8 @@ impl AtlasView {
                     .gap(px(12.0))
                     .rounded(px(8.0))
                     .cursor_pointer()
-                    .when(is_selected, |this| this.bg(theme.card_active))
+                    .when(is_selected, move |this| this.bg(active_bg))
+                    .when(!is_selected, move |this| this.hover(move |s| s.bg(hover_bg)))
                     .child(
                         div()
                             .w(px(26.0))
@@ -1093,12 +1096,6 @@ impl AtlasView {
                             ),
                     )
                     .child(right_badge)
-                    .on_mouse_move(cx.listener(move |view, _, _window, cx| {
-                        if view.palette_index != index {
-                            view.palette_index = index;
-                            cx.notify();
-                        }
-                    }))
                     .on_mouse_down(MouseButton::Left, cx.listener({
                         let action = action.clone();
                         move |view, _, window, cx| {

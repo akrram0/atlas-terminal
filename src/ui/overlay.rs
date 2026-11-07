@@ -143,6 +143,9 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
             "agy" | "antigravity" => icons::ANTIGRAVITY_MARK,
             "opencode" => icons::OPENCODE_MARK,
             "claude" => icons::CLAUDE_MARK,
+            "fastfetch" => icons::SPARKLE,
+            "cargo" => icons::CARGO,
+            "pnpm" | "npm" => icons::PACKAGE,
             "lazygit" => icons::GIT,
             _ => icons::TERMINAL,
         };
@@ -170,81 +173,64 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
         .absolute()
         .top(menu_top)
         .left(menu_left)
-        .w(px(260.0))
-        .max_h(px(460.0))
+        .w(px(256.0))
+        .max_h(px(490.0))
         .overflow_y_scroll()
         .flex()
         .flex_col()
-        .p(px(8.0))
+        .p(px(6.0))
         .gap(px(2.0))
-        .rounded(px(12.0))
+        .rounded(px(10.0))
         .bg(theme.elevated_bg)
         .border_1()
         .border_color(theme.elevated_border)
         .shadow_xl();
 
-    // New Window (Ctrl+Shift+N)
-    menu = menu.child(
+    let make_header = |title: &'static str| {
         div()
-            .id(ElementId::named_usize("menu-item-new-window", 0))
-            .h(px(36.0))
-            .px(px(12.0))
-            .flex()
-            .items_center()
-            .justify_between()
-            .rounded(px(7.0))
-            .cursor_pointer()
-            .hover(move |style| style.bg(item_hover))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.0))
-                    .child(icons::icon(icons::WINDOW_MAXIMIZE).size(px(15.0)).text_color(theme.chrome_fg))
-                    .child(
-                        div()
-                            .text_size(px(14.0))
-                            .text_color(theme.chrome_fg_active)
-                            .child("New Window"),
-                    ),
-            )
-            .child(
-                div()
-                    .text_size(px(12.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(theme.chrome_fg)
-                    .child("Ctrl+Shift+N"),
-            )
-            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                view.dismiss_profile(cx);
-                view.new_window(cx);
-            })),
-    );
+            .px(px(8.0))
+            .pt(px(6.0))
+            .pb(px(2.0))
+            .text_size(px(10.0))
+            .font_weight(FontWeight::BOLD)
+            .text_color(theme.faint_fg)
+            .child(title)
+    };
 
-    menu = menu.child(
+    let make_divider = || {
         div()
             .h(px(1.0))
-            .my(px(4.0))
-            .bg(theme.elevated_border),
-    );
+            .my(px(3.0))
+            .bg(theme.hairline)
+    };
 
-    // Shells
+    // --- Section 1: Shells & Distros ---
+    menu = menu.child(make_header("SHELLS & DISTROS"));
+
     for (index, (label, profile, icon)) in shell_items.into_iter().enumerate() {
         menu = menu.child(
             div()
                 .id(ElementId::named_usize("profile-shell-item", index))
-                .h(px(36.0))
-                .px(px(12.0))
+                .h(px(32.0))
+                .px(px(8.0))
                 .flex()
                 .items_center()
-                .gap(px(10.0))
-                .rounded(px(7.0))
+                .gap(px(8.0))
+                .rounded(px(6.0))
                 .cursor_pointer()
                 .hover(move |style| style.bg(item_hover))
-                .child(icons::icon(icon).size(px(16.0)).text_color(theme.chrome_fg))
                 .child(
                     div()
-                        .text_size(px(14.0))
+                        .w(px(18.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(icons::icon(icon).size(px(15.0)).text_color(theme.chrome_fg)),
+                )
+                .child(
+                    div()
+                        .text_size(px(13.0))
                         .text_color(theme.chrome_fg_active)
                         .child(label),
                 )
@@ -256,30 +242,31 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
         );
     }
 
-    // WSL Distros
     if !wsl_items.is_empty() {
-        menu = menu.child(
-            div()
-                .h(px(1.0))
-                .my(px(4.0))
-                .bg(theme.elevated_border),
-        );
         for (index, (label, profile, icon)) in wsl_items.into_iter().enumerate() {
             menu = menu.child(
                 div()
                     .id(ElementId::named_usize("profile-wsl-item", index))
-                    .h(px(36.0))
-                    .px(px(12.0))
+                    .h(px(32.0))
+                    .px(px(8.0))
                     .flex()
                     .items_center()
-                    .gap(px(10.0))
-                    .rounded(px(7.0))
+                    .gap(px(8.0))
+                    .rounded(px(6.0))
                     .cursor_pointer()
                     .hover(move |style| style.bg(item_hover))
-                    .child(icons::icon(icon).size(px(16.0)).text_color(theme.chrome_fg))
                     .child(
                         div()
-                            .text_size(px(14.0))
+                            .w(px(18.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icons::icon(icon).size(px(15.0)).text_color(theme.chrome_fg)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
                             .text_color(theme.chrome_fg_active)
                             .child(label),
                     )
@@ -292,30 +279,35 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
         }
     }
 
-    // AI & Dev Tools
+    // --- Section 2: AI Agents & Developer Tools ---
     if !tool_items.is_empty() {
-        menu = menu.child(
-            div()
-                .h(px(1.0))
-                .my(px(4.0))
-                .bg(theme.elevated_border),
-        );
+        menu = menu.child(make_divider());
+        menu = menu.child(make_header("AI & DEV TOOLS"));
+
         for (index, (label, profile, icon)) in tool_items.into_iter().enumerate() {
             menu = menu.child(
                 div()
                     .id(ElementId::named_usize("profile-tool-item", index))
-                    .h(px(36.0))
-                    .px(px(12.0))
+                    .h(px(32.0))
+                    .px(px(8.0))
                     .flex()
                     .items_center()
-                    .gap(px(10.0))
-                    .rounded(px(7.0))
+                    .gap(px(8.0))
+                    .rounded(px(6.0))
                     .cursor_pointer()
                     .hover(move |style| style.bg(item_hover))
-                    .child(icons::icon(icon).size(px(16.0)).text_color(theme.chrome_fg))
                     .child(
                         div()
-                            .text_size(px(14.0))
+                            .w(px(18.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icons::icon(icon).size(px(15.0)).text_color(theme.chrome_fg)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
                             .text_color(theme.chrome_fg_active)
                             .child(label),
                     )
@@ -328,45 +320,85 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
         }
     }
 
-    // Divider
-    menu = menu.child(
-        div()
-            .h(px(1.0))
-            .my(px(4.0))
-            .bg(theme.elevated_border),
-    );
+    // --- Section 3: Actions ---
+    menu = menu.child(make_divider());
+    menu = menu.child(make_header("ACTIONS"));
 
-    // Rescan Environment item
+    // New Window (Ctrl+Shift+N)
     menu = menu.child(
         div()
-            .id(ElementId::named_usize("menu-item-rescan", 0))
-            .h(px(36.0))
-            .px(px(12.0))
+            .id(ElementId::named_usize("menu-item-new-window", 0))
+            .h(px(32.0))
+            .px(px(8.0))
             .flex()
             .items_center()
             .justify_between()
-            .rounded(px(7.0))
+            .rounded(px(6.0))
             .cursor_pointer()
             .hover(move |style| style.bg(item_hover))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(10.0))
-                    .child(icons::icon(icons::REFRESH).size(px(16.0)).text_color(theme.chrome_fg))
+                    .gap(px(8.0))
                     .child(
                         div()
-                            .text_size(px(14.0))
+                            .w(px(18.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icons::icon(icons::WINDOW_NEW).size(px(15.0)).text_color(theme.chrome_fg)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
                             .text_color(theme.chrome_fg_active)
-                            .child("Rescan Environment"),
+                            .child("New Window"),
                     ),
             )
             .child(
                 div()
-                    .text_size(px(12.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(theme.chrome_fg)
-                    .child("Scan"),
+                    .px(px(6.0))
+                    .py(px(2.0))
+                    .rounded(px(4.0))
+                    .bg(theme.soft_bg)
+                    .text_size(px(10.5))
+                    .text_color(theme.faint_fg)
+                    .child("Ctrl+Shift+N"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.dismiss_profile(cx);
+                view.new_window(cx);
+            })),
+    );
+
+    // Rescan Environment item
+    menu = menu.child(
+        div()
+            .id(ElementId::named_usize("menu-item-rescan", 0))
+            .h(px(32.0))
+            .px(px(8.0))
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .rounded(px(6.0))
+            .cursor_pointer()
+            .hover(move |style| style.bg(item_hover))
+            .child(
+                div()
+                    .w(px(18.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icons::icon(icons::RADAR).size(px(15.0)).text_color(theme.chrome_fg)),
+            )
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .text_color(theme.chrome_fg_active)
+                    .child("Rescan Environment"),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
                 view.dismiss_profile(cx);
@@ -378,32 +410,43 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
     menu = menu.child(
         div()
             .id(ElementId::named_usize("menu-item-settings", 0))
-            .h(px(36.0))
-            .px(px(12.0))
+            .h(px(32.0))
+            .px(px(8.0))
             .flex()
             .items_center()
             .justify_between()
-            .rounded(px(7.0))
+            .rounded(px(6.0))
             .cursor_pointer()
             .hover(move |style| style.bg(item_hover))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(10.0))
-                    .child(icons::icon(icons::SETTINGS).size(px(16.0)).text_color(theme.chrome_fg))
+                    .gap(px(8.0))
                     .child(
                         div()
-                            .text_size(px(14.0))
+                            .w(px(18.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(theme.chrome_fg)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
                             .text_color(theme.chrome_fg_active)
                             .child("Settings"),
                     ),
             )
             .child(
                 div()
-                    .text_size(px(12.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(theme.chrome_fg)
+                    .px(px(6.0))
+                    .py(px(2.0))
+                    .rounded(px(4.0))
+                    .bg(theme.soft_bg)
+                    .text_size(px(10.5))
+                    .text_color(theme.faint_fg)
                     .child("Ctrl+,"),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -423,18 +466,26 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
     menu = menu.child(
         div()
             .id(ElementId::named_usize("menu-item-updates", 0))
-            .h(px(36.0))
-            .px(px(12.0))
+            .h(px(32.0))
+            .px(px(8.0))
             .flex()
             .items_center()
-            .gap(px(10.0))
-            .rounded(px(7.0))
+            .gap(px(8.0))
+            .rounded(px(6.0))
             .cursor_pointer()
             .hover(move |style| style.bg(item_hover))
-            .child(icons::icon(icons::REFRESH).size(px(16.0)).text_color(theme.chrome_fg))
             .child(
                 div()
-                    .text_size(px(14.0))
+                    .w(px(18.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icons::icon(icons::CLOUD_DOWNLOAD).size(px(15.0)).text_color(theme.chrome_fg)),
+            )
+            .child(
+                div()
+                    .text_size(px(13.0))
                     .text_color(theme.chrome_fg_active)
                     .child("Check for Updates"),
             )
@@ -448,8 +499,8 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
     menu = menu.child(
         div()
             .id(ElementId::named_usize("menu-item-palette", 0))
-            .h(px(30.0))
-            .px(px(10.0))
+            .h(px(32.0))
+            .px(px(8.0))
             .flex()
             .items_center()
             .justify_between()
@@ -461,19 +512,30 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
                     .flex()
                     .items_center()
                     .gap(px(8.0))
-                    .child(icons::icon(icons::SEARCH).size(px(13.0)).text_color(theme.chrome_fg))
                     .child(
                         div()
-                            .text_size(px(12.5))
+                            .w(px(18.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icons::icon(icons::SEARCH).size(px(15.0)).text_color(theme.chrome_fg)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.0))
                             .text_color(theme.chrome_fg_active)
                             .child("Command Palette"),
                     ),
             )
             .child(
                 div()
-                    .text_size(px(11.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(theme.chrome_fg)
+                    .px(px(6.0))
+                    .py(px(2.0))
+                    .rounded(px(4.0))
+                    .bg(theme.soft_bg)
+                    .text_size(px(10.5))
+                    .text_color(theme.faint_fg)
                     .child("Ctrl+K"),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {

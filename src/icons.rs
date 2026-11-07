@@ -82,6 +82,12 @@ icon_assets![
     (GIT, "git"),
     (LINK, "link"),
     (SIDEBAR_LEFT, "sidebar-left"),
+    (CARGO, "cargo"),
+    (PACKAGE, "package"),
+    (SPARKLE, "sparkle"),
+    (RADAR, "radar"),
+    (CLOUD_DOWNLOAD, "cloud-download"),
+    (WINDOW_NEW, "window-new"),
 ];
 
 /// Render an embedded vector icon element.

@@ -496,14 +496,14 @@ fn detect_tools() -> Vec<DiscoveredTool> {
         ("agy", "Antigravity", icons::ANTIGRAVITY_MARK),
         ("opencode", "OpenCode", icons::OPENCODE_MARK),
         ("claude", "Claude Code", icons::CLAUDE_MARK),
-        ("fastfetch", "Fastfetch", icons::TERMINAL),
+        ("fastfetch", "Fastfetch", icons::SPARKLE),
         ("starship", "Starship", icons::TERMINAL),
         ("oh-my-posh", "Oh My Posh", icons::TERMINAL),
         ("nvim", "Neovim", icons::TERMINAL),
         ("lazygit", "LazyGit", icons::GIT),
         ("btop", "btop", icons::TERMINAL),
-        ("cargo", "Cargo", icons::TERMINAL),
-        ("pnpm", "pnpm", icons::TERMINAL),
+        ("cargo", "Cargo", icons::CARGO),
+        ("pnpm", "pnpm", icons::PACKAGE),
     ];
 
     let mut discovered = Vec::new();
