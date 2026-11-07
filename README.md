@@ -43,10 +43,6 @@ Get the latest release for Windows (x64):
 | **Official Documentation** | Complete user guide, architecture specs, and shortcuts reference | [Read Docs](https://akrram0.github.io/atlas-terminal/docs/) |
 | **All Releases** | Release history, changelogs, and SHA-256 checksums | [View Releases](https://github.com/akrram0/atlas-terminal/releases) |
 
-### Quick Install via winget
-```powershell
-winget install akrram0.atlas-terminal
-```
 
 ---
 
