@@ -65,7 +65,7 @@
 
         <div class="release-pill">
           <span class="status-dot"></span>
-          <span>v0.1.83 • Native GPU Release</span>
+          <span>v0.2.22 • Stable Release</span>
         </div>
 
         <h1 class="hero-headline">The fastest, most aesthetic GPU terminal for Windows</h1>
@@ -162,8 +162,9 @@
                     <div class="spec-line"><span class="spec-key">User</span><span class="spec-val">developer@atlas</span></div>
                     <div class="spec-line"><span class="spec-key">OS</span><span class="spec-val">Windows 11 Pro 64-bit</span></div>
                     <div class="spec-line"><span class="spec-key">Engine</span><span class="spec-val">DirectX 12 (GPUI Framework)</span></div>
-                    <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.83</span></div>
+                    <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.2.22</span></div>
                     <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
+                    <div class="spec-line"><span class="spec-key">Satellites</span><span class="spec-val">atlas tools (port, jwt, qr, diff, hud)</span></div>
                     <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Native Display Rate</span></div>
                     <div class="spec-line"><span class="spec-key">Memory</span><span class="spec-val">~60 MB (DirectX Native)</span></div>
                   </div>
@@ -174,13 +175,14 @@
             <!-- Active Input Line -->
             <div class="terminal-interactive-line">
               <span class="term-prompt" style="margin-right:8px;">❯</span>
-              <input type="text" id="term-input" placeholder="Type 'help', 'theme', or 'fastfetch'..." autocomplete="off" spellcheck="false" />
+              <input type="text" id="term-input" placeholder="Type 'tools', 'fastfetch', or 'theme'..." autocomplete="off" spellcheck="false" />
               <span class="term-cursor"></span>
             </div>
 
             <div class="term-interactive-hint">
               <span>Interactive sandbox: type in the terminal or test these quick commands:</span>
               <div class="term-quick-cmds">
+                <span class="term-pill" data-cmd="tools">tools</span>
                 <span class="term-pill" data-cmd="fastfetch">fastfetch</span>
                 <span class="term-pill" data-cmd="theme">theme</span>
                 <span class="term-pill" data-cmd="version">version</span>
@@ -212,6 +214,26 @@
         <div class="grid-3">
           <div class="feature-card">
             <div class="feature-icon-box">
+              <img src="assets/icons/satellite.svg" alt="Satellites Suite" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Atlas Satellites: Subterminal Suite</h3>
+            <p class="feature-body">
+              Zero-overhead developer companions (<code>atlas &lt;cmd&gt;</code>): inspect ports &amp; 1-shot kill (<code>atlas port 3000 -k</code>), decode JWTs offline, generate QR codes, query JSON/jq, view diffs, and inspect images.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
+              <img src="assets/icons/radar.svg" alt="Dynamic Island HUD" class="feature-icon" />
+            </div>
+            <h3 class="feature-title">Dynamic Island Topbar HUD</h3>
+            <p class="feature-body">
+              Minimalist capsule overlay with smooth spring motion. Displays background job completion alerts, cloud update pulses, and custom shell notifications via OSC 1338 (<code>atlas hud notify</code>).
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-box">
               <img src="assets/icons/refresh.svg" alt="Refresh" class="feature-icon" />
             </div>
             <h3 class="feature-title">Instant Frame Scheduling & Fluidity</h3>
@@ -224,9 +246,9 @@
             <div class="feature-icon-box">
               <img src="assets/icons/atlas-mark.svg" alt="Design" class="feature-icon" />
             </div>
-            <h3 class="feature-title">Fluent Acrylic Blur & Glass Translucency</h3>
+            <h3 class="feature-title">Fluent Acrylic Blur & Pure Glass</h3>
             <p class="feature-body">
-              Restrained Apple/macOS design language. Frameless client area with native Windows 11 DWM Acrylic glass blur, customizable opacity via <code>settings.json</code>, and instant GPU swapchains.
+              Restrained Apple/macOS design language. Frameless client area with native Windows 11 DWM Acrylic glass blur, pure transparent glass mode (0% opacity), and instant GPU swapchains.
             </p>
           </div>
 

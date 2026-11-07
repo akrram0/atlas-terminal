@@ -63,11 +63,15 @@ design-system/
 .copilot/
 .cline/
 .gemini/
+# Internal Design & Product specs
+DESIGN.md
+PRODUCT.md
 HANDOFF.md
 *handoff*.md
 *HANDOFF*.md
 handoffs/
 scratch/
+assets-of-new-app-icon/
 
 
 scripts/ci_check.ps1

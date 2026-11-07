@@ -58,37 +58,38 @@
       <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
     </div>
 
-    <!-- Latest Release: v0.1.83 -->
+    <!-- Latest Release: v0.2.22 -->
     <div class="release-card">
       <div class="release-header">
         <div class="release-title">
-          <span>v0.1.83</span>
+          <span>v0.2.22</span>
           <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
             <span class="status-dot"></span> Latest Stable
           </span>
         </div>
-        <div class="release-date">Published 2026-10-29</div>
+        <div class="release-date">Published 2026-11-07</div>
       </div>
 
       <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
-        Maximized fullscreen topbar insetting fix, expanded eye-comfort UI scale across tabs, icons, and settings navigation, plus smart commit-hash delta update matching on Preview channel.
+        Major milestone release introducing the <strong>Atlas Satellites Subterminal Tools Suite</strong> (<code>atlas &lt;cmd&gt;</code>), <strong>Dynamic Island Topbar HUD</strong> with OSC 1338 protocol, fluent acrylic blur and pure glass (0% opacity) rendering, and thread-safe URL handling.
       </p>
 
       <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
-        <li><strong>Fullscreen Topbar Insetting</strong>: Resolved titlebar clipping on maximized Windows 11 screens by adjusting <code>WM_NCCALCSIZE</code> client insets to eliminate window border overhang.</li>
-        <li><strong>Comfortable UI Scale</strong>: Expanded topbar height to 40px with 30px tabs, 15.5px vector icons, 44px caption buttons, and a 210px settings drawer for effortless eye comfort.</li>
-        <li><strong>Smart Cloud Delta Updater</strong>: Embedded commit hash validation prevents false-positive update alerts and loops when running preview rolling releases.</li>
-        <li><strong>MSAA Procedural Vector Prompt Arcs</strong>: Continuous cubic Bézier prompt corners that scale dynamically with zoom level without baseline clipping.</li>
+        <li><strong>Atlas Satellites Suite</strong>: Embedded zero-overhead developer companion tools via <code>atlas</code> (console subsystem) — <code>atlas port 3000 -k</code> (port inspector &amp; process killer), <code>atlas jwt</code> (offline token decoder), <code>atlas qr</code> (terminal QR generator), <code>atlas json</code> (formatter &amp; selector), <code>atlas diff</code> (side-by-side terminal diffs), and <code>atlas hud</code> (island notification trigger).</li>
+        <li><strong>Dynamic Island Topbar HUD</strong>: High-fidelity capsule notification overlay supporting real-time update pulses, shell status changes, and custom script notifications via OSC 1338 escape sequences.</li>
+        <li><strong>Fluent Acrylic Blur &amp; Pure Glass Translucency</strong>: Completely rewritten background compositor with native DWM acrylic accent, pure 0% clear glass mode, and seamless opacity scaling.</li>
+        <li><strong>Thread-Safe URL Handling</strong>: Detached background browser dispatch eliminating GPUI apartment threading conflicts on Ctrl+Click and keyboard link picker.</li>
+        <li><strong>Compact Window Architecture</strong>: Calibrated 880x540 default startup bounds with automatic window dimension persistence.</li>
       </ul>
 
       <!-- Asset Downloads Grid -->
       <div class="asset-download-grid">
         <!-- Windows Setup Installer -->
         <div class="asset-card">
-          <div class="asset-name">AtlasTerminal-Setup-0.1.83.exe</div>
+          <div class="asset-name">AtlasTerminal-Setup-0.2.22.exe</div>
           <div class="asset-meta">Standard Windows Installer • x64</div>
           <div style="margin-bottom:12px;">
-            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.83/AtlasTerminal-Setup-0.1.83.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.22/AtlasTerminal-Setup-0.2.22.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
@@ -99,16 +100,16 @@
           </div>
           <div class="hash-row" data-copy="verified" title="Click to copy SHA-256">
             <span>SHA-256</span>
-            <code>Available on GitHub</code>
+            <code>Verified on GitHub Releases</code>
           </div>
         </div>
 
         <!-- Standalone Portable ZIP -->
         <div class="asset-card">
           <div class="asset-name">atlas-terminal-windows-x64.zip</div>
-          <div class="asset-meta">Standalone Portable Archive • Extract & Run</div>
+          <div class="asset-meta">Standalone Portable Archive • Extract &amp; Run</div>
           <div style="margin-bottom:12px;">
-            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.1.83/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.22/atlas-terminal-windows-x64.zip" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="7 10 12 15 17 10"/>
@@ -119,7 +120,7 @@
           </div>
           <div class="hash-row" data-copy="verified" title="Click to copy SHA-256">
             <span>SHA-256</span>
-            <code>Available on GitHub</code>
+            <code>Verified on GitHub Releases</code>
           </div>
         </div>
       </div>
@@ -127,6 +128,21 @@
 
     <!-- Previous Releases Timeline -->
     <h2 style="font-size:1.25rem;font-weight:600;margin:32px 0 16px;letter-spacing:-0.01em;">Release Archive</h2>
+
+    <div class="release-archive-list">
+      <div class="archive-item">
+        <div class="archive-header">
+          <div class="archive-title">
+            <span>v0.1.83</span>
+            <span class="release-pill" style="margin-bottom:0;padding:1px 6px;font-size:10px;">Milestone</span>
+          </div>
+          <div class="archive-date">2026-10-29</div>
+        </div>
+        <p class="archive-desc">Fullscreen topbar insetting fix, expanded eye-comfort UI scale across tabs, icons, and settings navigation, plus smart commit-hash delta update matching.</p>
+        <div class="archive-links">
+          <a href="https://github.com/akrram0/atlas-terminal/releases/tag/v0.1.83" class="archive-link">Release Notes &rarr;</a>
+        </div>
+      </div>
 
     <div class="release-card">
       <div class="release-header">

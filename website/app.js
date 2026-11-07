@@ -152,9 +152,9 @@
         <div class="spec-line"><span class="spec-key">User</span><span class="spec-val">developer@atlas</span></div>
         <div class="spec-line"><span class="spec-key">OS</span><span class="spec-val">Windows 11 Pro 64-bit</span></div>
         <div class="spec-line"><span class="spec-key">Host</span><span class="spec-val">DirectX 12 (DWM Acrylic Blur)</span></div>
-        <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.74 (GPUI Engine)</span></div>
+        <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.2.22 (GPUI Engine)</span></div>
         <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
-        <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Native Frame Scheduler</span></div>
+        <div class="spec-line"><span class="spec-key">Satellites</span><span class="spec-val">atlas tools (port, jwt, qr, diff, hud)</span></div>
         <div class="spec-line"><span class="spec-key">CPU Usage</span><span class="spec-val">0.0% (Quiescent Idle)</span></div>
       </div>
     </div>
@@ -169,7 +169,7 @@
           <div class="spec-line"><span class="spec-key">User</span><span class="spec-val">developer@atlas</span></div>
           <div class="spec-line"><span class="spec-key">OS</span><span class="spec-val">Windows 11 Pro 64-bit</span></div>
           <div class="spec-line"><span class="spec-key">Host</span><span class="spec-val">DirectX 12 (DWM Acrylic Blur)</span></div>
-          <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.1.74 (GPUI Engine)</span></div>
+          <div class="spec-line"><span class="spec-key">Terminal</span><span class="spec-val">Atlas Terminal v0.2.22 (GPUI Engine)</span></div>
           <div class="spec-line"><span class="spec-key">Graphics</span><span class="spec-val">iTerm2 Inline Images (OSC 1337)</span></div>
           <div class="spec-line"><span class="spec-key">Refresh</span><span class="spec-val">Native Frame Scheduler</span></div>
           <div class="spec-line"><span class="spec-key">CPU Usage</span><span class="spec-val">0.0% (Quiescent Idle)</span></div>
@@ -188,7 +188,7 @@
         <span style="color:#00e5ff;font-weight:600;">archlinux</span><span style="color:rgba(255,255,255,0.4);">:</span><span style="color:#10b981;font-weight:600;">~</span> <span style="color:#ffffff;">❯ atlas --version</span>
       </div>
       <div class="term-out-row">
-        <div>atlas-terminal <span style="color:var(--accent);">v0.1.74</span> (Windows Subsystem for Linux bridged socket)</div>
+        <div>atlas-terminal <span style="color:var(--accent);">v0.2.22</span> (Windows Subsystem for Linux bridged socket)</div>
         <div style="color:var(--terminal-dim);font-size:11px;margin-top:2px;">TrueColor 24-bit + OSC 1337 terminal graphics verified.</div>
       </div>
     `,
@@ -207,7 +207,7 @@
       </div>
       <div class="term-out-row">
         <div style="color:#10b981;">✓ Finished release [optimized] target(s) in 0.84s</div>
-        <div style="color:var(--terminal-dim);font-size:11px;margin-top:2px;">Ready for interactive developer commands. Type 'fastfetch' or 'theme' below.</div>
+        <div style="color:var(--terminal-dim);font-size:11px;margin-top:2px;">Ready for interactive developer commands. Type 'fastfetch', 'tools', or 'theme' below.</div>
       </div>
     `
   };
@@ -216,15 +216,28 @@
     help: `
       <div>Available commands:</div>
       <div style="padding-left: 12px; margin-top: 4px;">
-        <div><strong style="color:var(--accent);">fastfetch</strong> - Display system specs & inline graphic</div>
-        <div><strong style="color:var(--accent);">theme</strong>     - Toggle between Matte Dark & Warm Paper</div>
-        <div><strong style="color:var(--accent);">version</strong>   - Print Atlas Terminal release specs</div>
-        <div><strong style="color:var(--accent);">clear</strong>     - Clear the terminal history</div>
+        <div><strong style="color:var(--accent);">tools</strong>       - Show Atlas Satellites developer suite</div>
+        <div><strong style="color:var(--accent);">fastfetch</strong>   - Display system specs &amp; inline graphic</div>
+        <div><strong style="color:var(--accent);">theme</strong>       - Toggle between Matte Dark &amp; Warm Paper</div>
+        <div><strong style="color:var(--accent);">version</strong>     - Print Atlas Terminal release specs</div>
+        <div><strong style="color:var(--accent);">clear</strong>       - Clear the terminal history</div>
+      </div>
+    `,
+    tools: `
+      <div style="color:var(--accent);font-weight:700;margin-bottom:4px;">Atlas Satellites — Subterminal Companion Tools (v0.2.22)</div>
+      <div style="color:var(--terminal-dim);font-size:12px;margin-bottom:6px;">Zero-overhead embedded developer productivity satellites:</div>
+      <div style="font-family:var(--font-mono);font-size:12px;line-height:1.6;">
+        <div><span style="color:#38bdf8;">atlas port [num]</span>   - Listening port inspector &amp; 1-shot killer (e.g. atlas port 3000 -k)</div>
+        <div><span style="color:#38bdf8;">atlas jwt [token]</span>   - Offline privacy-safe JSON Web Token inspector</div>
+        <div><span style="color:#38bdf8;">atlas qr [url]</span>      - Instant terminal QR generator for links &amp; auth</div>
+        <div><span style="color:#38bdf8;">atlas json [key]</span>    - Colorized JSON formatter, validator &amp; query selector</div>
+        <div><span style="color:#38bdf8;">atlas hud [msg]</span>     - Dynamic Island topbar notification pulse trigger</div>
+        <div><span style="color:#38bdf8;">atlas diff [f1] [f2]</span> - Fast side-by-side terminal diff viewer with syntax</div>
       </div>
     `,
     version: `
-      <div>Atlas Terminal <span style="color:var(--accent);">v0.1.74</span> (Rust 2024 / Zed GPUI DirectX)</div>
-      <div style="color:rgba(255,255,255,0.6);font-size:11px;">Features: Ultra-smooth frame scheduling, dynamic WSL detection, background acrylic blur, iTerm2 inline graphics</div>
+      <div>Atlas Terminal <span style="color:var(--accent);">v0.2.22</span> (Rust 2024 / Zed GPUI DirectX)</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:11px;">Features: Satellites Suite, Dynamic Island HUD, acrylic blur / 0% glass mode, iTerm2 inline graphics</div>
     `,
   };
 
@@ -252,6 +265,8 @@
     } else if (lower === 'theme') {
       toggleTheme();
       outRow.innerHTML = `<div>Theme changed. Active: <span style="color:var(--accent);">${getActiveTheme()}</span></div>`;
+    } else if (lower === 'atlas' || lower === 'atlas tools' || lower === 'tools' || lower === 'satellites') {
+      outRow.innerHTML = commandResponses.tools;
     } else if (commandResponses[lower]) {
       outRow.innerHTML = commandResponses[lower];
     } else {

@@ -62,13 +62,15 @@
           <div class="docs-nav-title">User Guide</div>
           <ul class="docs-nav-items">
             <li><a href="#installation" class="docs-nav-link active">Installation</a></li>
+            <li><a href="#satellites" class="docs-nav-link">Atlas Satellites CLI</a></li>
             <li><a href="#shortcuts" class="docs-nav-link">Keyboard Shortcuts</a></li>
             <li><a href="#dev-superpowers" class="docs-nav-link">Developer Superpowers</a></li>
-            <li><a href="#split-panes" class="docs-nav-link">Tabs & Split Panes</a></li>
+            <li><a href="#dynamic-island" class="docs-nav-link">Dynamic Island HUD</a></li>
+            <li><a href="#split-panes" class="docs-nav-link">Tabs &amp; Split Panes</a></li>
             <li><a href="#fastfetch-setup" class="docs-nav-link">Fastfetch Inline Images</a></li>
-            <li><a href="#mouse-reporting" class="docs-nav-link">Mouse & Hyperlinks</a></li>
+            <li><a href="#mouse-reporting" class="docs-nav-link">Mouse &amp; Hyperlinks</a></li>
             <li><a href="#wsl-profiles" class="docs-nav-link">WSL Linux Profiles</a></li>
-            <li><a href="#themes-config" class="docs-nav-link">Themes & Configuration</a></li>
+            <li><a href="#themes-config" class="docs-nav-link">Themes &amp; Configuration</a></li>
           </ul>
         </div>
 
@@ -89,11 +91,11 @@
 
         <!-- Article: Installation -->
         <article class="docs-article" id="installation">
-          <h1>Installation & Setup</h1>
+          <h1>Installation &amp; Setup</h1>
           <p>Atlas Terminal is distributed as both an automated Windows installer and a standalone portable archive.</p>
 
           <h2>Method 1: Windows Installer (.exe)</h2>
-          <p>The standard installer integrates Atlas into your Windows Start Menu, configures desktop shortcuts, and registers background delta auto-updates.</p>
+          <p>The standard installer integrates Atlas into your Windows Start Menu, configures desktop shortcuts, registers the <code>atlas</code> CLI companion tool, and enables background auto-updates.</p>
           <pre><code># Download the latest installer from GitHub Releases:
 https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
@@ -103,6 +105,71 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
 
           <h2>Method 3: Portable Zero-Install Archive</h2>
           <p>Extract <code>atlas-terminal-windows-x64.zip</code> into any folder (e.g. <code>C:\Tools\Atlas</code>) and run <code>atlas-terminal.exe</code> directly. Your configuration is stored in <code>~/.config/atlas/settings.json</code> (or right next to the executable if <code>portable.txt</code> is present).</p>
+        </article>
+
+        <!-- Article: Atlas Satellites CLI Suite -->
+        <article class="docs-article" id="satellites">
+          <h2>Atlas Satellites: Subterminal Companion Tools</h2>
+          <p>
+            Atlas includes a built-in suite of zero-overhead developer companions executed directly via <code>atlas &lt;command&gt;</code>. These tools run synchronously in your console or powershell without launching the full GUI terminal:
+          </p>
+
+          <table class="comparison-table" style="margin-top: 12px; margin-bottom: 20px;">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Description</th>
+                <th>Example</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>atlas port [number]</code></td>
+                <td>Inspect active listening ports and kill blocking processes in 1-shot</td>
+                <td><code>atlas port 3000 -k</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas jwt [token]</code></td>
+                <td>Offline, privacy-safe JSON Web Token header/claims inspector</td>
+                <td><code>atlas jwt eyJhbGci...</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas qr [text/url]</code></td>
+                <td>Instant terminal QR code generator for URLs, auth tokens, and WiFi</td>
+                <td><code>atlas qr https://atlas.sh</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas json, jq [key]</code></td>
+                <td>Colorized JSON validator, syntax highlighter, and property selector</td>
+                <td><code>cat data.json | atlas json user.name</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas diff [f1] [f2]</code></td>
+                <td>Terminal diff viewer with syntax colors, line numbers, and inline changes</td>
+                <td><code>atlas diff old.rs new.rs</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas img [file]</code></td>
+                <td>Inline terminal image viewer (OSC 1337 GPU texture &amp; 24-bit halfblocks)</td>
+                <td><code>atlas img preview.png</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas pick</code></td>
+                <td>Extract on-screen URLs, commit hashes, file paths, and IPs for quick piping</td>
+                <td><code>atlas pick --url</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas hud [title] [msg]</code></td>
+                <td>Dynamic Island status pulse &amp; notification trigger</td>
+                <td><code>atlas hud "Build" "Compiled in 0.8s"</code></td>
+              </tr>
+              <tr>
+                <td><code>atlas -v, version</code></td>
+                <td>Rich system, GPU, runtime, and shell specification card</td>
+                <td><code>atlas -v</code></td>
+              </tr>
+            </tbody>
+          </table>
         </article>
 
         <!-- Article: Keyboard Shortcuts -->
@@ -231,6 +298,24 @@ https://github.com/akrram0/atlas-terminal/releases/latest</code></pre>
           <p>
             The duration threshold can be configured to <strong>5s</strong>, <strong>10s</strong>, <strong>30s</strong>, or <strong>60s</strong> in Settings under <strong>Background Notifications</strong>.
           </p>
+        </article>
+
+        <!-- Article: Dynamic Island HUD -->
+        <article class="docs-article" id="dynamic-island">
+          <h2>Dynamic Island Topbar HUD</h2>
+          <p>
+            When running in borderless mode or executing background tasks, Atlas Terminal renders an organic Dynamic Island capsule at the top center of the screen.
+          </p>
+          <p>
+            The island animates with fluid spring physics to present:
+          </p>
+          <ul>
+            <li><strong>Theme Switching Feedback</strong>: Displays the active color preset when cycling with <kbd>Alt</kbd>+<kbd>T</kbd>.</li>
+            <li><strong>Update Available Pulses</strong>: Discreetly informs you when an in-place delta update is ready to install.</li>
+            <li><strong>Shell Script Triggers (OSC 1338)</strong>: Any script, CI runner, or shell function can trigger the Dynamic Island with custom titles and messages:</li>
+          </ul>
+          <pre><code># Trigger Dynamic Island notification from bash or powershell:
+atlas hud notify "Build Success" "All 83 tests passed in 2.7s"</code></pre>
         </article>
 
         <!-- Article: Split Panes & Tabs -->

@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <em>DirectX-accelerated via GPUI · Ultra-Smooth Native Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic · iTerm2 Inline Image Graphics</em>
+  <em>DirectX-accelerated via GPUI · Ultra-Smooth Native Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic · iTerm2 Inline Graphics · Built-in Developer Satellites Suite</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml"><img src="https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml/badge.svg" alt="CI & Release Pipeline"></a>
-  <a href="https://github.com/akrram0/atlas-terminal/releases/latest"><img src="https://img.shields.io/github/v/release/akrram0/atlas-terminal?color=C05A28&logo=github" alt="Latest Release"></a>
+  <a href="https://github.com/akrram0/atlas-terminal/releases/latest"><img src="https://img.shields.io/github/v/release/akrram0/atlas-terminal?color=FF4F7B&logo=github" alt="Latest Release"></a>
   <img src="https://img.shields.io/badge/Windows-11%20%7C%2010-0078D6?logo=windows&logoColor=white" alt="Windows 11">
   <img src="https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/Engine-GPUI%20DirectX-7C3AED" alt="GPUI">
@@ -40,18 +40,45 @@ Get the latest release for Windows (x64):
 | :--- | :--- | :--- |
 | **Windows Installer** | Start Menu integration, desktop shortcuts & background auto-updates | [Download `.exe`](https://github.com/akrram0/atlas-terminal/releases/latest) |
 | **Portable Archive** | Standalone zero-install archive, extract and run | [Download `.zip`](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip) |
+| **Official Documentation** | Complete user guide, architecture specs, and shortcuts reference | [Read Docs](https://akrram0.github.io/atlas-terminal/docs/) |
 | **All Releases** | Release history, changelogs, and SHA-256 checksums | [View Releases](https://github.com/akrram0/atlas-terminal/releases) |
+
+### Quick Install via winget
+```powershell
+winget install akrram0.atlas-terminal
+```
 
 ---
 
-## Documentation
+## Atlas Satellites — Subterminal Companion Tools
 
-Comprehensive guides and architecture specifications are available in the [`docs/`](docs/) directory:
+Atlas ships with an embedded, zero-overhead developer companion suite accessible via `atlas <command>`:
 
-| Guide | Description |
-| :--- | :--- |
-| 📖 **[User Guide](docs/user-guide.md)** | Complete manual: installation, Fastfetch image setup, keyboard shortcuts, split panes, hyperlinks, and WSL profiles. |
-| 🏗️ **[Architecture & Engine Design](docs/architecture.md)** | Technical deep-dive: GPUI DirectX rendering pipeline, Windows DWM acrylic integration, and damped spring cursor kinematics. |
+```powershell
+atlas tools
+```
+
+```
+SYSTEM TOOLS:
+  atlas version, -v       Rich system, GPU & runtime specification card
+  atlas info, env         Toolchain, detected shells & PTY environment audit
+  atlas theme             Inspect, list, and switch UI themes (Dark, Solarized, Tokyo Night, Nord, Catppuccin)
+  atlas config            Configuration getter, setter & direct editor
+  atlas hud, island       Dynamic Island notification & status pulse trigger
+  atlas bench             PTY throughput & 24-bit truecolor render bench
+
+DEVELOPER PRODUCTIVITY TOOLS:
+  atlas port [number]     Active listening port inspector & 1-shot process killer (e.g. atlas port 3000 -k)
+  atlas jwt [token]       Offline, privacy-safe JSON Web Token inspector & payload decoder
+  atlas qr [text/url]     Instant terminal QR code generator for URLs, WiFi, and 2FA secrets
+  atlas json, jq [filter] Colorized JSON formatter, validator, and key query selector
+  atlas diff [file1] [2]  Fast terminal diff viewer with line numbers and syntax coloring
+
+VISUAL SATELLITES:
+  atlas img, view [path]  High-speed inline image viewer (OSC 1337 GPU texture & 24-bit halfblocks)
+  atlas pick, hints       Interactive screen token extractor (URLs, Git SHAs, paths, IPs)
+  atlas ai [ask/fix]      Terminal AI companion for shell questions and command diagnostics
+```
 
 ---
 
@@ -64,9 +91,9 @@ Comprehensive guides and architecture specifications are available in the [`docs
 
 ### 🎨 Apple/macOS Aesthetic on Windows
 - **Restrained Visual Hierarchy**: Strict 8pt spatial grid, SF-inspired typographic hierarchy, and zero arbitrary decorative clutter.
-- **Native Windows 11 DWM Acrylic**: Full-bleed frameless client area with hardware-accelerated acrylic blur and native DWM corner rounding.
-- **Dynamic Alt-Screen Sheets**: Alternate screen applications (OpenCode, Lazygit, Neovim) seamlessly match theme backgrounds without corner clipping or transparency bleed.
-- **Curated Themes**: Instant zero-flash crossfading between **Matte Dark** and **Warm Paper**, plus automatic Windows dark/light system synchronization.
+- **Fluent Acrylic Blur & Pure Glass**: Full-bleed frameless client area with native Windows 11 DWM Acrylic glass blur, pure transparent glass mode (0% opacity), and native DWM corner rounding.
+- **Dynamic Island HUD**: Minimalist top-bar notification capsule for real-time update pulses, shell status changes, and background alerts.
+- **Curated Themes**: Instant zero-flash switching between **Tokyo Night**, **Solarized Light/Dark**, **Catppuccin**, **Nord**, **GitHub**, and **Atlas Default**.
 
 ### 🖼️ Native Inline Graphics (iTerm2 OSC 1337)
 - Renders images directly within the terminal grid without Sixel or WebViews.
@@ -81,7 +108,7 @@ Comprehensive guides and architecture specifications are available in the [`docs
 ### 🖱️ Modern TUI & Mouse Reporting
 - Complete SGR mouse tracking (`?1000h` / `?1006h`): click buttons, select lists, and scroll diffs inside interactive terminal applications.
 - Hold `Shift` while dragging to bypass application mouse capture for standard text selection.
-- `Ctrl + Click` to open any visible URL directly in your browser.
+- `Ctrl + Click` to open any visible URL directly in your default browser safely in the background.
 
 ### 📑 Workspaces, Tabs & Split Panes
 - Organize complex workflows with horizontal (`Alt+D`) and vertical (`Alt+Enter`) Hyprland-style split panes.
@@ -105,7 +132,7 @@ Comprehensive guides and architecture specifications are available in the [`docs
 ### 🔍 Floating Command Palette (`Ctrl+K` / `Ctrl+Shift+P`)
 - Raycast-style instant palette with multi-word fuzzy search.
 - Launch shell profiles, split panes, and actions without touching the mouse.
-- Pre-filters visible terminal URLs for one-key link opening (`Ctrl+Shift+O`).
+- Pre-filters visible terminal URLs for one-key link opening (`Ctrl+Shift+U`).
 
 ### 🔄 Background Delta Auto-Updater
 - Silent update checks against GitHub Releases with conditional ETag validation.
@@ -157,7 +184,7 @@ powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1
 | `Ctrl+,` | Open Settings Dashboard |
 | `F11` | Toggle Borderless Fullscreen |
 
-> For the complete 35+ shortcut reference, see the **[User Guide — Keyboard Shortcuts](docs/user-guide.md#3-keyboard-shortcuts-reference)**.
+> For the complete documentation, guides, and keyboard shortcut map, visit the [Atlas Terminal Documentation](https://akrram0.github.io/atlas-terminal/docs/).
 
 ---
 
@@ -185,8 +212,9 @@ powershell -ExecutionPolicy Bypass -File scripts/benchmark.ps1
 | **Window & Rendering** | `gpui 0.2.2` | Zed's GPU framework running directly on DirectX on Windows |
 | **Terminal Core** | `alacritty_terminal 0.26` | High-speed VTE parser, cell grid, and scrollback history |
 | **PTY Layer** | `portable-pty 0.8` | Windows ConPTY integration with UTF-8 byte stream processing |
+| **Companion Tools** | `src/tools` & `src/bin/atlas.rs` | Embedded developer satellite suite (port, jwt, qr, diff, pick, img, hud) |
 | **Inline Graphics** | `image_osc` | Stateful OSC 1337 scanner + GPU-ready BGRA `gpui::RenderImage` textures |
-| **Vector Box Engine** | `src/terminal/procedural.rs` | Windows Terminal AtlasEngine-inspired procedural cubic Bézier vector engine with dynamic stroke scaling |
+| **Vector Box Engine** | `src/terminal/procedural.rs` | Procedural cubic Bézier vector box drawing with dynamic stroke scaling |
 | **Async Engine** | `smol 2` | Channel synchronization between ConPTY reader thread & UI thread |
 | **Iconography** | Vector SVGs (`crate::icons`) | 100% native Solar Linear stroked vector SVGs |
 | **Typography** | Embedded Nerd Font | Bundled `SymbolsNerdFontMono-Regular.ttf` for icons, fastfetch & starship |
