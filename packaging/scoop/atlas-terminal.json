@@ -1,0 +1,30 @@
+{
+    "version": "0.2.25",
+    "description": "Fast, GPU-accelerated Apple-style terminal with subterminal satellites and zero-latency rendering",
+    "homepage": "https://github.com/akrram0/atlas-terminal",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/akrram0/atlas-terminal/releases/download/v0.2.25/atlas-terminal-windows-x64.zip",
+            "hash": "133c569d54720c456ffc2aad77a80905163587e16bb5d898d81a599af11d0223"
+        }
+    },
+    "bin": [
+        "atlas-terminal.exe",
+        "atlas.exe"
+    ],
+    "shortcuts": [
+        [
+            "atlas-terminal.exe",
+            "Atlas Terminal"
+        ]
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/akrram0/atlas-terminal/releases/download/v$version/atlas-terminal-windows-x64.zip"
+            }
+        }
+    }
+}
