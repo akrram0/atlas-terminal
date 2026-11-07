@@ -2,7 +2,7 @@
 
 use gpui::prelude::*;
 use gpui::{
-    div, px, rgb, rgba, ClickEvent, Context, ElementId, FontWeight,
+    div, px, rgba, ClickEvent, Context, ElementId, FontWeight,
     IntoElement, Rgba,
 };
 
@@ -10,7 +10,7 @@ use crate::icons;
 use crate::motion::Motion;
 use crate::theme::Theme;
 use crate::workspace::{format_tab_title, session_icon_for_pane};
-use super::{AtlasView, UpdateDownloadState};
+use super::AtlasView;
 
 impl AtlasView {
     pub(crate) fn render_island_hud(
@@ -195,70 +195,6 @@ impl AtlasView {
                     view.trigger_island_hud(cx);
                 })),
         );
-
-        // 1-Click Update / Restart Button
-        if matches!(self.update_download_state, UpdateDownloadState::ReadyToRestart { .. }) {
-            right_section = right_section.child(
-                div()
-                    .id(ElementId::named_usize("island-restart-btn", 0))
-                    .px(px(9.0))
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .rounded(px(6.0))
-                    .bg(rgb(0x107C41))
-                    .text_color(rgb(0xFFFFFF))
-                    .text_size(px(11.5))
-                    .font_weight(FontWeight::BOLD)
-                    .cursor_pointer()
-                    .hover(|s| s.opacity(0.85))
-                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(rgb(0xFFFFFF)))
-                    .child("Restart")
-                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        view.apply_update_and_restart(cx);
-                    })),
-            );
-        } else if let UpdateDownloadState::Downloading { percent, .. } = self.update_download_state {
-            right_section = right_section.child(
-                div()
-                    .id(ElementId::named_usize("island-downloading-btn", 0))
-                    .px(px(9.0))
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .rounded(px(6.0))
-                    .bg(accent_color)
-                    .text_color(tb2.elevated_bg)
-                    .text_size(px(11.5))
-                    .font_weight(FontWeight::BOLD)
-                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb2.elevated_bg))
-                    .child(format!("{percent}%")),
-            );
-        } else if self.available_update.is_some() {
-            right_section = right_section.child(
-                div()
-                    .id(ElementId::named_usize("island-update-btn", 0))
-                    .px(px(9.0))
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .rounded(px(6.0))
-                    .bg(accent_color)
-                    .text_color(tb2.elevated_bg)
-                    .text_size(px(11.5))
-                    .font_weight(FontWeight::BOLD)
-                    .cursor_pointer()
-                    .hover(|s| s.opacity(0.85))
-                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb2.elevated_bg))
-                    .child("Update")
-                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        view.start_download_update(cx);
-                    })),
-            );
-        }
 
         // Split Pane Button
         let split_btn = div()

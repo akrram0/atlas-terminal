@@ -400,8 +400,14 @@ impl Default for AppSettingsFile {
 }
 
 pub fn load_app_settings() -> AppSettingsFile {
-    let settings_path = crate::user_data_dir().join("settings.json");
-    if let Ok(content) = std::fs::read_to_string(&settings_path) {
+    let base = crate::user_data_dir();
+    let settings_path = base.join("settings.json");
+    let bak_path = base.join("settings.json.bak");
+
+    let content = std::fs::read_to_string(&settings_path)
+        .or_else(|_| std::fs::read_to_string(&bak_path));
+
+    if let Ok(content) = content {
         if let Ok(mut s) = serde_json::from_str::<AppSettingsFile>(&content) {
             if s.theme_dark.is_empty() {
                 s.theme_dark = default_theme_dark();
@@ -429,8 +435,17 @@ pub fn save_app_settings(s: &AppSettingsFile) {
     let base = crate::user_data_dir();
     let _ = std::fs::create_dir_all(&base);
     let settings_path = base.join("settings.json");
+    let tmp_path = base.join("settings.json.tmp");
+    let bak_path = base.join("settings.json.bak");
+
     if let Ok(json) = serde_json::to_string_pretty(s) {
-        let _ = std::fs::write(&settings_path, json);
+        // Atomic save: write to .tmp first, back up existing .json, then atomic rename
+        if std::fs::write(&tmp_path, json).is_ok() {
+            if settings_path.exists() {
+                let _ = std::fs::copy(&settings_path, &bak_path);
+            }
+            let _ = std::fs::rename(&tmp_path, &settings_path);
+        }
     }
 }
 

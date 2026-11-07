@@ -16,7 +16,7 @@ use crate::ui::overlay::{
     HOVER_MARK_CAPSULE_CHEVRON, HOVER_MARK_CAPSULE_PLUS, HOVER_MARK_WINDOW,
 };
 use crate::workspace::{format_tab_title, session_icon_for_pane};
-use super::{AtlasView, UpdateDownloadState};
+use super::AtlasView;
 
 impl AtlasView {
     pub(crate) fn render_top_bar(
@@ -520,84 +520,6 @@ impl AtlasView {
         }
 
         bar = bar.child(caption_spacer(0));
-
-        if let Some(ref update) = self.available_update {
-            let badge_ink = tb.accent;
-            let badge_bg = Rgba {
-                a: 0.16,
-                ..tb.accent
-            };
-            let badge_border = Rgba {
-                a: 0.28,
-                ..tb.accent
-            };
-            let (label, show_dot) = match &self.update_download_state {
-                UpdateDownloadState::Downloading { percent, .. } => {
-                    (format!("Downloading {}%", (percent * 100.0) as u32), false)
-                }
-                UpdateDownloadState::Verifying { .. } => {
-                    ("Verifying…".to_string(), false)
-                }
-                UpdateDownloadState::ReadyToRestart { .. } => {
-                    ("Restart to Apply".to_string(), true)
-                }
-                UpdateDownloadState::Failed { .. } => {
-                    ("Update Error".to_string(), true)
-                }
-                _ => (format!("v{}", update.version), true),
-            };
-            let mut badge = div()
-                .id(ElementId::named_usize("topbar-update-badge", 0))
-                .h(px(28.0))
-                .px(px(9.0))
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .rounded(px(6.0))
-                .bg(badge_bg)
-                .border_1()
-                .border_color(badge_border)
-                .text_color(badge_ink)
-                .hover(move |s| s.opacity(0.85))
-                .active(move |s| s.opacity(0.75));
-
-            if show_dot {
-                badge = badge.child(div().w(px(6.0)).h(px(6.0)).rounded_full().bg(badge_ink));
-            }
-
-            badge = badge
-                .child(
-                    div()
-                        .text_size(px(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .child(label),
-                )
-                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                    if let Some(ref info) = view.available_update {
-                        let msg = format!("Atlas Terminal v{} is available!", info.version);
-                        view.show_update_toast(msg, true, cx);
-                    } else {
-                        view.check_updates_manual(cx);
-                    }
-                }));
-
-            bar = bar.child(badge.breathe("topbar-update-badge-breathe"));
-        } else if self.is_checking_updates {
-            bar = bar.child(
-                div()
-                    .h(px(28.0))
-                    .px(px(9.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .rounded(px(6.0))
-                    .text_color(tb.faint_fg)
-                    .child(icons::icon(icons::REFRESH).size(px(13.0)).text_color(tb.faint_fg))
-                    .child(div().text_size(px(12.0)).child("Checking..."))
-                    .breathe("topbar-checking-breathe"),
-            );
-        }
 
         bar = bar.child(div().w(px(6.0)));
 

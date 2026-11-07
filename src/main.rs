@@ -102,6 +102,27 @@ fn cleanup_legacy_debris() {
             let _ = std::fs::remove_dir_all(&legacy_roaming);
         }
     }
+
+    // 2. Remove stale executable backups and temporary update debris
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let _ = std::fs::remove_file(exe_dir.join("atlas-terminal.old.exe"));
+            let _ = std::fs::remove_file(exe_dir.join("atlas-terminal.update.exe"));
+        }
+    }
+
+    // 3. Purge completed/stale update installers in user updates directory
+    let updates_dir = user_data_dir().join("updates");
+    if let Ok(entries) = std::fs::read_dir(&updates_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                if matches!(ext, "exe" | "part" | "tmp" | "zstpatch") {
+                    let _ = std::fs::remove_file(p);
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn init_user_data() {

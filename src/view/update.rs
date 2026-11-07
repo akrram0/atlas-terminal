@@ -54,11 +54,18 @@ impl AtlasView {
     pub(crate) fn show_update_toast(&mut self, message: String, is_ok: bool, cx: &mut Context<Self>) {
         self.update_toast = Some((message, is_ok, std::time::Instant::now()));
         cx.notify();
+        // If an update is ready to restart or actively downloading, keep it visible in the Dynamic Island
+        if matches!(self.update_download_state, UpdateDownloadState::ReadyToRestart { .. } | UpdateDownloadState::Downloading { .. }) {
+            return;
+        }
         cx.spawn(async move |this, cx| {
-            smol::Timer::after(Duration::from_millis(3800)).await;
+            smol::Timer::after(Duration::from_millis(4200)).await;
             let _ = this.update(cx, |view, cx| {
+                if matches!(view.update_download_state, UpdateDownloadState::ReadyToRestart { .. } | UpdateDownloadState::Downloading { .. }) {
+                    return;
+                }
                 if let Some((_, _, inst)) = view.update_toast {
-                    if inst.elapsed() >= Duration::from_millis(3700) {
+                    if inst.elapsed() >= Duration::from_millis(4000) {
                         view.update_toast = None;
                         cx.notify();
                     }
@@ -76,92 +83,126 @@ impl AtlasView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let text_color = theme.chrome_fg_active;
-        let icon_path = if is_ok {
+        let is_ready = matches!(self.update_download_state, UpdateDownloadState::ReadyToRestart { .. });
+        let is_downloading = matches!(self.update_download_state, UpdateDownloadState::Downloading { .. });
+
+        let (border_color, icon_path, icon_color) = if is_ready {
+            (rgba(0x22C55ECC), icons::CHECK, rgb(0x22C55E))
+        } else if is_downloading {
+            (Rgba { a: 0.65, ..theme.accent }, icons::CLOUD_DOWNLOAD, theme.accent)
+        } else if self.available_update.is_some() {
+            (Rgba { a: 0.45, ..theme.accent }, icons::SPARKLE, theme.accent)
+        } else if is_ok {
             if message.starts_with("Checking") {
-                icons::REFRESH
+                (theme.elevated_border, icons::REFRESH, theme.accent)
             } else {
-                icons::CHECK
+                (theme.elevated_border, icons::CHECK, theme.accent)
             }
         } else {
-            icons::CLOSE
-        };
-        let icon_color = if is_ok {
-            theme.accent
-        } else {
-            rgb(0xE6A700)
+            (rgba(0xE6A70088), icons::CLOSE, rgb(0xE6A700))
         };
 
         let zoomed = crate::rounded_corners::is_zoomed();
         let toast_top = if zoomed { px(58.0) } else { px(50.0) };
 
         let mut pill = div()
-            .id(ElementId::named_usize("update-toast-pill", 0))
+            .id(ElementId::named_usize("dynamic-island-updater", 0))
             .flex()
             .flex_row()
             .items_center()
             .gap(px(10.0))
             .px(px(16.0))
-            .py(px(8.0))
+            .py(px(7.0))
             .rounded_full()
             .bg(theme.elevated_bg)
             .border_1()
-            .border_color(theme.elevated_border)
-            .shadow_lg()
-            .cursor_pointer()
-            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                view.update_toast = None;
-                cx.notify();
-            }))
+            .border_color(border_color)
+            .shadow_xl()
+            .cursor_default()
             .child(
                 icons::icon(icon_path)
-                    .size(px(14.0))
+                    .size(px(15.0))
                     .text_color(icon_color),
             )
             .child(
                 div()
-                    .text_size(px(13.0))
+                    .text_size(px(12.5))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(text_color)
                     .child(message.to_string()),
             );
 
-        if self.available_update.is_some() {
-            let btn_label = match &self.update_download_state {
-                UpdateDownloadState::Downloading { percent, .. } => {
-                    format!("{:.0}%", percent)
-                }
-                UpdateDownloadState::Verifying { .. } => "Verifying…".to_string(),
-                UpdateDownloadState::ReadyToRestart { .. } => "Restart & Apply".to_string(),
-                _ => "Update".to_string(),
-            };
+        if is_ready {
             pill = pill.child(
                 div()
-                    .id(ElementId::named_usize("toast-update-btn", 0))
-                    .px(px(9.0))
-                    .py(px(2.0))
+                    .id(ElementId::named_usize("island-restart-action", 0))
+                    .px(px(10.0))
+                    .py(px(3.0))
+                    .rounded_full()
+                    .bg(rgb(0x107C41))
+                    .text_color(rgb(0xFFFFFF))
+                    .text_size(px(11.5))
+                    .font_weight(FontWeight::BOLD)
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.0))
+                            .child(icons::icon(icons::REFRESH).size(px(12.0)).text_color(rgb(0xFFFFFF)))
+                            .child("Restart & Apply"),
+                    )
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.apply_update_and_restart(cx);
+                    })),
+            );
+        } else if is_downloading {
+            if let UpdateDownloadState::Downloading { percent, .. } = self.update_download_state {
+                pill = pill.child(
+                    div()
+                        .id(ElementId::named_usize("island-download-progress", 0))
+                        .px(px(9.0))
+                        .py(px(2.5))
+                        .rounded_full()
+                        .bg(Rgba { a: 0.20, ..theme.accent })
+                        .text_color(theme.accent)
+                        .text_size(px(11.5))
+                        .font_weight(FontWeight::BOLD)
+                        .child(format!("{:.0}%", percent * 100.0)),
+                );
+            }
+        } else if self.available_update.is_some() {
+            pill = pill.child(
+                div()
+                    .id(ElementId::named_usize("island-download-action", 0))
+                    .px(px(10.0))
+                    .py(px(3.0))
                     .rounded_full()
                     .bg(theme.accent)
                     .text_color(theme.elevated_bg)
-                    .text_size(px(12.0))
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_size(px(11.5))
+                    .font_weight(FontWeight::BOLD)
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.85))
+                    .child("Download")
                     .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                        if matches!(view.update_download_state, UpdateDownloadState::ReadyToRestart { .. }) {
-                            view.apply_update_and_restart(cx);
-                        } else if matches!(view.update_download_state, UpdateDownloadState::Idle) {
-                            view.start_download_update(cx);
-                        }
-                    }))
-                    .child(btn_label),
+                        view.start_download_update(cx);
+                    })),
             );
         }
 
         pill = pill.child(
             div()
+                .id(ElementId::named_usize("island-dismiss-btn", 0))
                 .pl(px(4.0))
                 .text_color(theme.faint_fg)
                 .hover(|s| s.text_color(theme.fg))
+                .cursor_pointer()
+                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    view.update_toast = None;
+                    cx.notify();
+                }))
                 .child(icons::icon(icons::CLOSE).size(px(11.0))),
         );
 
@@ -391,6 +432,7 @@ impl AtlasView {
             total_bytes: info.download_size().unwrap_or(0),
             percent: 0.0,
         };
+        self.show_update_toast(format!("Downloading Atlas v{}…", info.version), true, cx);
         cx.notify();
 
         let (progress_tx, progress_rx) = smol::channel::unbounded::<updater::DownloadProgress>();
@@ -449,15 +491,18 @@ impl AtlasView {
                     match res {
                         Ok(prepared) => {
                             view.update_download_state = UpdateDownloadState::ReadyToRestart {
-                                version: ver,
+                                version: ver.clone(),
                                 prepared,
                             };
+                            let msg = format!("Atlas Terminal v{} is ready!", ver);
+                            view.show_update_toast(msg, true, cx);
                         }
                         Err(err) => {
                             view.update_download_state = UpdateDownloadState::Failed {
                                 version: ver,
-                                error: err,
+                                error: err.clone(),
                             };
+                            view.show_update_toast(format!("Update failed: {err}"), false, cx);
                         }
                     }
                     cx.notify();
