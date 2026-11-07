@@ -37,13 +37,8 @@ impl AtlasView {
                     ..tb.panel_bg
                 }
             } else {
-                let sb_alpha = if op <= 0.05 {
-                    (0.06 + op * 2.0).clamp(0.0, 1.0)
-                } else {
-                    (0.16 + (op - 0.05) * 0.884).clamp(0.0, 1.0)
-                };
                 Rgba {
-                    a: sb_alpha,
+                    a: (op * 0.95).clamp(0.0, 1.0),
                     ..tb.panel_bg
                 }
             }

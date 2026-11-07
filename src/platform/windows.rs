@@ -265,38 +265,18 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
                 // When maximized (zoomed):
                 // ACCENT_ENABLE_ACRYLICBLURBEHIND drops to solid opaque fallback in Windows DWM!
                 // ACCENT_ENABLE_BLURBEHIND preserves DWM blur across full screen without turning black.
-                let alpha = if op <= 0.05 {
-                    (15.0 + op * 400.0) as u32
-                } else {
-                    ((op.clamp(0.0, 1.0)) * 255.0) as u32
-                };
-                let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
-                    0x0a0c10
-                } else {
-                    0xF2F4F7
-                };
                 AccentPolicy {
                     accent_state: ACCENT_ENABLE_BLURBEHIND,
                     accent_flags: 2,
-                    gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
+                    gradient_color: 0,
                     animation_id: 0,
                 }
             } else {
-                // When floating/windowed: full Fluent Acrylic blur with noise texture
-                let alpha = if op <= 0.05 {
-                    (15.0 + op * 400.0) as u32
-                } else {
-                    ((op.clamp(0.0, 1.0)) * 255.0) as u32
-                };
-                let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
-                    0x0a0c10
-                } else {
-                    0xF2F4F7
-                };
+                // When floating/windowed: neutral Fluent Acrylic blur behind (blended with GPUI theme surface)
                 AccentPolicy {
                     accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                    accent_flags: 2,
-                    gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
+                    accent_flags: 0,
+                    gradient_color: 0x01000000,
                     animation_id: 0,
                 }
             }
@@ -558,15 +538,13 @@ pub fn set_dark_mode(dark: bool) {
         return;
     }
     if previous != dark {
-        // The acrylic veil colour follows the theme; repaint the accent so
-        // a light/dark switch does not leave the old tint behind.
+        // Repaint the accent so a light/dark switch does not leave the old tint behind.
         unsafe {
             PostMessageW(raw as Hwnd, WM_APP_BACKDROP, 0, 0);
         }
     }
     let hwnd = raw as Hwnd;
-    let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
-    let value: i32 = if dark && op > 0.02 { 1 } else { 0 };
+    let value: i32 = if dark { 1 } else { 0 };
     unsafe {
         let _ = DwmSetWindowAttribute(
             hwnd,
@@ -592,16 +570,6 @@ pub fn set_opacity(opacity: f32) {
     if raw != 0 {
         let hwnd = raw as Hwnd;
         apply_backdrop(hwnd, opacity < 0.999);
-        let dark = DARK_MODE.load(Ordering::SeqCst);
-        let value: i32 = if dark && opacity > 0.02 { 1 } else { 0 };
-        unsafe {
-            let _ = DwmSetWindowAttribute(
-                hwnd,
-                DWMWA_USE_IMMERSIVE_DARK_MODE,
-                &value as *const i32 as *const core::ffi::c_void,
-                core::mem::size_of::<i32>() as u32,
-            );
-        }
     }
 }
 

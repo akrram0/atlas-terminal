@@ -1006,23 +1006,13 @@ impl Render for AtlasView {
                 };
                 (chrome, sheet, rgba(0x00000000))
             } else {
-                let sheet_alpha = if op <= 0.05 {
-                    (0.02 + op * 2.0).clamp(0.0, 1.0)
-                } else {
-                    (0.12 + (op - 0.05) * 0.926).clamp(0.0, 1.0)
-                };
-                let chrome_alpha = if op <= 0.05 {
-                    (0.06 + op * 2.0).clamp(0.0, 1.0)
-                } else {
-                    (0.16 + (op - 0.05) * 0.884).clamp(0.0, 1.0)
+                let sheet = Rgba {
+                    a: op,
+                    ..term_base
                 };
                 let chrome = Rgba {
-                    a: chrome_alpha,
+                    a: (op * 0.95).clamp(0.0, 1.0),
                     ..tb.panel_bg
-                };
-                let sheet = Rgba {
-                    a: sheet_alpha,
-                    ..term_base
                 };
                 (chrome, sheet, rgba(0x00000000))
             }
