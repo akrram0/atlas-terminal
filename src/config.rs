@@ -29,6 +29,9 @@ pub const ACTION_SCROLL_TO_TOP: &str = "scroll_to_top";
 pub const ACTION_SCROLL_TO_BOTTOM: &str = "scroll_to_bottom";
 pub const ACTION_OPEN_URL_PICKER: &str = "open_url_picker";
 pub const ACTION_TOGGLE_THEME: &str = "toggle_theme";
+pub const ACTION_NEXT_THEME: &str = "next_theme";
+pub const ACTION_PREV_THEME: &str = "prev_theme";
+pub const ACTION_TOGGLE_DARK_LIGHT: &str = "toggle_dark_light";
 pub const ACTION_TOGGLE_MAXIMIZE: &str = "toggle_maximize";
 pub const ACTION_FIND: &str = "find";
 pub const ACTION_TOGGLE_SIDEBAR: &str = "toggle_sidebar";
@@ -67,7 +70,10 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_CLEAR_SCROLLBACK => "Clear Scrollback Buffer",
         ACTION_FOCUS_NEXT_PANE => "Focus Next Split Pane",
         ACTION_FOCUS_PREV_PANE => "Focus Previous Split Pane",
-        ACTION_TOGGLE_THEME => "Toggle Dark / Light Theme",
+        ACTION_NEXT_THEME => "Next Theme Preset",
+        ACTION_PREV_THEME => "Previous Theme Preset",
+        ACTION_TOGGLE_DARK_LIGHT => "Toggle Dark / Light Mode",
+        ACTION_TOGGLE_THEME => "Toggle Dark / Light Mode",
         ACTION_TOGGLE_MAXIMIZE => "Toggle Pane Zoom / Maximize",
         ACTION_TOGGLE_SIDEBAR => "Toggle Sidebar / Tab Bar",
         ACTION_PROFILE_MENU => "Open Shell / Profile Menu",
@@ -107,7 +113,10 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_CLEAR_SCROLLBACK.to_string(), "ctrl+shift+k".to_string());
     m.insert(ACTION_FOCUS_NEXT_PANE.to_string(), "alt+right".to_string());
     m.insert(ACTION_FOCUS_PREV_PANE.to_string(), "alt+left".to_string());
-    m.insert(ACTION_TOGGLE_THEME.to_string(), "alt+t".to_string());
+    m.insert(ACTION_NEXT_THEME.to_string(), "alt+t".to_string());
+    m.insert(ACTION_PREV_THEME.to_string(), "alt+shift+t".to_string());
+    m.insert(ACTION_TOGGLE_DARK_LIGHT.to_string(), "ctrl+shift+l".to_string());
+    m.insert(ACTION_TOGGLE_THEME.to_string(), "ctrl+shift+l".to_string());
     m.insert(ACTION_TOGGLE_MAXIMIZE.to_string(), "alt+z".to_string());
     m.insert(ACTION_FIND.to_string(), "ctrl+f".to_string());
     m.insert(ACTION_TOGGLE_SIDEBAR.to_string(), "ctrl+b".to_string());
@@ -441,6 +450,17 @@ mod tests {
         assert_eq!(loaded.theme_mode, "auto");
         assert_eq!(loaded.theme_dark, "tokyo_night");
         assert_eq!(loaded.theme_light, "solarized");
+    }
+
+    #[test]
+    fn test_theme_and_mode_shortcuts_configured() {
+        let defaults = default_shortcuts();
+        assert_eq!(defaults.get(ACTION_NEXT_THEME).map(|s| s.as_str()), Some("alt+t"));
+        assert_eq!(defaults.get(ACTION_PREV_THEME).map(|s| s.as_str()), Some("alt+shift+t"));
+        assert_eq!(defaults.get(ACTION_TOGGLE_DARK_LIGHT).map(|s| s.as_str()), Some("ctrl+shift+l"));
+        assert!(!action_display_name(ACTION_NEXT_THEME).is_empty());
+        assert!(!action_display_name(ACTION_PREV_THEME).is_empty());
+        assert!(!action_display_name(ACTION_TOGGLE_DARK_LIGHT).is_empty());
     }
 
     #[test]

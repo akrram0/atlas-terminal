@@ -113,6 +113,8 @@ pub enum Command {
     ScrollToTop,
     ScrollToBottom,
     ToggleTheme,
+    NextTheme,
+    PrevTheme,
     OpenSettings,
     FontInc,
     FontDec,
@@ -182,7 +184,9 @@ pub fn command_subtitle(cmd: Command) -> &'static str {
         Command::OpenLatestUrl => "Links · Open latest URL detected in buffer",
         Command::RestartTab => "Session · Restart active shell pane",
         Command::RenameTab => "Tab · Set a custom title for this tab",
-        Command::ToggleTheme => "Appearance · Switch between Dark & Light themes",
+        Command::NextTheme => "Appearance · Switch to next color theme (Catppuccin, Tokyo Night, etc.)",
+        Command::PrevTheme => "Appearance · Switch to previous color theme",
+        Command::ToggleTheme => "Appearance · Switch between Dark and Light mode",
         Command::OpenSettings => "Settings · Configure terminal, font, and themes",
         Command::FontInc => "Display · Increase terminal font size",
         Command::FontDec => "Display · Decrease terminal font size",
@@ -227,7 +231,7 @@ mod tests {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 37] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 39] = [
     (Command::NewWindow, icons::ATLAS_MARK, "New window", "Ctrl Shift N"),
     (Command::ToggleSidebar, icons::SIDEBAR_LEFT, "Toggle Sidebar / Tab Bar", "Ctrl B"),
     (Command::FindInTerminal, icons::SEARCH, "Find in terminal...", "Ctrl F"),
@@ -270,10 +274,22 @@ pub const COMMANDS: [(Command, &str, &str, &str); 37] = [
     (Command::RestartTab, icons::REFRESH, "Restart pane", "R"),
     (Command::RenameTab, icons::PEN, "Rename tab", ""),
     (
+        Command::NextTheme,
+        icons::SLIDERS,
+        "Next theme preset",
+        "Alt T",
+    ),
+    (
+        Command::PrevTheme,
+        icons::SLIDERS,
+        "Previous theme preset",
+        "Alt Shift T",
+    ),
+    (
         Command::ToggleTheme,
         icons::SUN,
-        "Switch theme",
-        "Alt T",
+        "Toggle dark / light mode",
+        "Ctrl Shift L",
     ),
     (Command::OpenSettings, icons::SETTINGS, "Open settings", "Ctrl ,"),
     (Command::FontInc, icons::SETTINGS, "Increase font size", "Ctrl ="),
@@ -348,7 +364,9 @@ impl AtlasView {
             Command::ScrollToTop => Some(ACTION_SCROLL_TO_TOP),
             Command::ScrollToBottom => Some(ACTION_SCROLL_TO_BOTTOM),
             Command::OpenLatestUrl => Some(ACTION_OPEN_URL_PICKER),
-            Command::ToggleTheme => Some(ACTION_TOGGLE_THEME),
+            Command::NextTheme => Some(ACTION_NEXT_THEME),
+            Command::PrevTheme => Some(ACTION_PREV_THEME),
+            Command::ToggleTheme => Some(ACTION_TOGGLE_DARK_LIGHT),
             Command::OpenSettings => Some(ACTION_OPEN_SETTINGS),
             Command::FontInc => Some(ACTION_ZOOM_IN),
             Command::FontDec => Some(ACTION_ZOOM_OUT),
@@ -792,6 +810,14 @@ impl AtlasView {
                 self.scroll(-100_000);
                 self.focus_main(window);
                 cx.notify();
+            }
+            Command::NextTheme => {
+                self.next_theme(cx);
+                self.focus_main(window);
+            }
+            Command::PrevTheme => {
+                self.prev_theme(cx);
+                self.focus_main(window);
             }
             Command::ToggleTheme => {
                 self.toggle_theme(cx);

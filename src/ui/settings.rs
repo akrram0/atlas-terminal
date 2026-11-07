@@ -17,7 +17,8 @@ use crate::config::{
     ACTION_PREV_TAB, ACTION_SPLIT_HORIZONTAL, ACTION_SPLIT_VERTICAL, ACTION_ZOOM_IN,
     ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_SELECT_ALL, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_TO_TOP, ACTION_SCROLL_TO_BOTTOM,
-    ACTION_OPEN_URL_PICKER, ACTION_TOGGLE_THEME, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR,
+    ACTION_OPEN_URL_PICKER, ACTION_NEXT_THEME, ACTION_PREV_THEME, ACTION_TOGGLE_DARK_LIGHT,
+    ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR,
     ACTION_PROFILE_MENU, ACTION_NEW_TAB_WSL, ACTION_NEW_TAB_POWERSHELL, ACTION_NEW_TAB_CMD,
     ACTION_NEW_TAB_GITBASH, ACTION_NEW_TAB_OPENCODE,
 };
@@ -1476,7 +1477,9 @@ impl AtlasView {
             ACTION_OPEN_SETTINGS,
             ACTION_PALETTE,
             ACTION_FULLSCREEN,
-            ACTION_TOGGLE_THEME,
+            ACTION_NEXT_THEME,
+            ACTION_PREV_THEME,
+            ACTION_TOGGLE_DARK_LIGHT,
         ];
         let mut tab_window_card = card().child(section_header("TABS & WINDOW"));
         for (i, &act) in tab_window_actions.iter().enumerate() {
@@ -1542,14 +1545,16 @@ impl AtlasView {
         };
 
         let mut built_in_card = card().child(section_header("BUILT-IN SHORTCUTS & LINUX TILING"));
-        let built_in_list: [(&'static str, &'static str); 15] = [
+        let built_in_list: [(&'static str, &'static str); 17] = [
             ("New Window", "Ctrl+Shift+N"),
             ("New Tab (Default Shell)", "Ctrl+T"),
             ("Close Tab / Pane", "Alt+W / Ctrl+W"),
             ("New WSL (Linux) Tab", "Ctrl+Shift+2"),
             ("New PowerShell Tab", "Ctrl+Shift+1"),
             ("Command Palette / Shell Switcher", "Ctrl+K / Ctrl+Shift+P"),
-            ("Cycle / Switch Themes", "Alt+T"),
+            ("Cycle Theme Preset (Forward)", "Alt+T / Ctrl+Shift+T"),
+            ("Cycle Theme Preset (Backward)", "Alt+Shift+T"),
+            ("Toggle Dark / Light Mode", "Ctrl+Shift+L"),
             ("Tiling: Split Vertical (Columns)", "Alt+Enter"),
             ("Tiling: Split Horizontal (Rows)", "Alt+D"),
             ("Tiling: Toggle Layout (Cols ↔ Rows)", "Alt+Space"),

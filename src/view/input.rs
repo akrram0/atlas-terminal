@@ -12,7 +12,8 @@ use crate::config::{
     ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEW_WINDOW, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_OPEN_URL_PICKER,
     ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_TO_BOTTOM, ACTION_SCROLL_TO_TOP, ACTION_SELECT_ALL, ACTION_SPLIT_HORIZONTAL,
-    ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR, ACTION_TOGGLE_THEME, ACTION_ZOOM_IN,
+    ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR, ACTION_TOGGLE_THEME,
+    ACTION_NEXT_THEME, ACTION_PREV_THEME, ACTION_TOGGLE_DARK_LIGHT, ACTION_ZOOM_IN,
     ACTION_ZOOM_OUT, ACTION_ZOOM_RESET, ACTION_PROFILE_MENU, ACTION_NEW_TAB_WSL, ACTION_NEW_TAB_POWERSHELL,
     ACTION_NEW_TAB_CMD, ACTION_NEW_TAB_GITBASH, ACTION_NEW_TAB_OPENCODE, ACTION_NEW_TAB_ANTIGRAVITY,
 };
@@ -68,6 +69,51 @@ impl AtlasView {
         let is_currently_light = self.theme.is_light();
         let new_mode = if is_currently_light { "dark" } else { "light" };
         self.set_theme_mode(new_mode, cx);
+        let preset_name = self.registry.preset(self.theme_id).name;
+        let mode_label = if new_mode == "light" { "Light Mode" } else { "Dark Mode" };
+        self.show_update_toast(format!("{} ({})", mode_label, preset_name), true, cx);
+    }
+
+    /// Cycle to the next theme preset (Atlas, GitHub, One, Solarized, Tokyo Night, Catppuccin, Nord, Classic).
+    pub fn next_theme(&mut self, cx: &mut Context<Self>) {
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        let current_idx = if is_light { self.theme_light_id } else { self.theme_dark_id };
+        let next_idx = (current_idx + 1) % self.registry.len();
+        if is_light {
+            self.set_light_theme(next_idx, cx);
+        } else {
+            self.set_dark_theme(next_idx, cx);
+        }
+        let preset = self.registry.preset(next_idx);
+        let mode_label = if is_light { "Light" } else { "Dark" };
+        self.show_update_toast(format!("Theme: {} ({})", preset.name, mode_label), true, cx);
+    }
+
+    /// Cycle to the previous theme preset.
+    pub fn prev_theme(&mut self, cx: &mut Context<Self>) {
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        let current_idx = if is_light { self.theme_light_id } else { self.theme_dark_id };
+        let prev_idx = if current_idx == 0 {
+            self.registry.len() - 1
+        } else {
+            current_idx - 1
+        };
+        if is_light {
+            self.set_light_theme(prev_idx, cx);
+        } else {
+            self.set_dark_theme(prev_idx, cx);
+        }
+        let preset = self.registry.preset(prev_idx);
+        let mode_label = if is_light { "Light" } else { "Dark" };
+        self.show_update_toast(format!("Theme: {} ({})", preset.name, mode_label), true, cx);
     }
 
     /// Set dark theme preset.
@@ -593,7 +639,24 @@ impl AtlasView {
                     self.focus_main(window);
                     return;
                 }
-                if chord == "alt+t" || chord == "ctrl+shift+t" || chord == "ctrl+shift+l" || chord == self.get_shortcut(ACTION_TOGGLE_THEME) {
+                // Next Theme preset (Alt+T / Ctrl+Shift+T):
+                if chord == "alt+t" || chord == "ctrl+shift+t" || chord == self.get_shortcut(ACTION_NEXT_THEME) {
+                    self.next_theme(cx);
+                    self.trigger_island_hud(cx);
+                    return;
+                }
+                // Previous Theme preset (Alt+Shift+T):
+                if chord == "alt+shift+t" || chord == self.get_shortcut(ACTION_PREV_THEME) {
+                    self.prev_theme(cx);
+                    self.trigger_island_hud(cx);
+                    return;
+                }
+                // Toggle Dark / Light mode (Ctrl+Shift+L / Alt+Shift+D):
+                if chord == "ctrl+shift+l"
+                    || chord == "alt+shift+d"
+                    || chord == self.get_shortcut(ACTION_TOGGLE_DARK_LIGHT)
+                    || (chord == self.get_shortcut(ACTION_TOGGLE_THEME) && chord != "alt+t" && chord != "ctrl+shift+t")
+                {
                     self.toggle_theme(cx);
                     self.trigger_island_hud(cx);
                     return;
@@ -999,7 +1062,8 @@ impl AtlasView {
         // App-level chords (swallowed so they never leak into the shell).
         if modifiers.control && modifiers.shift {
             match key {
-                "t" => self.toggle_theme(cx),
+                "t" => self.next_theme(cx),
+                "l" => self.toggle_theme(cx),
                 "m" => {
                     self.toggle_maximize(cx);
                     self.focus_main(window);
