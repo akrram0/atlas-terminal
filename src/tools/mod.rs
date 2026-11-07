@@ -112,6 +112,7 @@ fn attach_parent_console() {
         #[link(name = "kernel32")]
         unsafe extern "system" {
             fn AttachConsole(dwProcessId: u32) -> i32;
+            fn GetStdHandle(nStdHandle: u32) -> *mut core::ffi::c_void;
             fn SetStdHandle(nStdHandle: u32, hHandle: *mut core::ffi::c_void) -> i32;
             fn CreateFileW(
                 lpFileName: *const u16,
@@ -139,42 +140,52 @@ fn attach_parent_console() {
         const INVALID_HANDLE_VALUE: *mut core::ffi::c_void = -1isize as *mut core::ffi::c_void;
         const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
 
+        let existing_stdout = GetStdHandle(STD_OUTPUT_HANDLE);
+        let stdout_is_pipe = !existing_stdout.is_null() && existing_stdout != INVALID_HANDLE_VALUE;
+
         // Try to attach to the parent console if invoked from terminal
         let _ = AttachConsole(ATTACH_PARENT_PROCESS);
 
-        let conout_name: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
-        let conout = CreateFileW(
-            conout_name.as_ptr(),
-            GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            std::ptr::null_mut(),
-            OPEN_EXISTING,
-            0,
-            std::ptr::null_mut(),
-        );
+        if !stdout_is_pipe {
+            let conout_name: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
+            let conout = CreateFileW(
+                conout_name.as_ptr(),
+                GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+            );
 
-        if !conout.is_null() && conout != INVALID_HANDLE_VALUE {
-            SetStdHandle(STD_OUTPUT_HANDLE, conout);
-            SetStdHandle(STD_ERROR_HANDLE, conout);
+            if !conout.is_null() && conout != INVALID_HANDLE_VALUE {
+                SetStdHandle(STD_OUTPUT_HANDLE, conout);
+                SetStdHandle(STD_ERROR_HANDLE, conout);
 
-            let mut mode: u32 = 0;
-            if GetConsoleMode(conout, &mut mode) != 0 {
-                SetConsoleMode(conout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+                let mut mode: u32 = 0;
+                if GetConsoleMode(conout, &mut mode) != 0 {
+                    SetConsoleMode(conout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+                }
             }
-        }
 
-        let conin_name: Vec<u16> = "CONIN$\0".encode_utf16().collect();
-        let conin = CreateFileW(
-            conin_name.as_ptr(),
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            std::ptr::null_mut(),
-            OPEN_EXISTING,
-            0,
-            std::ptr::null_mut(),
-        );
-        if !conin.is_null() && conin != INVALID_HANDLE_VALUE {
-            SetStdHandle(STD_INPUT_HANDLE, conin);
+            let conin_name: Vec<u16> = "CONIN$\0".encode_utf16().collect();
+            let conin = CreateFileW(
+                conin_name.as_ptr(),
+                GENERIC_READ,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                0,
+                std::ptr::null_mut(),
+            );
+            if !conin.is_null() && conin != INVALID_HANDLE_VALUE {
+                SetStdHandle(STD_INPUT_HANDLE, conin);
+            }
+        } else {
+            let mut mode: u32 = 0;
+            if GetConsoleMode(existing_stdout, &mut mode) != 0 {
+                SetConsoleMode(existing_stdout, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
         }
     }
 }
