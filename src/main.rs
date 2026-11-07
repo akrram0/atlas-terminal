@@ -272,7 +272,11 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
                 window_background: if should_blur {
-                    WindowBackgroundAppearance::Blurred
+                    if loaded_settings.opacity <= 0.005 {
+                        WindowBackgroundAppearance::Transparent
+                    } else {
+                        WindowBackgroundAppearance::Blurred
+                    }
                 } else {
                     WindowBackgroundAppearance::Opaque
                 },

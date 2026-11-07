@@ -31,7 +31,7 @@ impl AtlasView {
 
         let sidebar_bg = if is_translucent {
             Rgba {
-                a: (self.opacity * 0.90).clamp(0.0, 1.0),
+                a: (0.18 + self.opacity * 0.72).clamp(0.18, 1.0),
                 ..tb.panel_bg
             }
         } else {

@@ -231,6 +231,7 @@ struct WindowCompositionAttributeData {
 
 const WCA_ACCENT_POLICY: u32 = 19;
 const ACCENT_DISABLED: u32 = 0;
+const ACCENT_ENABLE_TRANSPARENTGRADIENT: u32 = 2;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 
 unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
@@ -250,21 +251,27 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
 
         let mut policy = if enabled {
             let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::Relaxed));
-            let alpha = if op <= 0.01 {
-                0x01
+            if op <= 0.005 {
+                // 0% Opacity: Pure transparent glass without acrylic blur or noise
+                AccentPolicy {
+                    accent_state: ACCENT_ENABLE_TRANSPARENTGRADIENT,
+                    accent_flags: 2,
+                    gradient_color: 0,
+                    animation_id: 0,
+                }
             } else {
-                ((op.clamp(0.0, 1.0)) * 255.0) as u32
-            };
-            let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
-                0x0a0c10
-            } else {
-                0xF2F4F7
-            };
-            AccentPolicy {
-                accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-                accent_flags: 2,
-                gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
-                animation_id: 0,
+                let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
+                let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
+                    0x0a0c10
+                } else {
+                    0xF2F4F7
+                };
+                AccentPolicy {
+                    accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
+                    accent_flags: 2,
+                    gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
+                    animation_id: 0,
+                }
             }
         } else {
             AccentPolicy {

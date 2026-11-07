@@ -905,7 +905,11 @@ impl Render for AtlasView {
         let is_light = self.theme.is_light();
         let should_blur = self.app_settings.blur_enabled && self.opacity < 0.999 && !is_light;
         let target_appearance = if should_blur {
-            gpui::WindowBackgroundAppearance::Blurred
+            if self.opacity <= 0.005 {
+                gpui::WindowBackgroundAppearance::Transparent
+            } else {
+                gpui::WindowBackgroundAppearance::Blurred
+            }
         } else {
             gpui::WindowBackgroundAppearance::Opaque
         };
@@ -983,7 +987,7 @@ impl Render for AtlasView {
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             let alpha = self.opacity.clamp(0.0, 1.0);
             let chrome = Rgba {
-                a: alpha * 0.90,
+                a: (0.18 + alpha * 0.72).clamp(0.18, 1.0),
                 ..tb.panel_bg
             };
             let sheet = Rgba {
