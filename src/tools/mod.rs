@@ -29,9 +29,9 @@ pub fn maybe_handle_cli() -> bool {
         // Global flags
         "-v" | "--version" | "-h" | "--help" | "help" | "tools" | "satellites" => true,
         // System domain
-        "version" | "info" | "env" | "theme" | "config" | "hud" | "island" | "bench" | "test-render" => true,
+        "version" | "info" | "env" | "jump" | "z" | "top" | "proc" | "theme" | "config" | "hud" | "island" | "bench" | "test-render" => true,
         // Dev domain
-        "port" | "ports" | "jwt" | "qr" | "json" | "jq" | "diff" => true,
+        "port" | "ports" | "serve" | "http" | "hash" | "crypto" | "clip" | "copy" | "jwt" | "qr" | "json" | "jq" | "diff" => true,
         // Visual domain
         "img" | "image" | "view" | "pick" | "hints" | "ai" | "ask" | "fix" => true,
         _ => false,
@@ -87,12 +87,17 @@ pub fn print_tools_help() {
     println!("  \x1b[1;33mSYSTEM TOOLS:\x1b[0m");
     println!("    \x1b[1;36mversion, -v\x1b[0m       Rich system, GPU & runtime specification card");
     println!("    \x1b[1;36minfo, env\x1b[0m         Toolchain, detected shells & PTY environment audit");
+    println!("    \x1b[1;36mjump, z\x1b[0m           Smart directory memory & ghost-text autosuggestion engine");
+    println!("    \x1b[1;36mtop, proc\x1b[0m         Ultra-lightweight inline system memory & process snapshot");
     println!("    \x1b[1;36mtheme\x1b[0m             Inspect, list, and switch UI themes");
     println!("    \x1b[1;36mconfig\x1b[0m            Configuration getter, setter & direct editor");
     println!("    \x1b[1;36mhud, island\x1b[0m       Dynamic Island notification & status pulse trigger");
     println!("    \x1b[1;36mbench\x1b[0m             PTY throughput & 24-bit truecolor render bench");
     println!();
     println!("  \x1b[1;32mDEVELOPER PRODUCTIVITY TOOLS:\x1b[0m");
+    println!("    \x1b[1;36mserve, http\x1b[0m       Instant zero-dependency static HTTP file server");
+    println!("    \x1b[1;36mhash, crypto\x1b[0m      Fast SHA-256/MD5 checksums, Base64 & URL encoder/decoder");
+    println!("    \x1b[1;36mclip, copy\x1b[0m        Terminal clipboard manager & pipe sink/source");
     println!("    \x1b[1;36mport\x1b[0m              Active listening port inspector & 1-shot process killer");
     println!("    \x1b[1;36mjwt\x1b[0m               Offline, privacy-safe JSON Web Token inspector");
     println!("    \x1b[1;36mqr\x1b[0m                Terminal QR code generator for URLs and auth secrets");
@@ -206,6 +211,8 @@ mod tests {
     fn test_system_dispatch_version() {
         assert!(system::dispatch("version", &[]));
         assert!(system::dispatch("info", &[]));
+        assert!(system::dispatch("jump", &["--list".to_string()]));
+        assert!(system::dispatch("top", &["5".to_string()]));
         assert!(system::dispatch("theme", &["list".to_string()]));
         assert!(system::dispatch("config", &["path".to_string()]));
         assert!(system::dispatch("bench", &[]));
@@ -214,6 +221,8 @@ mod tests {
     #[test]
     fn test_dev_dispatch_help() {
         assert!(dev::dispatch("port", &["--help".to_string()]));
+        assert!(dev::dispatch("hash", &["--help".to_string()]));
+        assert!(dev::dispatch("clip", &["--help".to_string()]));
         assert!(dev::dispatch("jwt", &["--help".to_string()]));
         assert!(dev::dispatch("qr", &["--help".to_string()]));
         assert!(dev::dispatch("json", &["--help".to_string()]));

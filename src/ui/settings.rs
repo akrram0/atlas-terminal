@@ -1892,6 +1892,18 @@ impl AtlasView {
                 false,
             ))
             .child(setting_row(
+                "Smart Directory Memory (jump, z)",
+                Some("Frecency path tracker & ghost-text autosuggestion engine for instant folder jumps"),
+                tool_action_row("atlas jump --list", 715),
+                false,
+            ))
+            .child(setting_row(
+                "System & Process Top Snapshot",
+                Some("Ultra-lightweight inline system RAM gauge and top process memory card"),
+                tool_action_row("atlas top", 716),
+                false,
+            ))
+            .child(setting_row(
                 "Dynamic Island HUD Bridge",
                 Some("Trigger macOS-style notifications, progress bars, and status pulses via OSC 1338"),
                 tool_action_row("atlas hud notify \"Atlas\" \"Task completed!\"", 705),
@@ -1928,6 +1940,24 @@ impl AtlasView {
                 "JSON Colorizer & Query",
                 Some("Syntax-highlighted pretty printer with dot-notation field queries"),
                 tool_action_row("atlas json --help", 710),
+                false,
+            ))
+            .child(setting_row(
+                "Instant HTTP Static Server",
+                Some("Zero-dependency static file server with auto-MIME and dark Apple directory UI"),
+                tool_action_row("atlas serve 8000", 717),
+                false,
+            ))
+            .child(setting_row(
+                "Crypto & Checksum Hasher",
+                Some("Fast SHA-256/MD5 for Winget manifests, plus Base64 & URL encoder/decoder"),
+                tool_action_row("atlas hash --help", 718),
+                false,
+            ))
+            .child(setting_row(
+                "Terminal Clipboard Sink/Source",
+                Some("Pipe command output to clipboard (cmd | atlas clip) or paste directly to stdout"),
+                tool_action_row("atlas clip paste", 719),
                 false,
             ))
             .child(setting_row(

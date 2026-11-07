@@ -58,13 +58,82 @@
       <p class="section-desc">Every release is digitally compiled on GitHub Actions, accompanied by cryptographic SHA-256 manifests.</p>
     </div>
 
-    <!-- Latest Release: v0.2.24 -->
+    <!-- Latest Release: v0.2.25 -->
+    <div class="release-card">
+      <div class="release-header">
+        <div class="release-title">
+          <span>v0.2.25</span>
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
+            <span class="status-dot"></span> Latest Stable
+          </span>
+        </div>
+        <div class="release-date">Published 2026-11-07</div>
+      </div>
+
+      <p style="font-size:14px;color:var(--fg);margin-bottom:14px;">
+        Major release eliminating scrollback zoom data loss, integrating smart directory frecency memory with dimmed ghost-text autosuggestions, and introducing 5 high-utility developer satellites.
+      </p>
+
+      <ul style="font-size:13px;color:var(--muted);margin-bottom:16px;padding-left:18px;line-height:1.7;">
+        <li><strong>Scrollback Zoom Data-Loss Fix</strong>: Completely eliminated the scrollback and prompt wipe bug when zooming out (<code>Ctrl + -</code>). Viewport expansion now seamlessly preserves all existing visible lines and all scrollback history without truncation or ConPTY desync.</li>
+        <li><strong>Smart Directory Memory &amp; Ghost-Text Autosuggestions (<code>atlas jump</code>, <code>z</code>)</strong>: Tracks visited folders ranked by frecency (frequency + recency) in <code>dirs.json</code>. Injects zero-config PowerShell PSReadLine inline ghost-text completions and instant fuzzy directory jumping.</li>
+        <li><strong>Instant Static HTTP File Server (<code>atlas serve</code>, <code>atlas http</code>)</strong>: Zero-dependency local web server with automatic MIME detection, CORS headers, directory listing, and Apple dark UI.</li>
+        <li><strong>Cryptographic Hasher &amp; Encoders (<code>atlas hash</code>, <code>atlas crypto</code>)</strong>: Fast SHA-256 (standard for Winget manifests), MD5, Base64 encode/decode, and URL percent-encoding.</li>
+        <li><strong>Terminal Clipboard Manager (<code>atlas clip</code>, <code>atlas copy</code>)</strong>: Pipeline sink and source for system clipboard (<code>cmd | atlas clip</code>, <code>atlas clip paste</code>) using native Win32 clipboard APIs.</li>
+        <li><strong>System Memory &amp; Process Top Card (<code>atlas top</code>, <code>atlas proc</code>)</strong>: Ultra-lightweight inline system RAM gauge and top process memory usage snapshot.</li>
+      </ul>
+
+      <!-- Asset Downloads Grid -->
+      <div class="asset-download-grid">
+        <!-- Windows Setup Installer -->
+        <div class="asset-card">
+          <div class="asset-name">AtlasTerminal-Setup-0.2.25.exe</div>
+          <div class="asset-meta">Standard Windows Installer • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.25/AtlasTerminal-Setup-0.2.25.exe" class="btn-primary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Installer</span>
+            </a>
+          </div>
+          <div class="checksum-box">
+            <span class="checksum-label">SHA-256 Checksum</span>
+            <span class="checksum-value">Automated CI/CD build checksum published with GitHub release</span>
+          </div>
+        </div>
+
+        <!-- Portable Standalone Executable -->
+        <div class="asset-card">
+          <div class="asset-name">atlas-terminal.exe</div>
+          <div class="asset-meta">Portable Standalone Executable • x64</div>
+          <div style="margin-bottom:12px;">
+            <a href="https://github.com/akrram0/atlas-terminal/releases/download/v0.2.25/atlas-terminal.exe" class="btn-secondary" style="padding:6px 14px;font-size:12px;width:100%;justify-content:center;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Download Standalone</span>
+            </a>
+          </div>
+          <div class="checksum-box">
+            <span class="checksum-label">SHA-256 Checksum</span>
+            <span class="checksum-value">Automated CI/CD build checksum published with GitHub release</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Release: v0.2.24 -->
     <div class="release-card">
       <div class="release-header">
         <div class="release-title">
           <span>v0.2.24</span>
-          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;">
-            <span class="status-dot"></span> Latest Stable
+          <span class="release-pill" style="margin-bottom:0;padding:2px 8px;font-size:11px;background:var(--border);color:var(--muted);">
+            Previous Stable
           </span>
         </div>
         <div class="release-date">Published 2026-11-07</div>

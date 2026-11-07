@@ -4,7 +4,9 @@ pub mod bench;
 pub mod config;
 pub mod env;
 pub mod hud;
+pub mod jump;
 pub mod theme;
+pub mod top;
 pub mod version;
 
 pub fn dispatch(cmd: &str, args: &[String]) -> bool {
@@ -15,6 +17,14 @@ pub fn dispatch(cmd: &str, args: &[String]) -> bool {
         }
         "info" | "env" => {
             env::run();
+            true
+        }
+        "jump" | "z" => {
+            jump::run(args);
+            true
+        }
+        "top" | "proc" => {
+            top::run(args);
             true
         }
         "theme" => {

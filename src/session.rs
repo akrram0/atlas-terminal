@@ -490,11 +490,36 @@ impl Session {
                                  $global:LASTEXITCODE = $p.ExitCode \
                              } \
                          }; \
+                         function global:z { \
+                             if ($args.Count -eq 0) { atlas jump --list; return }; \
+                             $t = (atlas jump @args).Trim(); \
+                             if ($t -and (Test-Path $t)) { Set-Location $t } else { Write-Host \"Directory not found: $args\" -ForegroundColor Yellow } \
+                         }; \
+                         function global:jump { global:z @args }; \
                          $atlas_old = (Get-Command prompt -ErrorAction SilentlyContinue).ScriptBlock; \
                          function prompt { \
-                             try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
+                             try { \
+                                 $loc = $ExecutionContext.SessionState.Path.CurrentLocation.Path; \
+                                 [System.Environment]::CurrentDirectory = $loc; \
+                                 if ($loc -and ($loc -ne $global:LAST_ATLAS_DIR)) { \
+                                     $global:LAST_ATLAS_DIR = $loc; \
+                                     atlas jump --add \"$loc\"; \
+                                 } \
+                             } catch {}; \
                              if ($atlas_old) { & $atlas_old } else { 'PS ' + (Get-Location) + '> ' } \
                          }; \
+                         try { \
+                             if (Get-Command Register-ArgumentCompleter -ErrorAction SilentlyContinue) { \
+                                 Register-ArgumentCompleter -CommandName @('z', 'jump', 'cd', 'Set-Location') -ScriptBlock { \
+                                     param($c, $p, $w, $a, $f) \
+                                     $preds = atlas jump --predict \"$w\"; \
+                                     $preds | ForEach-Object { if ($_) { [System.Management.Automation.CompletionResult]::new($_, $_, 'ProviderContainer', $_) } } \
+                                 } \
+                             }; \
+                             if (Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue) { \
+                                 Set-PSReadLineOption -PredictionViewStyle InlineView -ErrorAction SilentlyContinue; \
+                             } \
+                         } catch {}; \
                          function global:update-opencode { \
                              Write-Host 'Checking for OpenCode updates...' -ForegroundColor Cyan; \
                              if (Get-Command pnpm -ErrorAction SilentlyContinue) { \
@@ -883,9 +908,87 @@ impl Session {
         self.cell_width = cell_width;
         self.cell_height = cell_height;
         if self.cols != cols || self.rows != rows {
-            self.cols = cols;
-            self.rows = rows;
-            self.term.resize(TermSize { cols, rows });
+            let old_cols = self.cols;
+            let old_rows = self.rows;
+            let is_alt = self.term.mode().contains(TermMode::ALT_SCREEN);
+
+            // Critical scrollback and viewport preservation on expand/zoom-out:
+            // Alacritty's default grow_lines moves visible lines off the screen
+            // into history (via scroll_up) if history < lines_added, and immediately
+            // calls decrease_scroll_limit which discards lines from history permanently.
+            // On Windows ConPTY, this wipes the visible prompt/top lines and causes
+            // irreversible scrollback data loss. We snapshot and restore the exact
+            // screen and history grids when the visible viewport expands.
+            if !is_alt && rows > old_rows && old_rows > 0 && old_cols > 0 {
+                let lines_added = rows - old_rows;
+                let old_history = self.term.history_size();
+                let saved_screen: Vec<alacritty_terminal::grid::Row<alacritty_terminal::term::cell::Cell>> =
+                    (0..old_rows).map(|r| self.term.grid()[alacritty_terminal::index::Line(r as i32)].clone()).collect();
+                let saved_history: Vec<alacritty_terminal::grid::Row<alacritty_terminal::term::cell::Cell>> =
+                    (1..=old_history).map(|h| self.term.grid()[alacritty_terminal::index::Line(-(h as i32))].clone()).collect();
+                let saved_cursor = self.term.grid().cursor.clone();
+                let saved_display_offset = self.term.renderable_content().display_offset;
+                let template = self.term.grid().cursor.template.clone();
+
+                self.cols = cols;
+                self.rows = rows;
+                self.term.resize(TermSize { cols, rows });
+
+                let dropped = lines_added.min(old_history);
+                if dropped > 0 {
+                    self.term.grid_mut().scroll_up(
+                        &(alacritty_terminal::index::Line(0)..alacritty_terminal::index::Line(rows as i32)),
+                        dropped,
+                    );
+                }
+
+                // Restore all preserved scrollback history lines
+                for h in 1..=old_history {
+                    let target = &mut self.term.grid_mut()[alacritty_terminal::index::Line(-(h as i32))];
+                    let src = &saved_history[h - 1];
+                    let copy_cols = src.len().min(cols);
+                    for c in 0..copy_cols {
+                        target[alacritty_terminal::index::Column(c)] = src[alacritty_terminal::index::Column(c)].clone();
+                    }
+                    for c in copy_cols..cols {
+                        target[alacritty_terminal::index::Column(c)] = template.clone();
+                    }
+                }
+
+                // Restore visible rows at 0..old_rows
+                for r in 0..old_rows {
+                    let target = &mut self.term.grid_mut()[alacritty_terminal::index::Line(r as i32)];
+                    let src = &saved_screen[r];
+                    let copy_cols = src.len().min(cols);
+                    for c in 0..copy_cols {
+                        target[alacritty_terminal::index::Column(c)] = src[alacritty_terminal::index::Column(c)].clone();
+                    }
+                    for c in copy_cols..cols {
+                        target[alacritty_terminal::index::Column(c)] = template.clone();
+                    }
+                }
+
+                // Reset newly expanded bottom rows to clean blank template
+                for r in old_rows..rows {
+                    let target = &mut self.term.grid_mut()[alacritty_terminal::index::Line(r as i32)];
+                    for c in 0..cols {
+                        target[alacritty_terminal::index::Column(c)] = template.clone();
+                    }
+                }
+
+                // Restore cursor and display offset
+                self.term.grid_mut().cursor = saved_cursor;
+                if saved_display_offset > 0 {
+                    let cur_offset = self.term.renderable_content().display_offset;
+                    self.term.scroll_display(alacritty_terminal::grid::Scroll::Delta(
+                        saved_display_offset as i32 - cur_offset as i32,
+                    ));
+                }
+            } else {
+                self.cols = cols;
+                self.rows = rows;
+                self.term.resize(TermSize { cols, rows });
+            }
         }
         let p_width = (cols as f32 * cell_width).round() as u16;
         let p_height = (rows as f32 * cell_height).round() as u16;
@@ -928,5 +1031,91 @@ impl Drop for Session {
             terminate_process_tree(pid);
         }
         trim_working_set();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alacritty_terminal::index::{Column, Line};
+
+    #[test]
+    fn test_resize_data_loss_prevention_logic() {
+        let (tx, _rx) = bounded::<SessionMsg>(512);
+        let proxy = EventProxy { tx };
+        let mut term = Term::new(
+            Config {
+                scrolling_history: 1000,
+                ..Config::default()
+            },
+            &TermSize { cols: 80, rows: 10 },
+            proxy,
+        );
+
+        let mut parser: Processor = Processor::new();
+        // Write 15 lines of output so 5 lines scroll into history
+        for i in 0..15 {
+            let line = format!("Line {:02}\r\n", i);
+            parser.advance(&mut term, line.as_bytes());
+        }
+
+        let old_history = term.history_size();
+        assert!(old_history > 0, "Expected lines in scrollback history");
+
+        let old_rows = 10;
+        let _old_cols = 80;
+        let new_rows = 16;
+        let new_cols = 80;
+        let lines_added = new_rows - old_rows;
+
+        // Snapshot
+        let saved_screen: Vec<alacritty_terminal::grid::Row<alacritty_terminal::term::cell::Cell>> =
+            (0..old_rows).map(|r| term.grid()[Line(r as i32)].clone()).collect();
+        let saved_history: Vec<alacritty_terminal::grid::Row<alacritty_terminal::term::cell::Cell>> =
+            (1..=old_history).map(|h| term.grid()[Line(-(h as i32))].clone()).collect();
+        let saved_cursor = term.grid().cursor.clone();
+        let template = term.grid().cursor.template.clone();
+
+        term.resize(TermSize { cols: new_cols, rows: new_rows });
+
+        // Apply our data loss prevention
+        let dropped = lines_added.min(old_history);
+        if dropped > 0 {
+            term.grid_mut().scroll_up(&(Line(0)..Line(new_rows as i32)), dropped);
+        }
+
+        for h in 1..=old_history {
+            let target = &mut term.grid_mut()[Line(-(h as i32))];
+            let src = &saved_history[h - 1];
+            let copy_cols = src.len().min(new_cols);
+            for c in 0..copy_cols {
+                target[Column(c)] = src[Column(c)].clone();
+            }
+        }
+
+        for r in 0..old_rows {
+            let target = &mut term.grid_mut()[Line(r as i32)];
+            let src = &saved_screen[r];
+            let copy_cols = src.len().min(new_cols);
+            for c in 0..copy_cols {
+                target[Column(c)] = src[Column(c)].clone();
+            }
+        }
+
+        for r in old_rows..new_rows {
+            let target = &mut term.grid_mut()[Line(r as i32)];
+            for c in 0..new_cols {
+                target[Column(c)] = template.clone();
+            }
+        }
+        term.grid_mut().cursor = saved_cursor;
+
+        // Verify that history size is completely preserved
+        assert_eq!(term.history_size(), old_history, "History size must not shrink on resize");
+
+        // Verify that visible lines are intact
+        let cell_0 = term.grid()[Line(0)][Column(0)].c;
+        let orig_0 = saved_screen[0][Column(0)].c;
+        assert_eq!(cell_0, orig_0, "Top line content must be preserved");
     }
 }
