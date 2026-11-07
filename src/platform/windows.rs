@@ -252,7 +252,6 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
 
         let mut policy = if enabled {
             let op = f32::from_bits(INITIAL_OPACITY.load(Ordering::Relaxed));
-            let zoomed = IsZoomed(hwnd) != 0;
             if op <= 0.005 {
                 // 0% Opacity: Pure transparent glass without acrylic blur or noise
                 AccentPolicy {
@@ -261,26 +260,10 @@ unsafe fn apply_composition_accent(hwnd: Hwnd, enabled: bool) -> i32 {
                     gradient_color: 0,
                     animation_id: 0,
                 }
-            } else if zoomed {
-                // When maximized (zoomed) or fullscreen:
-                // ACCENT_ENABLE_BLURBEHIND (state 3) is obsolete in modern Windows DWM (Win 10 1809+ / Win 11)
-                // and causes DWM to paint an opaque solid black fallback surface.
-                // ACCENT_ENABLE_TRANSPARENTGRADIENT (state 2) with accent_flags: 2 keeps DirectComposition
-                // per-pixel alpha pass-through active across the entire screen, preventing any solid black wall.
-                let alpha = ((op.clamp(0.0, 1.0)) * 255.0) as u32;
-                let rgb: u32 = if DARK_MODE.load(Ordering::Relaxed) {
-                    0x0a0c10
-                } else {
-                    0xF2F4F7
-                };
-                AccentPolicy {
-                    accent_state: ACCENT_ENABLE_TRANSPARENTGRADIENT,
-                    accent_flags: 2,
-                    gradient_color: ((alpha.max(1) & 0xFF) << 24) | (rgb & 0x00FFFFFF),
-                    animation_id: 0,
-                }
             } else {
-                // When floating/windowed: neutral Fluent Acrylic blur behind (blended with GPUI theme surface)
+                // Neutral Fluent Acrylic blur behind (blended with GPUI theme surface).
+                // Applies identically across windowed, maximized, and fullscreen states,
+                // strictly adhering to the user's opacity and blur settings.
                 AccentPolicy {
                     accent_state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
                     accent_flags: 0,
