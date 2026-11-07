@@ -879,6 +879,9 @@ impl AtlasView {
     }
 
     pub(crate) fn check_settings_reload(&mut self, cx: &mut Context<Self>) {
+        if self.settings_open {
+            return;
+        }
         let path = crate::user_data_dir().join("settings.json");
         if let Ok(m) = std::fs::metadata(&path) {
             if let Ok(mtime) = m.modified() {
@@ -986,9 +989,16 @@ impl Render for AtlasView {
 
         let (chrome_bg, sheet_bg, container_bg) = if is_translucent {
             let alpha = self.opacity.clamp(0.0, 1.0);
-            let chrome = Rgba {
-                a: (0.18 + alpha * 0.72).clamp(0.18, 1.0),
-                ..tb.panel_bg
+            let chrome = if alpha <= 0.005 {
+                Rgba {
+                    a: 0.0,
+                    ..tb.panel_bg
+                }
+            } else {
+                Rgba {
+                    a: (alpha * 0.95).clamp(0.0, 1.0),
+                    ..tb.panel_bg
+                }
             };
             let sheet = Rgba {
                 a: alpha,

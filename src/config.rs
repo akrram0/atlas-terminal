@@ -436,17 +436,13 @@ pub fn save_app_settings(s: &AppSettingsFile) {
     let base = crate::user_data_dir();
     let _ = std::fs::create_dir_all(&base);
     let settings_path = base.join("settings.json");
-    let tmp_path = base.join("settings.json.tmp");
     let bak_path = base.join("settings.json.bak");
 
     if let Ok(json) = serde_json::to_string_pretty(s) {
-        // Atomic save: write to .tmp first, back up existing .json, then atomic rename
-        if std::fs::write(&tmp_path, json).is_ok() {
-            if settings_path.exists() {
-                let _ = std::fs::copy(&settings_path, &bak_path);
-            }
-            let _ = std::fs::rename(&tmp_path, &settings_path);
+        if settings_path.exists() {
+            let _ = std::fs::copy(&settings_path, &bak_path);
         }
+        let _ = std::fs::write(&settings_path, json);
     }
 }
 

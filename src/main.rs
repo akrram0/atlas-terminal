@@ -269,9 +269,10 @@ fn main() {
         });
 
         let loaded_settings = config::load_app_settings();
-        let should_blur = loaded_settings.blur_enabled && loaded_settings.opacity < 0.999;
+        let loaded_opacity = view::normalize_opacity(loaded_settings.opacity);
+        let should_blur = (loaded_settings.blur_enabled || loaded_opacity < 0.999) && loaded_opacity < 0.999;
         #[cfg(windows)]
-        rounded_corners::set_opacity(if should_blur { loaded_settings.opacity } else { 1.0 });
+        rounded_corners::set_opacity(if should_blur { loaded_opacity } else { 1.0 });
 
         let bounds = Bounds::centered(None, size(px(1100.0), px(720.0)), cx);
         cx.open_window(
@@ -279,7 +280,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: None, // frameless: the app draws its own titlebar
                 window_background: if should_blur {
-                    if loaded_settings.opacity <= 0.005 {
+                    if loaded_opacity <= 0.005 {
                         WindowBackgroundAppearance::Transparent
                     } else {
                         WindowBackgroundAppearance::Blurred

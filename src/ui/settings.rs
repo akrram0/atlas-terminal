@@ -632,7 +632,7 @@ impl AtlasView {
             cx,
         );
 
-        // Opacity Stepper: 0% to 100% in 5% increments
+        // Opacity Stepper: 0% to 100% (1% precision between 0% and 5%, 5% above 5%)
         let opacity_pct = (self.opacity * 100.0).round() as i32;
         let opacity_ctrl = stepper(
             112,
@@ -640,7 +640,11 @@ impl AtlasView {
             theme,
             |view, cx| {
                 let current_pct = (view.opacity * 100.0).round() as i32;
-                let next_pct = (current_pct - 5).clamp(0, 100);
+                let next_pct = if current_pct <= 5 {
+                    (current_pct - 1).max(0)
+                } else {
+                    current_pct - 5
+                };
                 view.opacity = next_pct as f32 / 100.0;
                 view.app_settings.opacity = view.opacity;
                 view.app_settings.blur_enabled = view.opacity < 0.999;
@@ -649,7 +653,11 @@ impl AtlasView {
             },
             |view, cx| {
                 let current_pct = (view.opacity * 100.0).round() as i32;
-                let next_pct = (current_pct + 5).clamp(0, 100);
+                let next_pct = if current_pct < 5 {
+                    current_pct + 1
+                } else {
+                    (current_pct + 5).min(100)
+                };
                 view.opacity = next_pct as f32 / 100.0;
                 view.app_settings.opacity = view.opacity;
                 view.app_settings.blur_enabled = view.opacity < 0.999;

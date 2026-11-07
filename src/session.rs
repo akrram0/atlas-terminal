@@ -472,7 +472,8 @@ impl Session {
                          $OutputEncoding=[System.Text.Encoding]::UTF8; \
                          [Console]::InputEncoding=[System.Text.Encoding]::UTF8; \
                          try { if ($PSStyle.Progress) { $PSStyle.Progress.View = 'Classic' } } catch {}; \
-                         function global:atlas { & \"$env:ATLAS_EXE\" @args }; \
+                         function global:atlas { & \"$env:ATLAS_EXE\" @args | Out-Host }; \
+                         function global:atlas-terminal { & \"$env:ATLAS_EXE\" @args | Out-Host }; \
                          $atlas_old = (Get-Command prompt -ErrorAction SilentlyContinue).ScriptBlock; \
                          function prompt { \
                              try { [System.Environment]::CurrentDirectory = $ExecutionContext.SessionState.Path.CurrentLocation.Path } catch {}; \
