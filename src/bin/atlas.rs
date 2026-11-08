@@ -35,6 +35,17 @@ fn resolve_gui_exe() -> Option<PathBuf> {
 }
 
 fn main() {
+    #[cfg(windows)]
+    unsafe {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn SetConsoleOutputCP(wCodePageID: u32) -> i32;
+            fn SetConsoleCP(wCodePageID: u32) -> i32;
+        }
+        let _ = SetConsoleOutputCP(65001);
+        let _ = SetConsoleCP(65001);
+    }
+
     let target = match resolve_gui_exe() {
         Some(p) => p,
         None => {

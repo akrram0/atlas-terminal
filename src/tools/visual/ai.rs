@@ -48,7 +48,7 @@ fn handle_ask(query: &str) {
     println!();
     println!("\x1b[1;36m  Atlas AI Assistant\x1b[0m");
     println!("  \x1b[2mQuery: \"{}\"\x1b[0m", query);
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     let lower = query.to_lowercase();
     if lower.contains("find files") || lower.contains("modified") {
@@ -74,7 +74,7 @@ fn handle_ask(query: &str) {
 fn handle_fix(error_text: &str) {
     println!();
     println!("\x1b[1;36m  Atlas AI Diagnostics & Fix Advisor\x1b[0m");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     let lower = error_text.to_lowercase();
     if lower.contains("address already in use") || lower.contains("eaddrinuse") {
@@ -107,7 +107,7 @@ fn handle_explain(cmd: &str) {
     println!();
     println!("\x1b[1;36m  Atlas Command Breakdown\x1b[0m");
     println!("  \x1b[1;37mCommand:\x1b[0m {}", cmd);
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     let parts: Vec<&str> = cmd.split_whitespace().collect();
     if parts.is_empty() {

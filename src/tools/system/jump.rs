@@ -175,7 +175,7 @@ fn list_directories() {
     if store.entries.is_empty() {
         println!();
         println!("\x1b[1;36m  Atlas Directory Memory (Frecency Store)\x1b[0m");
-        println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+        println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
         println!("  No remembered directories yet.");
         println!("  Navigate with \x1b[33mcd\x1b[0m or register with \x1b[36matlas jump --add <path>\x1b[0m.");
         println!();
@@ -191,9 +191,9 @@ fn list_directories() {
 
     println!();
     println!("\x1b[1;36m  Atlas Smart Directory Memory (Ranked by Frecency)\x1b[0m");
-    println!("\x1b[2m  ────────────────────────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------──────────────────\x1b[0m");
     println!("  \x1b[1;30m{:<8}  {:<8}  {:<12}  {:<40}\x1b[0m", "SCORE", "VISITS", "RECENCY", "PATH");
-    println!("\x1b[2m  ────────────────────────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------──────────────────\x1b[0m");
 
     for (i, entry) in ranked.iter().take(25).enumerate() {
         let score = calculate_frecency(entry.count, entry.last_seen, now);
@@ -212,7 +212,7 @@ fn list_directories() {
         );
     }
 
-    println!("\x1b[2m  ────────────────────────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------──────────────────\x1b[0m");
     println!("  Jump instantly: \x1b[36matlas jump <query>\x1b[0m or \x1b[36mz <query>\x1b[0m");
     println!("  Clean missing:  \x1b[36matlas jump --clean\x1b[0m");
     println!();

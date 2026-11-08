@@ -72,16 +72,16 @@ pub fn run(args: &[String]) {
     let local_ip = get_local_ip().unwrap_or_else(|| "127.0.0.1".to_string());
 
     println!();
-    println!("\x1b[1;36m  ┌────────────────────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[1;36m  ┌--------------------------------------------------------┐\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1mAtlas Instant HTTP Server\x1b[0m                            \x1b[1;36m│\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[2mZero-dependency static file server                     \x1b[1;36m│\x1b[0m");
-    println!("\x1b[1;36m  ├────────────────────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[1;36m  ├--------------------------------------------------------┤\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;33mRoot Dir:\x1b[0m  {:<43} \x1b[1;36m│\x1b[0m", truncate_string(root_display_clean, 43));
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;32mLocal:\x1b[0m     http://localhost:{:<26} \x1b[1;36m│\x1b[0m", active_port);
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;34mNetwork:\x1b[0m   http://{}:{:<24} \x1b[1;36m│\x1b[0m", local_ip, active_port);
-    println!("\x1b[1;36m  ├────────────────────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[1;36m  ├--------------------------------------------------------┤\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  Press \x1b[33mCtrl + C\x1b[0m to terminate server                   \x1b[1;36m│\x1b[0m");
-    println!("\x1b[1;36m  └────────────────────────────────────────────────────────┘\x1b[0m");
+    println!("\x1b[1;36m  └--------------------------------------------------------┘\x1b[0m");
     println!();
 
     let root_arc = std::sync::Arc::new(root_path);

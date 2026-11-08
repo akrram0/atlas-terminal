@@ -18,7 +18,7 @@ pub fn run(args: &[String]) {
 
     println!();
     println!("\x1b[1;36m  Atlas JWT Token Inspector (Offline & Privacy-Safe)\x1b[0m");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     // 1. Decode Header
     println!("  \x1b[1;35mHEADER:\x1b[0m");
@@ -60,7 +60,7 @@ pub fn run(args: &[String]) {
         println!("    \x1b[1;31mFailed to decode base64url payload.\x1b[0m");
     }
 
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!();
 }
 

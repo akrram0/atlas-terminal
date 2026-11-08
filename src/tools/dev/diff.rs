@@ -39,7 +39,7 @@ pub fn run(args: &[String]) {
     println!("\x1b[1;36m  Atlas Terminal Diff\x1b[0m");
     println!("  \x1b[1;31m--- {}\x1b[0m ({} lines)", name_a, lines_a.len());
     println!("  \x1b[1;32m+++ {}\x1b[0m ({} lines)", name_b, lines_b.len());
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     let lcs = compute_lcs(&lines_a, &lines_b);
     let mut i = 0;
@@ -75,7 +75,7 @@ pub fn run(args: &[String]) {
         j += 1;
     }
 
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[1mSummary:\x1b[0m \x1b[1;32m+{} additions\x1b[0m, \x1b[1;31m-{} deletions\x1b[0m", added, removed);
     println!();
 }

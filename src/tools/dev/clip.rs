@@ -78,7 +78,7 @@ pub fn run(args: &[String]) {
 fn print_help() {
     println!();
     println!("\x1b[1;36m  Atlas Clipboard Manager & Pipeline Sink/Source\x1b[0m");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[1mUSAGE:\x1b[0m");
     println!("    <command> | atlas clip           Copy command output to clipboard");
     println!("    atlas clip paste                 Print clipboard contents to stdout");

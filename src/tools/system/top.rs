@@ -28,7 +28,7 @@ fn render_snapshot(limit: usize) {
 
     println!();
     println!("\x1b[1;36m  Atlas System Telemetry & Process Snapshot\x1b[0m");
-    println!("\x1b[2m  ────────────────────────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------──────────────────\x1b[0m");
 
     // System Memory Gauge
     let bar_width: usize = 32;
@@ -44,9 +44,9 @@ fn render_snapshot(limit: usize) {
     println!();
 
     println!("  \x1b[1mTop {} Processes by Working Set (RAM):\x1b[0m", processes.len());
-    println!("\x1b[2m  ────────────────────────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------──────────────────\x1b[0m");
     println!("  \x1b[1;30m{:<8}  {:<32}  {:>14}  {:>14}\x1b[0m", "PID", "PROCESS", "WORKING SET", "PRIVATE BYTES");
-    println!("\x1b[2m  ────────────────────────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------──────────────────\x1b[0m");
 
     for p in &processes {
         let is_atlas = p.name.eq_ignore_ascii_case("atlas-terminal.exe") || p.name.eq_ignore_ascii_case("atlas.exe");
@@ -70,7 +70,7 @@ fn render_snapshot(limit: usize) {
         );
     }
 
-    println!("\x1b[2m  ────────────────────────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------──────────────────\x1b[0m");
     println!("  Run \x1b[36matlas top <count>\x1b[0m to adjust list size • \x1b[36matlas port\x1b[0m for open network ports.");
     println!();
 }

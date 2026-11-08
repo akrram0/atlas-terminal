@@ -78,8 +78,8 @@ pub fn maybe_handle_cli() -> bool {
 pub fn print_tools_help() {
     let version = env!("CARGO_PKG_VERSION");
     println!();
-    println!("\x1b[1;36m  Atlas Satellites — Subterminal Tools Suite (v{})\x1b[0m", version);
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[1;36m  Atlas Satellites - Subterminal Tools Suite (v{})\x1b[0m", version);
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[1mUSAGE:\x1b[0m");
     println!("    atlas <command> [arguments...]");
     println!("    atlas-terminal <command> [arguments...]");
@@ -130,6 +130,8 @@ fn attach_parent_console() {
             ) -> *mut core::ffi::c_void;
             fn GetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, lpMode: *mut u32) -> i32;
             fn SetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, dwMode: u32) -> i32;
+            fn SetConsoleOutputCP(wCodePageID: u32) -> i32;
+            fn SetConsoleCP(wCodePageID: u32) -> i32;
         }
 
         const ATTACH_PARENT_PROCESS: u32 = 0xFFFFFFFF;
@@ -150,6 +152,8 @@ fn attach_parent_console() {
 
         // Try to attach to the parent console if invoked from terminal
         let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        let _ = SetConsoleOutputCP(65001);
+        let _ = SetConsoleCP(65001);
 
         if !stdout_is_pipe {
             let conout_name: Vec<u16> = "CONOUT$\0".encode_utf16().collect();

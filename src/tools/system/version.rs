@@ -16,14 +16,14 @@ pub fn run() {
 
     println!();
     println!("\x1b[1;36m  ▲ Atlas Terminal\x1b[0m \x1b[1;32mv{}\x1b[0m \x1b[2m{}\x1b[0m", version, release_label);
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[1;37mEngine:\x1b[0m       GPUI 0.2.2 • DirectX DirectComposition (Hardware)");
     println!("  \x1b[1;37mTarget:\x1b[0m       {}", target);
     println!("  \x1b[1;37mBackdrop:\x1b[0m     Pure Clear Glass (0%) / Fluent Acrylic Blur (Win10/11)");
     println!("  \x1b[1;37mProtocols:\x1b[0m    Kitty Graphics, OSC 1337, OSC 8 Hyperlinks, ConPTY");
     println!("  \x1b[1;37mShell:\x1b[0m        {}", shell_name);
     println!("  \x1b[1;37mConfig:\x1b[0m       {}", config_dir.display());
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[2mUse \x1b[0m\x1b[1;33matlas tools\x1b[0m\x1b[2m to list all embedded developer satellites.\x1b[0m");
     println!();
 }

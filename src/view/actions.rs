@@ -753,7 +753,15 @@ impl AtlasView {
         self.settings_open = !self.settings_open;
         if self.settings_open {
             self.settings_tab_open = true;
-            // Keep active settings tab and scroll position
+            self.settings_nav_scroll = match self.settings_tab {
+                crate::config::SettingsTab::General | crate::config::SettingsTab::Appearance => 0.0,
+                crate::config::SettingsTab::Typography => 0.0,
+                crate::config::SettingsTab::Scrolling => 70.0,
+                crate::config::SettingsTab::Window => 150.0,
+                crate::config::SettingsTab::Tools => 230.0,
+                crate::config::SettingsTab::Shortcuts => 310.0,
+                crate::config::SettingsTab::Updates => 400.0,
+            };
             window.focus(&self.settings_focus);
         } else {
             window.focus(&self.focus);

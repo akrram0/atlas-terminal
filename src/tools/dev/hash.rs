@@ -42,7 +42,7 @@ pub fn run(args: &[String]) {
 fn print_help() {
     println!();
     println!("\x1b[1;36m  Atlas Crypto & Checksum Suite\x1b[0m");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[1mUSAGE:\x1b[0m");
     println!("    atlas hash <file>                Display SHA-256 + MD5 checksum card");
     println!("    atlas hash sha256 <file|string>  Compute SHA-256 hash");
@@ -78,18 +78,18 @@ fn hash_file_overview(path_str: &str) {
     let file_name = path.file_name().and_then(|f| f.to_str()).unwrap_or(path_str);
 
     println!();
-    println!("\x1b[1;36m  ┌────────────────────────────────────────────────────────┐\x1b[0m");
+    println!("\x1b[1;36m  ┌--------------------------------------------------------┐\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1mFile Checksum & Manifest Card\x1b[0m                         \x1b[1;36m│\x1b[0m");
-    println!("\x1b[1;36m  ├────────────────────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[1;36m  ├--------------------------------------------------------┤\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;33mFile:\x1b[0m      {:<45} \x1b[1;36m│\x1b[0m", truncate_string(file_name, 45));
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;34mSize:\x1b[0m      {:<45} \x1b[1;36m│\x1b[0m", format!("{} bytes ({})", file_size, format_bytes(file_size)));
-    println!("\x1b[1;36m  ├────────────────────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[1;36m  ├--------------------------------------------------------┤\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;32mSHA-256 (Winget standard):\x1b[0m                           \x1b[1;36m│\x1b[0m");
     println!("  │  \x1b[1;37m{}\x1b[0m  │", sha.to_uppercase());
-    println!("\x1b[1;36m  ├────────────────────────────────────────────────────────┤\x1b[0m");
+    println!("\x1b[1;36m  ├--------------------------------------------------------┤\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;35mMD5:\x1b[0m                                                 \x1b[1;36m│\x1b[0m");
     println!("  │  \x1b[1;37m{:<52}\x1b[0m  │", md5.to_uppercase());
-    println!("\x1b[1;36m  └────────────────────────────────────────────────────────┘\x1b[0m");
+    println!("\x1b[1;36m  └--------------------------------------------------------┘\x1b[0m");
     println!();
 }
 

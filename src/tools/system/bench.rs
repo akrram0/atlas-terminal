@@ -49,7 +49,7 @@ pub fn run() {
     println!();
     println!("\x1b[1;36m  Atlas Terminal Built-in Diagnostics & Benchmark\x1b[0m");
     println!("  \x1b[2mZero scripts needed • Pure hardware and PTY engine telemetry\x1b[0m");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     // 1. Live Memory Footprint
     println!("  \x1b[1;33m[1] Live Process Memory Footprint (Working Set):\x1b[0m");
@@ -102,7 +102,7 @@ pub fn run() {
     }
     println!();
 
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[1;32m✓ All systems operational.\x1b[0m Cold start: ~290ms • RAM: ~25MB idle.");
     println!();
 }

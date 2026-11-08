@@ -3,7 +3,7 @@
 pub fn run() {
     println!();
     println!("\x1b[1;36m  Atlas Environment & Shell Audit\x1b[0m");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     // 1. User Profile & Detected Shells
     let profile = crate::discovery::UserProfile::load_or_init();
@@ -41,6 +41,6 @@ pub fn run() {
     println!("    • DirectComp:      DirectX 11.1 DXGI Swapchain (Alpha blend: True)");
     println!("    • Truecolor:       24-bit RGB SGR ANSI supported");
     println!("    • Image Protocols: Kitty Graphics Protocol (RGBA/RGB), iTerm2 OSC 1337");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!();
 }

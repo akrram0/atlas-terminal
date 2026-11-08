@@ -5,6 +5,7 @@
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
+    ScrollDelta, ScrollWheelEvent,
     AnyElement, ClickEvent, Context, ElementId, FontWeight,
     IntoElement, KeyDownEvent, Rgba, div, px, relative, rgb, rgba,
 };
@@ -193,20 +194,23 @@ impl AtlasView {
         // --- Horizontal Category Strip (Top Bar Style - No Sidebar) ---
         let nav_items = [
             (SettingsTab::General, "General", icons::TERMINAL),
-            (SettingsTab::Appearance, "Appearance & Blur", icons::SUN),
-            (SettingsTab::Typography, "Font & Caret", icons::PEN),
-            (SettingsTab::Scrolling, "Scrolling & Mouse", icons::REFRESH),
-            (SettingsTab::Window, "Window & Splits", icons::SLIDERS),
-            (SettingsTab::Tools, "Tools & Satellites", icons::SATELLITE),
+            (SettingsTab::Appearance, "Appearance", icons::SUN),
+            (SettingsTab::Typography, "Typography", icons::PEN),
+            (SettingsTab::Scrolling, "Scrolling", icons::REFRESH),
+            (SettingsTab::Window, "Window", icons::SLIDERS),
+            (SettingsTab::Tools, "Tools", icons::SATELLITE),
             (SettingsTab::Shortcuts, "Shortcuts", icons::KEYBOARD),
-            (SettingsTab::Updates, "Updates & Config", icons::CLOUD_DOWNLOAD),
+            (SettingsTab::Updates, "Updates", icons::CLOUD_DOWNLOAD),
         ];
 
         let mut top_nav_pills = div()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(6.0));
+            .gap(px(5.0))
+            .flex_shrink_0()
+            .relative()
+            .left(px(-self.settings_nav_scroll));
 
         for (nav_idx, &(tab, label, icon)) in nav_items.iter().enumerate() {
             let is_active = self.settings_tab == tab;
@@ -229,13 +233,14 @@ impl AtlasView {
             top_nav_pills = top_nav_pills.child(
                 div()
                     .id(ElementId::named_usize("settings-top-nav-item", nav_idx))
-                    .h(px(32.0))
-                    .px(px(13.0))
+                    .h(px(30.0))
+                    .px(px(10.0))
+                    .flex_shrink_0()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(7.0))
+                    .gap(px(6.0))
+                    .rounded(px(6.0))
                     .bg(item_bg)
                     .border_1()
                     .border_color(item_border)
@@ -243,10 +248,10 @@ impl AtlasView {
                     .cursor_pointer()
                     .hover(move |s| s.bg(hover_bg).text_color(sc_nav_active_fg))
                     .active(move |s| s.opacity(0.80))
-                    .child(icons::icon(icon).size(px(15.0)).text_color(if is_active { theme.accent } else { item_fg }))
+                    .child(icons::icon(icon).size(px(14.0)).text_color(if is_active { theme.accent } else { item_fg }))
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(12.5))
                             .font_weight(if is_active {
                                 FontWeight::SEMIBOLD
                             } else {
@@ -261,6 +266,16 @@ impl AtlasView {
                         view.settings_scroll_handle.set_offset(gpui::Point::default());
                         view.settings_search_query.clear();
                         view.settings_search_active = false;
+                        let target_scroll = match tab {
+                            SettingsTab::General | SettingsTab::Appearance => 0.0,
+                            SettingsTab::Typography => 0.0,
+                            SettingsTab::Scrolling => 70.0,
+                            SettingsTab::Window => 150.0,
+                            SettingsTab::Tools => 230.0,
+                            SettingsTab::Shortcuts => 310.0,
+                            SettingsTab::Updates => 400.0,
+                        };
+                        view.settings_nav_scroll = target_scroll;
                         view.sync_and_save_settings();
                         cx.notify();
                     }))
@@ -268,20 +283,94 @@ impl AtlasView {
             );
         }
 
+        let nav_scroll_area = div()
+            .id(ElementId::named_usize("settings-top-nav-scroll-area", 0))
+            .flex_1()
+            .min_w(px(0.0))
+            .h(px(36.0))
+            .overflow_hidden()
+            .flex()
+            .flex_row()
+            .items_center()
+            .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
+                let delta = match event.delta {
+                    ScrollDelta::Lines(d) => {
+                        if d.x.abs() > 0.01 { d.x * 40.0 } else { d.y * 40.0 }
+                    }
+                    ScrollDelta::Pixels(d) => {
+                        let px_x = f32::from(d.x);
+                        let px_y = f32::from(d.y);
+                        if px_x.abs() > 0.01 { px_x } else { px_y }
+                    }
+                };
+                view.settings_nav_scroll = (view.settings_nav_scroll - delta).clamp(0.0, 450.0);
+                cx.notify();
+            }))
+            .child(top_nav_pills);
+
+        let can_scroll_left = self.settings_nav_scroll > 4.0;
+        let nav_left_btn = div()
+            .id(ElementId::named_usize("settings-nav-scroll-left", 0))
+            .h(px(26.0))
+            .w(px(20.0))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(5.0))
+            .cursor_pointer()
+            .opacity(if can_scroll_left { 0.95 } else { 0.25 })
+            .hover(move |s| if can_scroll_left { s.bg(theme.card_hover).text_color(theme.chrome_fg_active) } else { s })
+            .child(icons::icon(icons::CHEVRON_LEFT).size(px(13.0)).text_color(sc_nav_idle_fg))
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.settings_nav_scroll = (view.settings_nav_scroll - 130.0).max(0.0);
+                cx.notify();
+            }));
+
+        let can_scroll_right = self.settings_nav_scroll < 380.0;
+        let nav_right_btn = div()
+            .id(ElementId::named_usize("settings-nav-scroll-right", 0))
+            .h(px(26.0))
+            .w(px(20.0))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(5.0))
+            .cursor_pointer()
+            .opacity(if can_scroll_right { 0.95 } else { 0.35 })
+            .hover(move |s| s.bg(theme.card_hover).text_color(theme.chrome_fg_active))
+            .child(icons::icon(icons::CHEVRON_RIGHT).size(px(13.0)).text_color(sc_nav_idle_fg))
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.settings_nav_scroll = (view.settings_nav_scroll + 130.0).min(450.0);
+                cx.notify();
+            }));
+
+        let nav_strip = div()
+            .flex_1()
+            .min_w(px(0.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(4.0))
+            .child(nav_left_btn)
+            .child(nav_scroll_area)
+            .child(nav_right_btn);
+
         let is_searching = !self.settings_search_query.trim().is_empty();
         let sc_search_bg = if is_dark { rgba(0xFFFFFF0D) } else { rgba(0x00000008) };
         let sc_search_border = if is_dark { rgba(0xFFFFFF18) } else { rgba(0x00000014) };
 
         let search_bar = div()
             .id(ElementId::named_usize("settings-top-search", 0))
-            .h(px(32.0))
-            .w(px(220.0))
-            .px(px(10.0))
+            .h(px(30.0))
+            .w(if self.settings_search_active { px(180.0) } else { px(135.0) })
+            .px(px(8.0))
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(7.0))
-            .rounded(px(7.0))
+            .gap(px(6.0))
+            .rounded(px(6.0))
             .bg(if self.settings_search_active { Rgba { a: 0.12, ..theme.accent } } else { sc_search_bg })
             .border_1()
             .border_color(if self.settings_search_active { theme.accent } else { sc_search_border })
@@ -299,7 +388,7 @@ impl AtlasView {
                     .text_color(if self.settings_search_query.is_empty() { sc_desc } else { sc_label })
                     .overflow_hidden()
                     .child(if self.settings_search_query.is_empty() {
-                        "Search settings...".to_string()
+                        "Search...".to_string()
                     } else {
                         self.settings_search_query.clone()
                     })
@@ -323,65 +412,61 @@ impl AtlasView {
                 None
             });
 
+        let back_btn = div()
+            .id(ElementId::named_usize("settings-top-back-btn", 0))
+            .h(px(30.0))
+            .px(px(10.0))
+            .flex_shrink_0()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(sc_back_border)
+            .bg(sc_back_bg)
+            .cursor_pointer()
+            .hover(move |s| s.bg(theme.card_hover))
+            .active(move |s| s.opacity(0.80))
+            .text_color(sc_back_fg)
+            .child(icons::icon(icons::CLOSE).size(px(12.0)))
+            .child(
+                div()
+                    .text_size(px(12.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .child("Esc"),
+            )
+            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                view.settings_open = false;
+                view.settings_search_query.clear();
+                view.settings_search_active = false;
+                window.focus(&view.focus);
+                cx.notify();
+            }));
+
         let top_nav = div()
             .id(ElementId::named_usize("settings-top-nav", 0))
-            .h(px(52.0))
+            .h(px(48.0))
             .flex_shrink_0()
             .w(relative(1.0))
-            .px(px(24.0))
+            .px(px(16.0))
             .flex()
             .flex_row()
             .items_center()
             .justify_between()
+            .gap(px(10.0))
             .border_b_1()
             .border_color(theme.hairline)
+            .child(nav_strip)
             .child(
                 div()
-                    .flex_1()
-                    .min_w(px(0.0))
-                    .overflow_hidden()
-                    .child(top_nav_pills)
-            )
-            .child(
-                div()
+                    .flex_shrink_0()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(10.0))
-                    .pl(px(14.0))
+                    .gap(px(8.0))
                     .child(search_bar)
-                    .child(
-                        div()
-                            .id(ElementId::named_usize("settings-top-back-btn", 0))
-                            .h(px(32.0))
-                            .px(px(13.0))
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap(px(8.0))
-                            .rounded(px(7.0))
-                            .border_1()
-                            .border_color(sc_back_border)
-                            .bg(sc_back_bg)
-                            .cursor_pointer()
-                            .hover(move |s| s.bg(theme.card_hover))
-                            .active(move |s| s.opacity(0.80))
-                            .text_color(sc_back_fg)
-                            .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
-                            .child(
-                                div()
-                                    .text_size(px(12.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .child("Back to Terminal (Esc)"),
-                            )
-                            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                                view.settings_open = false;
-                                view.settings_search_query.clear();
-                                view.settings_search_active = false;
-                                window.focus(&view.focus);
-                                cx.notify();
-                            })),
-                    )
+                    .child(back_btn)
             );
 
         // ==========================================

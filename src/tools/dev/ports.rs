@@ -19,9 +19,9 @@ pub fn run(args: &[String]) {
 fn list_ports() {
     println!();
     println!("\x1b[1;36m  Atlas Active Listening Ports\x1b[0m");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[1;37m{:<8} {:<10} {:<24} {}\x1b[0m", "PORT", "PID", "PROCESS", "ADDRESS");
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     let output = Command::new("netstat")
         .args(["-ano", "-p", "tcp"])
@@ -58,7 +58,7 @@ fn list_ports() {
         eprintln!("\x1b[1;31mError:\x1b[0m Failed to query netstat.");
     }
 
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[2mTo free a port immediately: \x1b[0m\x1b[1;33matlas port kill <port>\x1b[0m");
     println!();
 }

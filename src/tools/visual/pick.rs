@@ -70,7 +70,7 @@ pub fn run(args: &[String]) {
 
     println!();
     println!("\x1b[1;36m  Atlas Pick: Detected {} actionable tokens\x1b[0m", items.len());
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
     for (idx, item) in items.iter().enumerate() {
         let hint = format!("[{}]", idx + 1);
@@ -88,7 +88,7 @@ pub fn run(args: &[String]) {
         );
     }
 
-    println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+    println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
     println!("  \x1b[2mRun 'atlas pick <number>' or copy directly.\x1b[0m\n");
 }
 

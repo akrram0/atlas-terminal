@@ -10,7 +10,7 @@ pub fn run(args: &[String]) {
     if args.is_empty() || args[0] == "list" {
         println!();
         println!("\x1b[1;36m  Atlas Terminal Themes & Presets\x1b[0m");
-        println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+        println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
 
         let mut builtins = Vec::new();
         let mut customs = Vec::new();
@@ -37,7 +37,7 @@ pub fn run(args: &[String]) {
             println!("\n  \x1b[2mNo custom themes installed yet. Drop .json themes into ~/.config/atlas/themes\x1b[0m");
         }
 
-        println!("\x1b[2m  ──────────────────────────────────────────────────────────\x1b[0m");
+        println!("\x1b[2m  ----------------------------------------------------------\x1b[0m");
         println!("  \x1b[1;33matlas theme set <name|id>\x1b[0m     \x1b[2mApply a theme preset\x1b[0m");
         println!("  \x1b[1;33matlas theme toggle\x1b[0m            \x1b[2mToggle between Dark and Light mode\x1b[0m");
         println!("  \x1b[1;33matlas theme dir\x1b[0m               \x1b[2mOpen themes folder in File Explorer\x1b[0m");
