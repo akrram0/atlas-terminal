@@ -222,12 +222,44 @@ pub fn pretty_shortcut(chord: &str) -> String {
         .join(" + ")
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SettingsTab {
     General,
     Appearance,
-    Shortcuts,
+    Typography,
+    Scrolling,
+    Window,
     Tools,
+    Shortcuts,
+    Updates,
+}
+
+impl SettingsTab {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::General => "general",
+            Self::Appearance => "appearance",
+            Self::Typography => "typography",
+            Self::Scrolling => "scrolling",
+            Self::Window => "window",
+            Self::Tools => "tools",
+            Self::Shortcuts => "shortcuts",
+            Self::Updates => "updates",
+        }
+    }
+
+    pub fn from_str_name(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "appearance" | "themes" => Self::Appearance,
+            "typography" | "font" | "caret" => Self::Typography,
+            "scrolling" | "scroll" | "mouse" => Self::Scrolling,
+            "window" | "layout" | "splits" => Self::Window,
+            "tools" | "satellites" => Self::Tools,
+            "shortcuts" | "keyboard" => Self::Shortcuts,
+            "updates" | "about" | "config" => Self::Updates,
+            _ => Self::General,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,6 +328,14 @@ pub struct AppSettingsFile {
     pub window_width: f32,
     #[serde(default = "default_window_height")]
     pub window_height: f32,
+    #[serde(default = "default_scroll_speed")]
+    pub scroll_speed: f32,
+    #[serde(default = "default_scroll_to_bottom_on_input")]
+    pub scroll_to_bottom_on_input: bool,
+    #[serde(default = "default_show_startup_banner")]
+    pub show_startup_banner: bool,
+    #[serde(default = "default_last_settings_tab")]
+    pub last_settings_tab: String,
     #[serde(default)]
     pub last_check_time: Option<u64>,
     #[serde(default)]
@@ -394,6 +434,18 @@ fn default_window_width() -> f32 {
 fn default_window_height() -> f32 {
     540.0
 }
+fn default_scroll_speed() -> f32 {
+    1.0
+}
+fn default_scroll_to_bottom_on_input() -> bool {
+    true
+}
+fn default_show_startup_banner() -> bool {
+    true
+}
+fn default_last_settings_tab() -> String {
+    "general".to_string()
+}
 
 impl Default for AppSettingsFile {
     fn default() -> Self {
@@ -428,6 +480,10 @@ impl Default for AppSettingsFile {
             update_channel: default_update_channel(),
             window_width: default_window_width(),
             window_height: default_window_height(),
+            scroll_speed: default_scroll_speed(),
+            scroll_to_bottom_on_input: default_scroll_to_bottom_on_input(),
+            show_startup_banner: default_show_startup_banner(),
+            last_settings_tab: default_last_settings_tab(),
             last_check_time: None,
             etag: None,
             last_seen_version: None,
@@ -520,5 +576,43 @@ mod tests {
         assert_eq!(loaded.theme_dark, "tokyo_night");
         assert_eq!(loaded.theme_light, "solarized");
         assert_eq!(loaded.theme, "atlas");
+    }
+
+    #[test]
+    fn test_settings_tab_string_conversion() {
+        let tabs = [
+            SettingsTab::General,
+            SettingsTab::Appearance,
+            SettingsTab::Typography,
+            SettingsTab::Scrolling,
+            SettingsTab::Window,
+            SettingsTab::Tools,
+            SettingsTab::Shortcuts,
+            SettingsTab::Updates,
+        ];
+        for tab in tabs {
+            assert_eq!(SettingsTab::from_str_name(tab.as_str()), tab);
+        }
+        assert_eq!(SettingsTab::from_str_name("unknown"), SettingsTab::General);
+    }
+
+    #[test]
+    fn test_app_settings_new_fields_roundtrip() {
+        let mut settings = AppSettingsFile::default();
+        settings.last_settings_tab = "scrolling".to_string();
+        settings.scroll_speed = 0.6;
+        settings.scroll_to_bottom_on_input = false;
+        settings.show_startup_banner = false;
+        settings.blur_enabled = false;
+        settings.opacity = 0.45;
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let loaded: AppSettingsFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.last_settings_tab, "scrolling");
+        assert_eq!(loaded.scroll_speed, 0.6);
+        assert_eq!(loaded.scroll_to_bottom_on_input, false);
+        assert_eq!(loaded.show_startup_banner, false);
+        assert_eq!(loaded.blur_enabled, false);
+        assert_eq!(loaded.opacity, 0.45);
     }
 }

@@ -9,7 +9,6 @@ use gpui::{
     Keystroke, MouseButton, MouseDownEvent, Window, div, px,
 };
 
-use crate::config::SettingsTab;
 use crate::icons;
 use crate::session::Profile;
 use crate::theme::Theme;
@@ -826,11 +825,7 @@ impl AtlasView {
             Command::OpenSettings => {
                 self.settings_tab_open = true;
                 self.settings_open = true;
-                self.settings_tab = SettingsTab::General;
                 self.profile_menu = false;
-                self.settings_scroll_pos = 0.0;
-                self.settings_scroll_target = 0.0;
-                self.settings_scroll_handle.set_offset(gpui::Point::default());
                 window.focus(&self.settings_focus);
                 cx.notify();
             }

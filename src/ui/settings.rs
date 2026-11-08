@@ -46,8 +46,10 @@ impl AtlasView {
         self.app_settings.font_size = self.font_size;
         self.app_settings.line_height = self.line_height;
         self.app_settings.corner_radius = self.corner_radius;
-        self.app_settings.opacity = self.opacity;
-        self.app_settings.blur_enabled = self.opacity < 0.999;
+        if self.app_settings.blur_enabled {
+            self.app_settings.opacity = self.opacity.clamp(0.01, 0.99);
+        }
+        self.app_settings.last_settings_tab = self.settings_tab.as_str().to_string();
         self.app_settings.cursor_shape = cursor_shape;
         self.app_settings.cursor_blink = self.cursor_blink;
         self.app_settings.auto_check_updates = self.updater_settings.auto_check_updates;
@@ -83,8 +85,11 @@ impl AtlasView {
         self.font_family = loaded.font_family.clone();
         self.font_size = loaded.font_size;
         self.line_height = loaded.line_height;
-        self.opacity = if loaded.blur_enabled || loaded.opacity < 0.999 {
-            crate::view::normalize_opacity(loaded.opacity)
+        let pref_op = crate::view::normalize_opacity(loaded.opacity);
+        self.app_settings.opacity = pref_op;
+        self.app_settings.blur_enabled = loaded.blur_enabled;
+        self.opacity = if loaded.blur_enabled {
+            pref_op
         } else {
             1.0
         };
@@ -188,9 +193,13 @@ impl AtlasView {
         // --- Horizontal Category Strip (Top Bar Style - No Sidebar) ---
         let nav_items = [
             (SettingsTab::General, "General", icons::TERMINAL),
-            (SettingsTab::Appearance, "Appearance & Themes", icons::SLIDERS),
-            (SettingsTab::Shortcuts, "Keyboard Shortcuts", icons::KEYBOARD),
+            (SettingsTab::Appearance, "Appearance & Blur", icons::SUN),
+            (SettingsTab::Typography, "Font & Caret", icons::PEN),
+            (SettingsTab::Scrolling, "Scrolling & Mouse", icons::REFRESH),
+            (SettingsTab::Window, "Window & Splits", icons::SLIDERS),
             (SettingsTab::Tools, "Tools & Satellites", icons::SATELLITE),
+            (SettingsTab::Shortcuts, "Shortcuts", icons::KEYBOARD),
+            (SettingsTab::Updates, "Updates & Config", icons::CLOUD_DOWNLOAD),
         ];
 
         let mut top_nav_pills = div()
@@ -250,15 +259,73 @@ impl AtlasView {
                         view.settings_scroll_pos = 0.0;
                         view.settings_scroll_target = 0.0;
                         view.settings_scroll_handle.set_offset(gpui::Point::default());
+                        view.settings_search_query.clear();
+                        view.settings_search_active = false;
+                        view.sync_and_save_settings();
                         cx.notify();
                     }))
                     .stagger_in(ElementId::named_usize("settings-nav-stagger", nav_idx), nav_idx),
             );
         }
 
+        let is_searching = !self.settings_search_query.trim().is_empty();
+        let sc_search_bg = if is_dark { rgba(0xFFFFFF0D) } else { rgba(0x00000008) };
+        let sc_search_border = if is_dark { rgba(0xFFFFFF18) } else { rgba(0x00000014) };
+
+        let search_bar = div()
+            .id(ElementId::named_usize("settings-top-search", 0))
+            .h(px(32.0))
+            .w(px(220.0))
+            .px(px(10.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(7.0))
+            .rounded(px(7.0))
+            .bg(if self.settings_search_active { Rgba { a: 0.12, ..theme.accent } } else { sc_search_bg })
+            .border_1()
+            .border_color(if self.settings_search_active { theme.accent } else { sc_search_border })
+            .cursor_pointer()
+            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                view.settings_search_active = true;
+                cx.notify();
+            }))
+            .child(icons::icon(icons::SEARCH).size(px(13.0)).text_color(if self.settings_search_active { theme.accent } else { sc_desc }))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .text_size(px(12.0))
+                    .text_color(if self.settings_search_query.is_empty() { sc_desc } else { sc_label })
+                    .overflow_hidden()
+                    .child(if self.settings_search_query.is_empty() {
+                        "Search settings...".to_string()
+                    } else {
+                        self.settings_search_query.clone()
+                    })
+            )
+            .children(if is_searching {
+                Some(
+                    div()
+                        .id(ElementId::named_usize("settings-clear-search", 0))
+                        .cursor_pointer()
+                        .p(px(2.0))
+                        .text_color(sc_desc)
+                        .hover(move |s| s.text_color(theme.chrome_fg_active))
+                        .child(icons::icon(icons::CLOSE).size(px(12.0)))
+                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                            view.settings_search_query.clear();
+                            view.settings_search_active = false;
+                            cx.notify();
+                        }))
+                )
+            } else {
+                None
+            });
+
         let top_nav = div()
             .id(ElementId::named_usize("settings-top-nav", 0))
-            .h(px(46.0))
+            .h(px(52.0))
             .flex_shrink_0()
             .w(relative(1.0))
             .px(px(24.0))
@@ -268,36 +335,53 @@ impl AtlasView {
             .justify_between()
             .border_b_1()
             .border_color(theme.hairline)
-            .child(top_nav_pills)
             .child(
                 div()
-                    .id(ElementId::named_usize("settings-top-back-btn", 0))
-                    .h(px(30.0))
-                    .px(px(13.0))
+                    .flex_1()
+                    .min_w(px(0.0))
+                    .overflow_hidden()
+                    .child(top_nav_pills)
+            )
+            .child(
+                div()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(8.0))
-                    .rounded(px(7.0))
-                    .border_1()
-                    .border_color(sc_back_border)
-                    .bg(sc_back_bg)
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(theme.card_hover))
-                    .active(move |s| s.opacity(0.80))
-                    .text_color(sc_back_fg)
-                    .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
+                    .gap(px(10.0))
+                    .pl(px(14.0))
+                    .child(search_bar)
                     .child(
                         div()
-                            .text_size(px(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child("Back to Terminal (Esc)"),
+                            .id(ElementId::named_usize("settings-top-back-btn", 0))
+                            .h(px(32.0))
+                            .px(px(13.0))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .rounded(px(7.0))
+                            .border_1()
+                            .border_color(sc_back_border)
+                            .bg(sc_back_bg)
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(theme.card_hover))
+                            .active(move |s| s.opacity(0.80))
+                            .text_color(sc_back_fg)
+                            .child(icons::icon(icons::CHEVRON_LEFT).size(px(14.0)))
+                            .child(
+                                div()
+                                    .text_size(px(12.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .child("Back to Terminal (Esc)"),
+                            )
+                            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                                view.settings_open = false;
+                                view.settings_search_query.clear();
+                                view.settings_search_active = false;
+                                window.focus(&view.focus);
+                                cx.notify();
+                            })),
                     )
-                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                        view.settings_open = false;
-                        window.focus(&view.focus);
-                        cx.notify();
-                    })),
             );
 
         // ==========================================
@@ -677,58 +761,74 @@ impl AtlasView {
             cx,
         );
 
-        // Opacity Stepper: 0% to 100% (1% precision between 0% and 5%, 5% above 5%)
-        let opacity_pct = (self.opacity * 100.0).round() as i32;
+                // Opacity Stepper: 0% to 100% (Preference memory)
+        let effective_pct = (if self.app_settings.blur_enabled {
+            self.opacity
+        } else {
+            self.app_settings.opacity
+        } * 100.0).round() as i32;
+
         let opacity_ctrl = stepper(
             112,
-            format!("{}%", opacity_pct),
+            format!("{}%", effective_pct),
             theme,
             |view, cx| {
-                let current_pct = (view.opacity * 100.0).round() as i32;
+                let current_pct = (if view.app_settings.blur_enabled {
+                    view.opacity
+                } else {
+                    view.app_settings.opacity
+                } * 100.0).round() as i32;
                 let next_pct = if current_pct <= 5 {
-                    (current_pct - 1).max(0)
+                    (current_pct - 1).max(1)
                 } else {
                     current_pct - 5
                 };
-                view.opacity = next_pct as f32 / 100.0;
-                view.app_settings.opacity = view.opacity;
-                view.app_settings.blur_enabled = view.opacity < 0.999;
+                let new_op = next_pct as f32 / 100.0;
+                view.app_settings.opacity = new_op.clamp(0.01, 0.99);
+                view.app_settings.blur_enabled = true;
+                view.opacity = new_op;
                 view.sync_and_save_settings();
                 cx.notify();
             },
             |view, cx| {
-                let current_pct = (view.opacity * 100.0).round() as i32;
+                let current_pct = (if view.app_settings.blur_enabled {
+                    view.opacity
+                } else {
+                    view.app_settings.opacity
+                } * 100.0).round() as i32;
                 let next_pct = if current_pct < 5 {
                     current_pct + 1
                 } else {
-                    (current_pct + 5).min(100)
+                    (current_pct + 5).min(99)
                 };
-                view.opacity = next_pct as f32 / 100.0;
-                view.app_settings.opacity = view.opacity;
-                view.app_settings.blur_enabled = view.opacity < 0.999;
+                let new_op = next_pct as f32 / 100.0;
+                view.app_settings.opacity = new_op.clamp(0.01, 0.99);
+                view.app_settings.blur_enabled = true;
+                view.opacity = new_op;
                 view.sync_and_save_settings();
                 cx.notify();
             },
             cx,
         );
 
-        // Blur Background Switch
-        let is_blur = self.opacity < 0.999;
+        // Blur Background Switch (Fix for Bug 1)
+        let is_blur = self.app_settings.blur_enabled;
         let blur_switch = toggle_pill(
             113,
             is_blur,
             theme,
             |view, cx| {
-                if view.opacity < 0.999 {
+                if view.app_settings.blur_enabled {
                     view.opacity = 1.0;
                     view.app_settings.blur_enabled = false;
                 } else {
-                    let target = if view.app_settings.opacity < 0.999 && view.app_settings.opacity >= 0.0 {
+                    let target = if view.app_settings.opacity < 0.999 && view.app_settings.opacity >= 0.01 {
                         view.app_settings.opacity
                     } else {
                         0.67
                     };
                     view.opacity = target;
+                    view.app_settings.opacity = target;
                     view.app_settings.blur_enabled = true;
                 }
                 view.sync_and_save_settings();
@@ -816,6 +916,57 @@ impl AtlasView {
             cx,
         );
 
+        // Scroll Speed Multiplier Stepper / Segmented Control
+        let speed_str = if (self.app_settings.scroll_speed - 0.6).abs() < 0.15 {
+            "0.6".to_string()
+        } else if (self.app_settings.scroll_speed - 1.5).abs() < 0.15 {
+            "1.5".to_string()
+        } else {
+            "1.0".to_string()
+        };
+        let speed_options = vec![
+            ("0.6".to_string(), "Precision (0.6x)".to_string()),
+            ("1.0".to_string(), "Balanced (1.0x)".to_string()),
+            ("1.5".to_string(), "Fast (1.5x)".to_string()),
+        ];
+        let scroll_speed_ctrl = segmented_control(
+            "scroll-speed-ctrl",
+            speed_options,
+            &speed_str,
+            theme,
+            |speed_val, view, cx| {
+                view.app_settings.scroll_speed = speed_val.parse::<f32>().unwrap_or(1.0);
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let scroll_to_bottom_ctrl = toggle_pill(
+            161,
+            self.app_settings.scroll_to_bottom_on_input,
+            theme,
+            |view, cx| {
+                view.app_settings.scroll_to_bottom_on_input = !view.app_settings.scroll_to_bottom_on_input;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let startup_banner_ctrl = toggle_pill(
+            159,
+            self.app_settings.show_startup_banner,
+            theme,
+            |view, cx| {
+                view.app_settings.show_startup_banner = !view.app_settings.show_startup_banner;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+
         let appearance_view = div()
             .flex()
             .flex_col()
@@ -875,6 +1026,26 @@ impl AtlasView {
             )
             .child(
                 card()
+                    .child(section_header("BACKGROUND & BLUR"))
+                    .child(setting_row("Blur Background", Some("Fluent acrylic translucency (toggles desktop blur)"), blur_switch, false))
+                    .child(setting_row(
+                        "Window Opacity",
+                        Some(if self.app_settings.blur_enabled {
+                            "Sheet opacity (0% = fully translucent glass, 100% = solid)"
+                        } else {
+                            "Sheet opacity (Preference preserved — Blur currently off)"
+                        }),
+                        opacity_ctrl,
+                        true,
+                    )),
+            );
+
+        let typography_view = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .child(
+                card()
                     .child(section_header("TYPOGRAPHY"))
                     .child(setting_row("Active Typeface", Some("Typeface loaded from settings.json"), font_badge, false))
                     .child(setting_row("Font Size", Some("Glyph rendering dimension"), font_size_ctrl, false))
@@ -882,10 +1053,72 @@ impl AtlasView {
             )
             .child(
                 card()
-                    .child(section_header("BACKGROUND & BLUR"))
-                    .child(setting_row("Blur Background", Some("Fluent acrylic translucency (toggles desktop blur)"), blur_switch, false))
-                    .child(setting_row("Window Opacity", Some("Sheet opacity (0% = fully translucent glass, 100% = solid)"), opacity_ctrl, true)),
-            )
+                    .child(section_header("TERMINAL CARET"))
+                    .child(setting_row("Caret Shape", Some("Visual style of input focus cursor"), cursor_shape_ctrl, false))
+                    .child(setting_row("Breathing Animation", Some("Smooth cursor pulse when idle"), cursor_blink_ctrl, true)),
+            );
+
+
+
+
+
+        let editor_options = vec![
+            ("auto".to_string(), "Auto".to_string()),
+            ("code".to_string(), "VS Code".to_string()),
+            ("cursor".to_string(), "Cursor".to_string()),
+            ("zed".to_string(), "Zed".to_string()),
+            ("system".to_string(), "Default".to_string()),
+        ];
+        let editor_ctrl = segmented_control(
+            "default-editor-ctrl",
+            editor_options,
+            &self.app_settings.default_editor,
+            theme,
+            |editor, view, cx| {
+                view.app_settings.default_editor = editor;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+
+        let scroll_options = vec![
+            (5000, "5,000".to_string()),
+            (10000, "10,000".to_string()),
+            (20000, "20,000".to_string()),
+            (50000, "50,000".to_string()),
+        ];
+        let scroll_ctrl = segmented_control(
+            "scrollback-ctrl",
+            scroll_options,
+            &self.app_settings.scrollback_lines,
+            theme,
+            |lines, view, cx| {
+                view.app_settings.scrollback_lines = lines;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let copy_on_select_ctrl = toggle_pill(
+            341,
+            self.app_settings.copy_on_select,
+            theme,
+            |view, cx| {
+                view.app_settings.copy_on_select = !view.app_settings.copy_on_select;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+
+        let window_view = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
             .child(
                 card()
                     .child(section_header("NAVIGATION & TABS"))
@@ -908,9 +1141,25 @@ impl AtlasView {
             )
             .child(
                 card()
-                    .child(section_header("TERMINAL CARET"))
-                    .child(setting_row("Caret Shape", Some("Visual style of input focus cursor"), cursor_shape_ctrl, false))
-                    .child(setting_row("Breathing Animation", Some("Smooth cursor pulse when idle"), cursor_blink_ctrl, true)),
+                    .child(section_header("DEVELOPER & EDITOR"))
+                    .child(setting_row("Default Code Editor", Some("Application launched on Ctrl+Click file paths with line & col coordinates"), editor_ctrl, true)),
+            );
+
+        let scrolling_view = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .child(
+                card()
+                    .child(section_header("SCROLL SENSITIVITY & PHYSICS"))
+                    .child(setting_row("Scroll Speed Multiplier", Some("Controls lines scrolled per mouse wheel notch. Balanced (1.0x) eliminates runaway speed"), scroll_speed_ctrl, false))
+                    .child(setting_row("Scrollback History", Some("Maximum stored buffer lines per pane"), scroll_ctrl, true)),
+            )
+            .child(
+                card()
+                    .child(section_header("SELECTION & BUFFER"))
+                    .child(setting_row("Copy on Select", Some("Automatically copy selected terminal text to clipboard"), copy_on_select_ctrl, false))
+                    .child(setting_row("Scroll to Bottom on Key Input", Some("Immediately restore prompt view when typing while scrolled up in buffer"), scroll_to_bottom_ctrl, true)),
             );
 
         // ==========================================
@@ -1068,63 +1317,12 @@ impl AtlasView {
             cx,
         );
 
-        let scroll_options = vec![
-            (5000, "5,000".to_string()),
-            (10000, "10,000".to_string()),
-            (20000, "20,000".to_string()),
-            (50000, "50,000".to_string()),
-        ];
-        let scroll_ctrl = segmented_control(
-            "scrollback-ctrl",
-            scroll_options,
-            &self.app_settings.scrollback_lines,
-            theme,
-            |lines, view, cx| {
-                view.app_settings.scrollback_lines = lines;
-                view.sync_and_save_settings();
-                cx.notify();
-            },
-            cx,
-        );
-
-        let copy_on_select_ctrl = toggle_pill(
-            341,
-            self.app_settings.copy_on_select,
-            theme,
-            |view, cx| {
-                view.app_settings.copy_on_select = !view.app_settings.copy_on_select;
-                view.sync_and_save_settings();
-                cx.notify();
-            },
-            cx,
-        );
-
         let confirm_close_ctrl = toggle_pill(
             340,
             self.app_settings.confirm_close_process,
             theme,
             |view, cx| {
                 view.app_settings.confirm_close_process = !view.app_settings.confirm_close_process;
-                view.sync_and_save_settings();
-                cx.notify();
-            },
-            cx,
-        );
-
-        let editor_options = vec![
-            ("auto".to_string(), "Auto".to_string()),
-            ("code".to_string(), "VS Code".to_string()),
-            ("cursor".to_string(), "Cursor".to_string()),
-            ("zed".to_string(), "Zed".to_string()),
-            ("system".to_string(), "Default".to_string()),
-        ];
-        let editor_ctrl = segmented_control(
-            "default-editor-ctrl",
-            editor_options,
-            &self.app_settings.default_editor,
-            theme,
-            |editor, view, cx| {
-                view.app_settings.default_editor = editor;
                 view.sync_and_save_settings();
                 cx.notify();
             },
@@ -1347,43 +1545,30 @@ impl AtlasView {
                     )
                     .child(shell_cards),
             )
-            .child({
-                let mut config_card = card()
-                    .child(section_header("CONFIGURATION & PROMPT FILES"))
-                    .child(setting_row("Atlas Config (settings.json)", Some("Font family, opacity %, custom themes, and keybindings"), edit_settings_btn, false))
-                    .child(setting_row("Atlas Environment Profile (profile.json)", Some("Detected shells, WSL distros, and dev/AI CLI tool paths (%APPDATA%\\AtlasTerminal)"), edit_profile_json_btn, false))
-                    .child(setting_row("PowerShell Profile ($PROFILE)", Some("Custom prompt name, Oh-My-Posh / Starship prompt, startup script"), edit_profile_btn, false));
-                if let Some(btn) = edit_fastfetch_btn {
-                    config_card = config_card.child(setting_row("Fastfetch Config (config.jsonc)", Some("Logo image, system specs, modules, and inline layout"), btn, false));
-                }
-                config_card
-                    .child(setting_row("Atlas Data Folder", Some("Session histories, logs, and portable overrides (~/.config/atlas)"), reveal_dir_btn, false))
-                    .child(setting_row("Reload Settings", Some("Apply manual edits from settings.json immediately"), reload_settings_btn, true))
-            })
             .child(
                 card()
                     .child(section_header("STARTUP & WORKSPACE"))
                     .child(setting_row("Startup Mode", Some("Restore previous workspace state or open clean tab"), startup_ctrl, false))
-                    .child(setting_row("Initial Directory", Some("Starting working location for new shells"), start_dir_ctrl, true)),
+                    .child(setting_row("Initial Directory", Some("Starting working location for new shells"), start_dir_ctrl, false))
+                    .child(setting_row("Startup Fastfetch Banner", Some("Display zero-latency hardware specs card automatically when opening the terminal"), startup_banner_ctrl, true)),
             )
             .child(
                 card()
-                    .child(section_header("TERMINAL BEHAVIOR"))
-                    .child(setting_row("Scrollback History", Some("Maximum stored buffer lines per pane"), scroll_ctrl, false))
-                    .child(setting_row("Copy on Select", Some("Automatically copy selected terminal text to clipboard"), copy_on_select_ctrl, false))
-                    .child(setting_row("Confirm Process Exit", Some("Warn before closing tabs running foreground processes"), confirm_close_ctrl, true)),
-            )
-            .child(
-                card()
-                    .child(section_header("DEVELOPER & EDITOR"))
-                    .child(setting_row("Default Code Editor", Some("Application launched on Ctrl+Click file paths with line & col coordinates"), editor_ctrl, true)),
-            )
-            .child(
-                card()
-                    .child(section_header("BACKGROUND NOTIFICATIONS"))
+                    .child(section_header("SAFETY & NOTIFICATIONS"))
+                    .child(setting_row("Confirm Process Exit", Some("Warn before closing tabs running foreground processes"), confirm_close_ctrl, false))
                     .child(setting_row("Notify on Long Commands", Some("Send native Windows notification when a task finishes while Atlas is unfocused"), notify_ctrl, false))
                     .child(setting_row("Alert Threshold", Some("Minimum running duration before triggering an alert"), threshold_ctrl, true)),
             )
+            .child(
+                card()
+                    .child(section_header("RESET CONFIGURATION"))
+                    .child(setting_row("Factory Settings", Some("Revert all appearance, shortcuts, and behavior options"), reset_defaults_btn, true)),
+            );
+
+        let updates_view = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
             .child(
                 card()
                     .child(section_header("SOFTWARE UPDATES"))
@@ -1410,11 +1595,19 @@ impl AtlasView {
                     .child(setting_row("Check Frequency", Some("Interval between update scans"), interval_ctrl, false))
                     .child(setting_row("Manual Check", Some("Poll GitHub release channels immediately"), check_updates_btn, true)),
             )
-            .child(
-                card()
-                    .child(section_header("RESET CONFIGURATION"))
-                    .child(setting_row("Factory Settings", Some("Revert all appearance, shortcuts, and behavior options"), reset_defaults_btn, true)),
-            );
+            .child({
+                let mut config_card = card()
+                    .child(section_header("CONFIGURATION & PROMPT FILES"))
+                    .child(setting_row("Atlas Config (settings.json)", Some("Font family, opacity %, custom themes, and keybindings"), edit_settings_btn, false))
+                    .child(setting_row("Atlas Environment Profile (profile.json)", Some("Detected shells, WSL distros, and dev/AI CLI tool paths (%APPDATA%\\AtlasTerminal)"), edit_profile_json_btn, false))
+                    .child(setting_row("PowerShell Profile ($PROFILE)", Some("Custom prompt name, Oh-My-Posh / Starship prompt, startup script"), edit_profile_btn, false));
+                if let Some(btn) = edit_fastfetch_btn {
+                    config_card = config_card.child(setting_row("Fastfetch Config (config.jsonc)", Some("Logo image, system specs, modules, and inline layout"), btn, false));
+                }
+                config_card
+                    .child(setting_row("Atlas Data Folder", Some("Session histories, logs, and portable overrides (~/.config/atlas)"), reveal_dir_btn, false))
+                    .child(setting_row("Reload Settings", Some("Apply manual edits from settings.json immediately"), reload_settings_btn, true))
+            });
 
         // ==========================================
         // --- Tab 3: Shortcuts Tab ---
@@ -2001,17 +2194,162 @@ impl AtlasView {
         // --- Body / Content Framing ---
         // ==========================================
 
-        let content_body = div()
-            .flex()
-            .flex_col()
-            .child(match self.settings_tab {
-                SettingsTab::General => general_view.into_any_element(),
-                SettingsTab::Appearance => appearance_view.into_any_element(),
-                SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
-                SettingsTab::Tools => tools_view.into_any_element(),
-            })
-            .slide_up(ElementId::named_usize("settings-tab-pane", self.settings_tab as usize))
-            .into_any_element();
+                let is_searching = !self.settings_search_query.trim().is_empty();
+        let search_query_lower = self.settings_search_query.trim().to_lowercase();
+
+        let content_body: AnyElement = if is_searching {
+            let searchable_items: &[(&'static str, &'static str, SettingsTab, &'static str)] = &[
+                ("Theme Mode", "Appearance & Blur", SettingsTab::Appearance, "Color Mode: Auto sync, Dark, or Light override"),
+                ("Dark Themes & Presets", "Appearance & Blur", SettingsTab::Appearance, "Tokyo Night, Gruvbox, Catppuccin, Nord, Classic"),
+                ("Light Themes & Presets", "Appearance & Blur", SettingsTab::Appearance, "Solarized Light, Warm Paper, Classic Light"),
+                ("Blur Background", "Appearance & Blur", SettingsTab::Appearance, "Fluent Windows 11 DWM acrylic glassmorphism backdrop"),
+                ("Window Opacity", "Appearance & Blur", SettingsTab::Appearance, "Sheet opacity percentage with saved preference memory"),
+                ("Active Typeface", "Font & Caret", SettingsTab::Typography, "Hardware-accelerated monospace font"),
+                ("Font Size & Line Height", "Font & Caret", SettingsTab::Typography, "Glyph dimension and vertical spacing proportions"),
+                ("Caret Shape & Cursor Breathing", "Font & Caret", SettingsTab::Typography, "Beam, block, underline cursor styles and sine pulse"),
+                ("Scroll Speed Multiplier", "Scrolling & Mouse", SettingsTab::Scrolling, "Tame scroll velocity: Precision 0.6x, Balanced 1.0x, Fast 1.5x"),
+                ("Scrollback History", "Scrolling & Mouse", SettingsTab::Scrolling, "Max lines preserved in RAM per tab"),
+                ("Copy on Select", "Scrolling & Mouse", SettingsTab::Scrolling, "Automatically copy highlighted terminal text to clipboard"),
+                ("Scroll to Bottom on Key Input", "Scrolling & Mouse", SettingsTab::Scrolling, "Immediately restore prompt view when typing while scrolled up"),
+                ("Tab Bar Layout", "Window & Splits", SettingsTab::Window, "Top horizontal bar, vertical sidebar, or borderless"),
+                ("Split Window Gaps", "Window & Splits", SettingsTab::Window, "Spacing between split terminal panes"),
+                ("Default Code Editor", "Window & Splits", SettingsTab::Window, "Application launched on Ctrl+Click file paths"),
+                ("Default Shell", "General", SettingsTab::General, "PowerShell, WSL, or CMD startup profile"),
+                ("Initial Directory", "General", SettingsTab::General, "Starting directory for freshly opened shells"),
+                ("Startup Fastfetch Banner", "General", SettingsTab::General, "Hardware specs card automatically displayed on startup"),
+                ("Confirm Process Exit", "General", SettingsTab::General, "Warn before closing tabs running foreground processes"),
+                ("Notify on Long Commands", "General", SettingsTab::General, "Trigger notification island when a background task finishes"),
+                ("Atlas Jump (z)", "Tools & Satellites", SettingsTab::Tools, "Frecency directory memory & ghost-text inline path suggestions"),
+                ("Atlas Serve", "Tools & Satellites", SettingsTab::Tools, "Zero-dependency static HTTP file server for current folder"),
+                ("Atlas Hash", "Tools & Satellites", SettingsTab::Tools, "SHA-256 and MD5 checksums, Base64 & URL encoding"),
+                ("Atlas Port", "Tools & Satellites", SettingsTab::Tools, "Inspect listening ports and terminate blocking dev servers"),
+                ("Atlas Top", "Tools & Satellites", SettingsTab::Tools, "Inline CPU, RAM, and process memory gauge card"),
+                ("Keyboard Shortcuts Map", "Shortcuts", SettingsTab::Shortcuts, "Customize keystroke chords or review navigation bindings"),
+                ("Software Updates", "Updates & Config", SettingsTab::Updates, "Release channels, automated checks, and manual update poll"),
+                ("Configuration Files", "Updates & Config", SettingsTab::Updates, "settings.json, profile.json, PowerShell $PROFILE"),
+            ];
+
+            let matches: Vec<_> = searchable_items.iter().filter(|(name, cat, _, desc)| {
+                name.to_lowercase().contains(&search_query_lower)
+                    || cat.to_lowercase().contains(&search_query_lower)
+                    || desc.to_lowercase().contains(&search_query_lower)
+            }).collect();
+
+            if matches.is_empty() {
+                div()
+                    .p(px(32.0))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .text_size(px(14.0))
+                            .text_color(sc_label)
+                            .child(format!("No settings matching \"{}\"", self.settings_search_query))
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.5))
+                            .text_color(sc_desc)
+                            .child("Try searching for 'blur', 'scroll', 'font', 'theme', or 'shell'.")
+                    )
+                    .into_any_element()
+            } else {
+                let mut results_list = div().flex().flex_col().gap(px(8.0));
+                for (idx, (name, cat, tab, desc)) in matches.iter().enumerate() {
+                    let target_tab = *tab;
+                    let result_card = div()
+                        .id(ElementId::named_usize("settings-search-result", idx))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .p(px(16.0))
+                        .rounded(px(8.0))
+                        .bg(theme.elevated_bg)
+                        .border_1()
+                        .border_color(theme.elevated_border)
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap(px(3.0))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(8.0))
+                                        .child(
+                                            div()
+                                                .text_size(px(14.0))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .text_color(sc_label)
+                                                .child(*name)
+                                        )
+                                        .child(
+                                            div()
+                                                .px(px(6.0))
+                                                .py(px(2.0))
+                                                .rounded(px(4.0))
+                                                .bg(theme.soft_bg)
+                                                .text_size(px(11.0))
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(theme.accent)
+                                                .child(*cat)
+                                        )
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(12.0))
+                                        .text_color(sc_desc)
+                                        .child(*desc)
+                                )
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap(px(4.0))
+                                .text_size(px(12.0))
+                                .text_color(theme.accent)
+                                .child("Go to setting →")
+                        )
+                        .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                            view.settings_tab = target_tab;
+                            view.settings_search_query.clear();
+                            view.settings_search_active = false;
+                            view.settings_scroll_pos = 0.0;
+                            view.settings_scroll_target = 0.0;
+                            view.settings_scroll_handle.set_offset(gpui::Point::default());
+                            view.sync_and_save_settings();
+                            cx.notify();
+                        }));
+                    results_list = results_list.child(result_card);
+                }
+                results_list.into_any_element()
+            }
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .child(match self.settings_tab {
+                    SettingsTab::General => general_view.into_any_element(),
+                    SettingsTab::Appearance => appearance_view.into_any_element(),
+                    SettingsTab::Typography => typography_view.into_any_element(),
+                    SettingsTab::Scrolling => scrolling_view.into_any_element(),
+                    SettingsTab::Window => window_view.into_any_element(),
+                    SettingsTab::Tools => tools_view.into_any_element(),
+                    SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
+                    SettingsTab::Updates => updates_view.into_any_element(),
+                })
+                .slide_up(ElementId::named_usize("settings-tab-pane", self.settings_tab as usize))
+                .into_any_element()
+        };
 
         let content_header = div()
             .flex()
@@ -2023,22 +2361,38 @@ impl AtlasView {
                     .text_size(px(22.0))
                     .font_weight(FontWeight::BOLD)
                     .text_color(sc_title)
-                    .child(match self.settings_tab {
-                        SettingsTab::General => "General Preferences",
-                        SettingsTab::Appearance => "Appearance & Themes",
-                        SettingsTab::Shortcuts => "Keyboard Shortcuts",
-                        SettingsTab::Tools => "Tools & Satellites",
+                    .child(if is_searching {
+                        format!("Search Results for \"{}\"", self.settings_search_query)
+                    } else {
+                        match self.settings_tab {
+                            SettingsTab::General => "General Preferences".to_string(),
+                            SettingsTab::Appearance => "Appearance & Blur".to_string(),
+                            SettingsTab::Typography => "Font & Caret".to_string(),
+                            SettingsTab::Scrolling => "Scrolling & Mouse".to_string(),
+                            SettingsTab::Window => "Window & Splits".to_string(),
+                            SettingsTab::Tools => "Tools & Satellites".to_string(),
+                            SettingsTab::Shortcuts => "Keyboard Shortcuts".to_string(),
+                            SettingsTab::Updates => "Updates & Config".to_string(),
+                        }
                     }),
             )
             .child(
                 div()
                     .text_size(px(13.0))
                     .text_color(sc_desc)
-                    .child(match self.settings_tab {
-                        SettingsTab::General => "Configure default shell, startup directory, scrollback, and cursor options.",
-                        SettingsTab::Appearance => "Customize colors, themes, acrylic blur, fonts, and window styling.",
-                        SettingsTab::Shortcuts => "Customize keystrokes or review built-in navigation and window management.",
-                        SettingsTab::Tools => "Zero-overhead companion tools for system diagnostics, dev workflows, and visual terminal extensions.",
+                    .child(if is_searching {
+                        "Click any matching item to jump directly to its category.".to_string()
+                    } else {
+                        match self.settings_tab {
+                            SettingsTab::General => "Configure default shell, startup working directory, and execution safety.".to_string(),
+                            SettingsTab::Appearance => "Fluent acrylic glass translucency, color mode, and curated terminal themes.".to_string(),
+                            SettingsTab::Typography => "Monospace typeface rendering, vertical cell line height, and cursor dynamics.".to_string(),
+                            SettingsTab::Scrolling => "Control scroll velocity, eliminate runaway acceleration, and manage clipboard buffers.".to_string(),
+                            SettingsTab::Window => "Tab bar position, tiling split gaps, and window framing.".to_string(),
+                            SettingsTab::Tools => "Zero-dependency developer companions and CLI satellites.".to_string(),
+                            SettingsTab::Shortcuts => "Review native navigation keystrokes or record custom keybindings.".to_string(),
+                            SettingsTab::Updates => "Software release channels, background update checks, and configuration files.".to_string(),
+                        }
                     }),
             );
 

@@ -762,9 +762,10 @@ impl AtlasView {
                             }
                         }
                     }
+                    let speed = view.app_settings.scroll_speed.clamp(0.2, 3.0);
                     let lines = match event.delta {
-                        gpui::ScrollDelta::Lines(delta) => delta.y as f32,
-                        gpui::ScrollDelta::Pixels(delta) => f32::from(delta.y) / 18.0,
+                        gpui::ScrollDelta::Lines(delta) => (delta.y as f32) * 0.65 * speed,
+                        gpui::ScrollDelta::Pixels(delta) => (f32::from(delta.y) / 32.0) * speed,
                     };
                     view.scroll_smooth(lines, cx);
                 },

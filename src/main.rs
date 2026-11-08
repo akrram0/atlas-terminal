@@ -273,7 +273,7 @@ fn main() {
             config::update_saved_settings_hash(&content);
         }
         let loaded_opacity = view::normalize_opacity(loaded_settings.opacity);
-        let should_blur = (loaded_settings.blur_enabled || loaded_opacity < 0.999) && loaded_opacity < 0.999;
+        let should_blur = loaded_settings.blur_enabled && loaded_opacity < 0.999;
         #[cfg(windows)]
         rounded_corners::set_opacity(if should_blur { loaded_opacity } else { 1.0 });
 

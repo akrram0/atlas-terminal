@@ -39,10 +39,10 @@ impl AtlasView {
         let current = session.borrow().term.renderable_content().display_offset as f32;
         let max = session.borrow().term.history_size() as f32;
 
-        let boost = if elapsed < 45 {
-            1.6
-        } else if elapsed < 80 {
-            1.25
+        let boost = if elapsed < 35 {
+            1.15
+        } else if elapsed < 65 {
+            1.05
         } else {
             1.0
         };

@@ -169,6 +169,8 @@ pub struct AtlasView {
     pub(crate) update_cancel_token: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     pub(crate) app_settings: AppSettingsFile,
     pub(crate) settings_tab: SettingsTab,
+    pub(crate) settings_search_query: String,
+    pub(crate) settings_search_active: bool,
     pub(crate) recording_shortcut: Option<String>,
     pub(crate) font_family: String,
     pub(crate) line_height: f32,
@@ -258,7 +260,7 @@ impl AtlasView {
         let font_size = app_settings.font_size.clamp(10.0, 24.0);
         let line_height = app_settings.line_height.clamp(1.0, 1.8);
         let corner_radius = app_settings.corner_radius.clamp(0.0, 20.0);
-        let opacity = if app_settings.blur_enabled || app_settings.opacity < 0.999 {
+        let opacity = if app_settings.blur_enabled {
             normalize_opacity(app_settings.opacity)
         } else {
             1.0
@@ -355,7 +357,9 @@ impl AtlasView {
             update_download_state: UpdateDownloadState::Idle,
             update_cancel_token: None,
             app_settings: app_settings.clone(),
-            settings_tab: SettingsTab::General,
+            settings_tab: SettingsTab::from_str_name(&app_settings.last_settings_tab),
+            settings_search_query: String::new(),
+            settings_search_active: false,
             recording_shortcut: None,
             font_family,
             line_height,

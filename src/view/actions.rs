@@ -753,10 +753,7 @@ impl AtlasView {
         self.settings_open = !self.settings_open;
         if self.settings_open {
             self.settings_tab_open = true;
-            self.settings_tab = crate::config::SettingsTab::General;
-            self.settings_scroll_pos = 0.0;
-            self.settings_scroll_target = 0.0;
-            self.settings_scroll_handle.set_offset(gpui::Point::default());
+            // Keep active settings tab and scroll position
             window.focus(&self.settings_focus);
         } else {
             window.focus(&self.focus);

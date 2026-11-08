@@ -453,10 +453,7 @@ pub fn profile_menu(view: &AtlasView, theme: &Theme, closing: bool, cx: &mut Con
                 view.dismiss_profile(cx);
                 view.settings_tab_open = true;
                 view.settings_open = true;
-                view.settings_tab = crate::config::SettingsTab::General;
-                view.settings_scroll_pos = 0.0;
-                view.settings_scroll_target = 0.0;
-                view.settings_scroll_handle.set_offset(gpui::Point::default());
+                // Keep active settings tab
                 window.focus(&view.settings_focus);
                 cx.notify();
             })),

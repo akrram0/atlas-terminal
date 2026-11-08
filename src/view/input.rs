@@ -7,7 +7,7 @@ use alacritty_terminal::term::TermMode;
 use gpui::{ClipboardItem, Context, Keystroke, Pixels, Rgba, Window};
 
 use crate::config::{
-    default_shortcuts, format_keystroke_chord, SettingsTab, ACTION_CLEAR_SCROLLBACK,
+    default_shortcuts, format_keystroke_chord, ACTION_CLEAR_SCROLLBACK,
     ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FIND, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE,
     ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEW_WINDOW, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_OPEN_URL_PICKER,
     ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
@@ -555,6 +555,12 @@ impl AtlasView {
                 return;
             }
             if self.settings_open {
+                if !self.settings_search_query.is_empty() || self.settings_search_active {
+                    self.settings_search_query.clear();
+                    self.settings_search_active = false;
+                    cx.notify();
+                    return;
+                }
                 self.settings_open = false;
                 window.focus(&self.focus);
                 cx.notify();
@@ -570,16 +576,42 @@ impl AtlasView {
             return;
         }
 
+                // Handle Settings Live Search typing
+        if self.settings_open {
+            if let Some(chord) = format_keystroke_chord(ks) {
+                if chord == "ctrl+f" {
+                    self.settings_search_active = true;
+                    cx.notify();
+                    return;
+                }
+            }
+            if self.settings_search_active {
+                if key == "backspace" {
+                    self.settings_search_query.pop();
+                    cx.notify();
+                    return;
+                }
+                if !ks.modifiers.control && !ks.modifiers.alt && !ks.modifiers.platform {
+                    if let Some(c) = &ks.key_char {
+                        self.settings_search_query.push_str(c);
+                        cx.notify();
+                        return;
+                    } else if ks.key.chars().count() == 1 {
+                        self.settings_search_query.push_str(&ks.key);
+                        cx.notify();
+                        return;
+                    }
+                }
+            }
+        }
+
         // Dynamic shortcuts matching
         if let Some(chord) = format_keystroke_chord(ks) {
             if chord == self.get_shortcut(ACTION_OPEN_SETTINGS) {
                 self.settings_open = !self.settings_open;
                 if self.settings_open {
                     self.settings_tab_open = true;
-                    self.settings_tab = SettingsTab::General;
-                    self.settings_scroll_pos = 0.0;
-                    self.settings_scroll_target = 0.0;
-                    self.settings_scroll_handle.set_offset(gpui::Point::default());
+                    // Keep active settings tab and scroll position
                     window.focus(&self.settings_focus);
                 } else {
                     window.focus(&self.focus);
