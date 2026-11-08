@@ -29,7 +29,7 @@ pub fn maybe_handle_cli() -> bool {
         // Global flags
         "-v" | "--version" | "-h" | "--help" | "help" | "tools" | "satellites" => true,
         // System domain
-        "version" | "info" | "env" | "jump" | "z" | "top" | "proc" | "theme" | "config" | "hud" | "island" | "bench" | "test-render" => true,
+        "version" | "info" | "env" | "jump" | "z" | "top" | "proc" | "theme" | "config" | "pixel" | "pixelart" | "hud" | "island" | "bench" | "test-render" => true,
         // Dev domain
         "port" | "ports" | "serve" | "http" | "hash" | "crypto" | "clip" | "copy" | "jwt" | "qr" | "json" | "jq" | "diff" => true,
         // Visual domain
@@ -51,7 +51,7 @@ pub fn maybe_handle_cli() -> bool {
         let known_tools = [
             "jump", "z", "serve", "http", "hash", "crypto", "clip", "copy",
             "top", "proc", "port", "jwt", "qr", "json", "jq", "diff",
-            "img", "view", "pick", "ai", "version", "info", "theme", "config", "hud", "bench"
+            "img", "view", "pick", "ai", "version", "info", "theme", "config", "pixel", "hud", "bench"
         ];
         let mut close_matches: Vec<(&str, usize)> = known_tools
             .iter()
@@ -124,6 +124,7 @@ pub fn print_tools_help() {
     println!("    \x1b[1;36mtop, proc\x1b[0m         Ultra-lightweight inline system memory & process snapshot");
     println!("    \x1b[1;36mtheme\x1b[0m             Inspect, list, and switch UI themes");
     println!("    \x1b[1;36mconfig\x1b[0m            Configuration getter, setter & direct editor");
+    println!("    \x1b[1;36mpixel\x1b[0m             Top bar animated companion presets and kinematics");
     println!("    \x1b[1;36mhud, island\x1b[0m       Dynamic Island notification & status pulse trigger");
     println!("    \x1b[1;36mbench\x1b[0m             PTY throughput & 24-bit truecolor render bench");
     println!();

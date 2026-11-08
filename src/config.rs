@@ -230,6 +230,7 @@ pub enum SettingsTab {
     Scrolling,
     Window,
     Tools,
+    PixelArt,
     Shortcuts,
     Updates,
 }
@@ -243,6 +244,7 @@ impl SettingsTab {
             Self::Scrolling => "scrolling",
             Self::Window => "window",
             Self::Tools => "tools",
+            Self::PixelArt => "pixel",
             Self::Shortcuts => "shortcuts",
             Self::Updates => "updates",
         }
@@ -255,6 +257,7 @@ impl SettingsTab {
             "scrolling" | "scroll" | "mouse" => Self::Scrolling,
             "window" | "layout" | "splits" => Self::Window,
             "tools" | "satellites" => Self::Tools,
+            "pixel" | "pixelart" | "companion" => Self::PixelArt,
             "shortcuts" | "keyboard" => Self::Shortcuts,
             "updates" | "about" | "config" => Self::Updates,
             _ => Self::General,

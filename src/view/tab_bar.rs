@@ -628,7 +628,46 @@ impl AtlasView {
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(6.0))
+            .gap(px(6.0));
+
+        if self.pixel_art.enabled {
+            let companion_canvas = crate::ui::pixel_art::render_pixel_canvas(
+                self.pixel_art.active_preset.clone(),
+                self.pixel_art_frame,
+                self.pixel_art.color_mode.clone(),
+                theme.clone(),
+                is_dark_theme,
+                32.0,
+                16.0,
+            );
+
+            let companion_capsule = div()
+                .id(ElementId::named_usize("topbar-pixel-companion", 0))
+                .h(px(26.0))
+                .px(px(6.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(5.0))
+                .rounded(px(6.0))
+                .bg(resting_btn_bg)
+                .border_1()
+                .border_color(resting_btn_border)
+                .hover(move |s| s.bg(tb.card_hover).border_color(tb.accent))
+                .cursor_pointer()
+                .child(companion_canvas)
+                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    view.settings_tab = crate::config::SettingsTab::PixelArt;
+                    view.settings_open = true;
+                    view.settings_tab_open = true;
+                    view.sync_and_save_settings();
+                    cx.notify();
+                }));
+
+            right_cluster = right_cluster.child(companion_capsule);
+        }
+
+        right_cluster = right_cluster
             .child(search_capsule)
             .child(theme_btn)
             .child(div().w(px(2.0)).flex_none());

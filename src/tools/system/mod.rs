@@ -35,6 +35,12 @@ pub fn dispatch(cmd: &str, args: &[String]) -> bool {
             config::run(args);
             true
         }
+        "pixel" | "pixelart" => {
+            let mut full_args = vec!["pixel".to_string()];
+            full_args.extend_from_slice(args);
+            config::run(&full_args);
+            true
+        }
         "hud" | "island" => {
             hud::run(args);
             true

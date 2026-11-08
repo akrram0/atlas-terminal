@@ -759,8 +759,9 @@ impl AtlasView {
                 crate::config::SettingsTab::Scrolling => 70.0,
                 crate::config::SettingsTab::Window => 150.0,
                 crate::config::SettingsTab::Tools => 230.0,
-                crate::config::SettingsTab::Shortcuts => 310.0,
-                crate::config::SettingsTab::Updates => 400.0,
+                crate::config::SettingsTab::PixelArt => 300.0,
+                crate::config::SettingsTab::Shortcuts => 370.0,
+                crate::config::SettingsTab::Updates => 440.0,
             };
             window.focus(&self.settings_focus);
         } else {

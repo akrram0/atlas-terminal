@@ -199,6 +199,7 @@ impl AtlasView {
             (SettingsTab::Scrolling, "Scrolling", icons::REFRESH),
             (SettingsTab::Window, "Window", icons::SLIDERS),
             (SettingsTab::Tools, "Tools", icons::SATELLITE),
+            (SettingsTab::PixelArt, "Pixel Art", icons::SPARKLE),
             (SettingsTab::Shortcuts, "Shortcuts", icons::KEYBOARD),
             (SettingsTab::Updates, "Updates", icons::CLOUD_DOWNLOAD),
         ];
@@ -272,8 +273,9 @@ impl AtlasView {
                             SettingsTab::Scrolling => 70.0,
                             SettingsTab::Window => 150.0,
                             SettingsTab::Tools => 230.0,
-                            SettingsTab::Shortcuts => 310.0,
-                            SettingsTab::Updates => 400.0,
+                            SettingsTab::PixelArt => 300.0,
+                            SettingsTab::Shortcuts => 370.0,
+                            SettingsTab::Updates => 440.0,
                         };
                         view.settings_nav_scroll = target_scroll;
                         view.sync_and_save_settings();
@@ -2276,6 +2278,299 @@ impl AtlasView {
             .child(visual_tools_card);
 
         // ==========================================
+        // --- Tab 7: Pixel Art & Companion ---
+        // ==========================================
+        let is_pixel_enabled = self.pixel_art.enabled;
+        let pixel_master_ctrl = toggle_pill(
+            180,
+            is_pixel_enabled,
+            theme,
+            |view, cx| {
+                view.pixel_art.enabled = !view.pixel_art.enabled;
+                view.pixel_art.save();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let pixel_master_card = card()
+            .child(section_header("TOP BAR COMPANION"))
+            .child(setting_row(
+                "Enable Pixel Art Companion",
+                Some("Renders a live animated pixel companion widget in the top header bar beside Search"),
+                pixel_master_ctrl.into_any_element(),
+                false,
+            ))
+            .child(setting_row(
+                "Standalone Configuration File",
+                Some("Decoupled persistent JSON configuration for pixel art settings"),
+                div()
+                    .px(px(10.0))
+                    .py(px(4.0))
+                    .rounded(px(5.0))
+                    .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x00000008) })
+                    .border_1()
+                    .border_color(if is_dark { rgba(0xFFFFFF18) } else { rgba(0x00000012) })
+                    .text_size(px(11.5))
+                    .text_color(sc_desc)
+                    .child(crate::ui::pixel_art::pixel_art_config_path().display().to_string())
+                    .into_any_element(),
+                true,
+            ));
+
+        let cat_filters: &[(&'static str, &'static str)] = &[
+            ("all", "All"),
+            ("cozy", "Cozy & Chill"),
+            ("cyber", "Cyber & Hacker"),
+            ("system", "System & Retro"),
+        ];
+
+        let mut cat_pills_row = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(6.0))
+            .px(px(20.0))
+            .pt(px(12.0))
+            .pb(px(8.0));
+
+        for (cat_idx, &(cat_id, cat_label)) in cat_filters.iter().enumerate() {
+            let is_sel = self.pixel_art_category_filter == cat_id;
+            let pill_bg = if is_sel {
+                if is_dark { rgba(0xFFFFFF1E) } else { rgba(0x00000018) }
+            } else {
+                rgba(0x00000000)
+            };
+            let pill_fg = if is_sel { sc_title } else { sc_desc };
+            let pill_border = if is_sel { theme.accent } else { theme.hairline };
+
+            cat_pills_row = cat_pills_row.child(
+                div()
+                    .id(ElementId::named_usize("pixel-cat-filter-pill", cat_idx))
+                    .px(px(12.0))
+                    .py(px(4.0))
+                    .rounded(px(6.0))
+                    .bg(pill_bg)
+                    .border_1()
+                    .border_color(pill_border)
+                    .text_size(px(12.0))
+                    .font_weight(if is_sel { FontWeight::BOLD } else { FontWeight::MEDIUM })
+                    .text_color(pill_fg)
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(theme.card_hover))
+                    .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                        view.pixel_art_category_filter = cat_id;
+                        cx.notify();
+                    }))
+                    .child(cat_label),
+            );
+        }
+
+        let mut preset_grid = div()
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .gap(px(12.0))
+            .p(px(20.0));
+
+        for (p_idx, preset) in crate::ui::pixel_art::PRESETS.iter().enumerate() {
+            if self.pixel_art_category_filter != "all"
+                && preset.category.as_str() != self.pixel_art_category_filter
+            {
+                continue;
+            }
+
+            let is_active = self.pixel_art.active_preset == preset.id;
+            let card_border = if is_active {
+                theme.accent
+            } else if is_dark {
+                rgba(0xFFFFFF14)
+            } else {
+                rgba(0x00000010)
+            };
+            let card_bg = if is_active {
+                Rgba { a: 0.12, ..theme.accent }
+            } else if is_dark {
+                rgba(0x00000040)
+            } else {
+                rgba(0xFFFFFF60)
+            };
+
+            let preview_canvas = crate::ui::pixel_art::render_pixel_canvas(
+                preset.id.to_string(),
+                self.pixel_art_frame,
+                self.pixel_art.color_mode.clone(),
+                theme.clone(),
+                is_dark,
+                96.0,
+                48.0,
+            );
+
+            let pid = preset.id;
+            let card_el = div()
+                .id(ElementId::named_usize("pixel-preset-card", p_idx))
+                .w(px(220.0))
+                .flex()
+                .flex_col()
+                .gap(px(8.0))
+                .p(px(12.0))
+                .rounded(px(8.0))
+                .bg(card_bg)
+                .border_1()
+                .border_color(card_border)
+                .cursor_pointer()
+                .hover(move |s| s.border_color(theme.accent))
+                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                    view.pixel_art.active_preset = pid.to_string();
+                    view.pixel_art.save();
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .w(relative(1.0))
+                        .h(px(56.0))
+                        .rounded(px(5.0))
+                        .bg(if is_dark { rgba(0x00000080) } else { rgba(0x00000012) })
+                        .border_1()
+                        .border_color(theme.hairline)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(preview_canvas),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(13.0))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(sc_title)
+                                .child(preset.name),
+                        )
+                        .children(if is_active {
+                            Some(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(theme.accent)
+                                    .text_size(px(10.0))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(rgb(0xFFFFFF))
+                                    .child("ACTIVE"),
+                            )
+                        } else {
+                            Some(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
+                                    .text_size(px(10.0))
+                                    .text_color(sc_desc)
+                                    .child(preset.category.label()),
+                            )
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(sc_desc)
+                        .line_height(px(15.0))
+                        .child(preset.desc),
+                );
+
+            preset_grid = preset_grid.child(card_el);
+        }
+
+        let fps_options = vec![
+            (6u32, "Slow (6 FPS)".to_string()),
+            (10u32, "Normal (10 FPS)".to_string()),
+            (16u32, "Fast (16 FPS)".to_string()),
+        ];
+        let fps_ctrl = segmented_control(
+            "pixel-fps-ctrl",
+            fps_options,
+            &self.pixel_art.fps,
+            theme,
+            |fps, view, cx| {
+                view.pixel_art.fps = fps;
+                view.pixel_art.save();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let color_mode_options = vec![
+            ("original".to_string(), "Original".to_string()),
+            ("theme_accent".to_string(), "Theme Accent".to_string()),
+            ("monochrome".to_string(), "Monochrome".to_string()),
+        ];
+        let color_mode_ctrl = segmented_control(
+            "pixel-color-mode-ctrl",
+            color_mode_options,
+            &self.pixel_art.color_mode,
+            theme,
+            |mode, view, cx| {
+                view.pixel_art.color_mode = mode;
+                view.pixel_art.save();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let is_boost = self.pixel_art.speed_boost_on_activity;
+        let boost_ctrl = toggle_pill(
+            181,
+            is_boost,
+            theme,
+            |view, cx| {
+                view.pixel_art.speed_boost_on_activity = !view.pixel_art.speed_boost_on_activity;
+                view.pixel_art.save();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let pixel_controls_card = card()
+            .child(section_header("KINEMATICS & COLOR TUNING"))
+            .child(setting_row(
+                "Animation Frame Rate",
+                Some("Frame rate of continuous loop on background timer (6, 10, or 16 FPS)"),
+                fps_ctrl.into_any_element(),
+                false,
+            ))
+            .child(setting_row(
+                "Color Mode",
+                Some("Original truecolor, dynamic Theme Accent matching, or Nothing-OS Monochrome"),
+                color_mode_ctrl.into_any_element(),
+                false,
+            ))
+            .child(setting_row(
+                "Speed Boost on Activity",
+                Some("Temporarily double frame rate (2x) when typing or running commands"),
+                boost_ctrl.into_any_element(),
+                true,
+            ));
+
+        let pixel_art_view = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.0))
+            .child(pixel_master_card)
+            .child(
+                card()
+                    .child(section_header("ANIMATED PRESET LIBRARY"))
+                    .child(cat_pills_row)
+                    .child(preset_grid),
+            )
+            .child(pixel_controls_card);
+
+        // ==========================================
         // --- Body / Content Framing ---
         // ==========================================
 
@@ -2318,6 +2613,11 @@ impl AtlasView {
                 ("Atlas Token Picker (hints)", "Tools & Satellites", SettingsTab::Tools, "Extract URLs, Git commit hashes, paths, and IPs with key hints"),
                 ("Atlas AI Companion", "Tools & Satellites", SettingsTab::Tools, "Command explanations, error diagnostic advisor, and CLI assistance"),
                 ("Atlas Dynamic Island (hud)", "Tools & Satellites", SettingsTab::Tools, "Trigger macOS-style notifications and status pulses via OSC 1338"),
+                ("Pixel Art Companion", "Pixel Art & Companion", SettingsTab::PixelArt, "Top bar animated companion widget"),
+                ("Pixel Art Presets", "Pixel Art & Companion", SettingsTab::PixelArt, "Hot Coffee, Campfire, Matrix, Cassette, Radar, Server, Wave"),
+                ("Animation Frame Rate (FPS)", "Pixel Art & Companion", SettingsTab::PixelArt, "Continuous loop speed (6, 10, 16 FPS)"),
+                ("Pixel Art Color Mode", "Pixel Art & Companion", SettingsTab::PixelArt, "Original truecolor, Theme Accent, or Monochrome"),
+                ("Pixel Art Activity Boost", "Pixel Art & Companion", SettingsTab::PixelArt, "Double animation cadence during active terminal typing"),
                 ("Atlas Benchmark", "Tools & Satellites", SettingsTab::Tools, "Measure PTY throughput and 24-bit truecolor rendering"),
                 ("Atlas Theme Manager", "Tools & Satellites", SettingsTab::Tools, "Inspect palettes, switch themes, or export custom themes"),
                 ("Atlas Environment Info", "Tools & Satellites", SettingsTab::Tools, "Audit shells, WSL distros, and detected developer toolchains"),
@@ -2443,6 +2743,7 @@ impl AtlasView {
                     SettingsTab::Scrolling => scrolling_view.into_any_element(),
                     SettingsTab::Window => window_view.into_any_element(),
                     SettingsTab::Tools => tools_view.into_any_element(),
+                    SettingsTab::PixelArt => pixel_art_view.into_any_element(),
                     SettingsTab::Shortcuts => shortcuts_view.into_any_element(),
                     SettingsTab::Updates => updates_view.into_any_element(),
                 })
@@ -2470,6 +2771,7 @@ impl AtlasView {
                             SettingsTab::Scrolling => "Scrolling & Mouse".to_string(),
                             SettingsTab::Window => "Window & Splits".to_string(),
                             SettingsTab::Tools => "Tools & Satellites".to_string(),
+                            SettingsTab::PixelArt => "Pixel Art & Companion".to_string(),
                             SettingsTab::Shortcuts => "Keyboard Shortcuts".to_string(),
                             SettingsTab::Updates => "Updates & Config".to_string(),
                         }
@@ -2489,6 +2791,7 @@ impl AtlasView {
                             SettingsTab::Scrolling => "Control scroll velocity, eliminate runaway acceleration, and manage clipboard buffers.".to_string(),
                             SettingsTab::Window => "Tab bar position, tiling split gaps, and window framing.".to_string(),
                             SettingsTab::Tools => "Zero-dependency developer companions and CLI satellites.".to_string(),
+                            SettingsTab::PixelArt => "Crisp 32x16 procedural animated pixel companion rendered live in the top bar.".to_string(),
                             SettingsTab::Shortcuts => "Review native navigation keystrokes or record custom keybindings.".to_string(),
                             SettingsTab::Updates => "Software release channels, background update checks, and configuration files.".to_string(),
                         }

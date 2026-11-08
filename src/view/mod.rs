@@ -199,6 +199,10 @@ pub struct AtlasView {
     pub(crate) active_split_resize: Option<(u64, crate::tiling::SplitAxis, f32, f32)>,
     pub(crate) last_settings_mtime: Option<std::time::SystemTime>,
     pub(crate) user_profile: crate::discovery::UserProfile,
+    pub(crate) pixel_art: crate::ui::pixel_art::PixelArtConfig,
+    pub(crate) pixel_art_frame: u64,
+    pub(crate) pixel_art_last_frame: std::time::Instant,
+    pub(crate) pixel_art_category_filter: &'static str,
 }
 
 
@@ -390,6 +394,10 @@ impl AtlasView {
             active_split_resize: None,
             last_settings_mtime: std::fs::metadata(crate::user_data_dir().join("settings.json")).and_then(|m| m.modified()).ok(),
             user_profile,
+            pixel_art: crate::ui::pixel_art::PixelArtConfig::load(),
+            pixel_art_frame: 0,
+            pixel_art_last_frame: std::time::Instant::now(),
+            pixel_art_category_filter: "all",
         };
         crate::rounded_corners::set_dark_mode(is_dark);
         crate::rounded_corners::set_opacity(opacity);
@@ -490,7 +498,25 @@ impl AtlasView {
                         needs_paint = true;
                     } else if view.cursor_breath_phase != 0.0 {
                         view.cursor_breath_phase = 0.0;
-                        needs_paint = true;
+                    }
+
+                    // 1b. Top Bar Pixel Art Companion continuous animation ticker
+                    let pixel_art_active = view.pixel_art.enabled || (view.settings_open && view.settings_tab == crate::config::SettingsTab::PixelArt);
+                    if pixel_art_active {
+                        let typing_recent = view.cursor_last_typing.elapsed().as_millis() < 800;
+                        let base_fps = view.pixel_art.fps.clamp(1, 60);
+                        let effective_fps = if view.pixel_art.speed_boost_on_activity && typing_recent {
+                            base_fps * 2
+                        } else {
+                            base_fps
+                        };
+                        let frame_interval_ms = (1000 / effective_fps.max(1)) as u128;
+                        if view.pixel_art_last_frame.elapsed().as_millis() >= frame_interval_ms {
+                            view.pixel_art_frame = view.pixel_art_frame.wrapping_add(1);
+                            view.pixel_art_last_frame = std::time::Instant::now();
+                            needs_paint = true;
+                        }
+                        active_motion = true;
                     }
 
                     // 2. Theme crossfade interpolation (zero-flash smooth transition)

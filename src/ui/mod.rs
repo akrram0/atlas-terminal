@@ -8,6 +8,7 @@ pub mod palette;
 pub mod rename;
 pub mod settings;
 pub mod updater;
+pub mod pixel_art;
 
 #[allow(unused_imports)]
 pub use animation::{

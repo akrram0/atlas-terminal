@@ -54,8 +54,90 @@ pub fn run(args: &[String]) {
                 }
             }
         }
+        "pixel" | "pixelart" | "companion" => {
+            let mut config = crate::ui::pixel_art::PixelArtConfig::load();
+            if args.len() < 2 {
+                println!("Atlas Top Bar Pixel Art Companion:");
+                println!("  Status:       {}", if config.enabled { "\x1b[1;32mon\x1b[0m" } else { "\x1b[1;31moff\x1b[0m" });
+                println!("  Preset:       \x1b[1;36m{}\x1b[0m", config.active_preset);
+                println!("  Speed:        {} fps", config.fps);
+                println!("  Color Mode:   {}", config.color_mode);
+                println!("  Activity 2x:  {}", if config.speed_boost_on_activity { "enabled" } else { "disabled" });
+                println!("  Config:       {}", crate::ui::pixel_art::pixel_art_config_path().display());
+                println!("\nUsage: atlas config pixel [on | off | preset <name> | list | fps <n> | color <mode> | boost <bool>]");
+                return;
+            }
+            match args[1].as_str() {
+                "on" | "enable" => {
+                    config.enabled = true;
+                    config.save();
+                    println!("\x1b[1;32m✓\x1b[0m Top bar pixel art companion enabled.");
+                }
+                "off" | "disable" => {
+                    config.enabled = false;
+                    config.save();
+                    println!("\x1b[1;33m✓\x1b[0m Top bar pixel art companion disabled.");
+                }
+                "preset" => {
+                    if args.len() < 3 {
+                        eprintln!("Usage: atlas config pixel preset <name>");
+                        return;
+                    }
+                    let name = &args[2];
+                    if crate::ui::pixel_art::PRESETS.iter().any(|p| p.id == name) {
+                        config.active_preset = name.to_string();
+                        config.save();
+                        println!("\x1b[1;32m✓\x1b[0m Active preset set to \x1b[1;36m{}\x1b[0m.", name);
+                    } else {
+                        eprintln!("\x1b[1;31mError:\x1b[0m Unknown preset '{}'. Run 'atlas config pixel list' to view presets.", name);
+                    }
+                }
+                "list" => {
+                    println!("\x1b[1;36mAtlas Pixel Art Presets Library:\x1b[0m");
+                    for p in crate::ui::pixel_art::PRESETS {
+                        let active = if p.id == config.active_preset { " \x1b[1;32m(active)\x1b[0m" } else { "" };
+                        println!("  \x1b[1m{:15}\x1b[0m [{:14}] {}{}", p.id, p.category.label(), p.desc, active);
+                    }
+                }
+                "fps" => {
+                    if args.len() < 3 {
+                        eprintln!("Usage: atlas config pixel fps <6|10|16>");
+                        return;
+                    }
+                    if let Ok(f) = args[2].parse::<u32>() {
+                        config.fps = f.clamp(1, 60);
+                        config.save();
+                        println!("\x1b[1;32m✓\x1b[0m Pixel art animation speed set to {} fps.", config.fps);
+                    }
+                }
+                "color" => {
+                    if args.len() < 3 {
+                        eprintln!("Usage: atlas config pixel color <original|theme_accent|monochrome>");
+                        return;
+                    }
+                    config.color_mode = args[2].clone();
+                    config.save();
+                    println!("\x1b[1;32m✓\x1b[0m Pixel art color mode set to {}.", config.color_mode);
+                }
+                "boost" => {
+                    if args.len() < 3 {
+                        eprintln!("Usage: atlas config pixel boost <true|false>");
+                        return;
+                    }
+                    config.speed_boost_on_activity = args[2].parse::<bool>().unwrap_or(true);
+                    config.save();
+                    println!("\x1b[1;32m✓\x1b[0m Speed boost on activity set to {}.", config.speed_boost_on_activity);
+                }
+                "path" => {
+                    println!("{}", crate::ui::pixel_art::pixel_art_config_path().display());
+                }
+                _ => {
+                    println!("Usage: atlas config pixel [on | off | preset <name> | list | fps <n> | color <mode> | boost <bool>]");
+                }
+            }
+        }
         _ => {
-            println!("Usage: atlas config [path | edit | get <key> | set <key> <value>]");
+            println!("Usage: atlas config [path | edit | get <key> | set <key> <value> | pixel <...>]");
         }
     }
 }
