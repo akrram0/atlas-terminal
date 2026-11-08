@@ -506,7 +506,7 @@ impl AtlasView {
                         let typing_recent = view.cursor_last_typing.elapsed().as_millis() < 800;
                         let base_fps = view.pixel_art.fps.clamp(1, 60);
                         let effective_fps = if view.pixel_art.speed_boost_on_activity && typing_recent {
-                            base_fps * 2
+                            (base_fps * 5) / 4
                         } else {
                             base_fps
                         };
