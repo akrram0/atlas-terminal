@@ -361,6 +361,62 @@ pub fn load_all_sprites() -> HashMap<String, DecodedSpriteAnimation> {
 }
 
 /// Imports an external GIF or PNG file into `~/.config/atlas/pixel_art/` and returns preset ID
+
+/// Deletes an imported sprite or custom JSON file from disk and invalidates caches
+pub fn delete_sprite(preset_id: &str) -> bool {
+    let mut deleted = false;
+    let custom_dir = custom_sprites_dir();
+    let norm_id = preset_id.to_lowercase().replace(' ', "_");
+    let target_stem = norm_id.strip_prefix("sprite_").unwrap_or(&norm_id);
+
+    if let Ok(entries) = fs::read_dir(&custom_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+
+            // Match GIF/PNG file by stem
+            if (ext == "gif" || ext == "png") && (stem == norm_id || stem == target_stem) {
+                if fs::remove_file(&path).is_ok() {
+                    deleted = true;
+                }
+                continue;
+            }
+
+            // Match JSON file by file stem or by internal sprite.id
+            if ext == "json" {
+                if stem == norm_id || stem == target_stem {
+                    if fs::remove_file(&path).is_ok() {
+                        deleted = true;
+                    }
+                    continue;
+                }
+                if let Ok(content) = fs::read_to_string(&path) {
+                    if let Ok(sprite) = serde_json::from_str::<CustomSprite>(&content) {
+                        if sprite.id == norm_id || sprite.id == target_stem {
+                            if fs::remove_file(&path).is_ok() {
+                                deleted = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if deleted {
+        if let Ok(mut lock) = SPRITES_CACHE.write() {
+            *lock = None;
+        }
+        if let Ok(mut lock) = CUSTOM_SPRITES_CACHE.write() {
+            *lock = None;
+        }
+    }
+
+    deleted
+}
+
+/// Imports an external GIF or PNG file into `~/.config/atlas/pixel_art/` and returns preset ID
 pub fn import_sprite_from_path(src: &Path) -> Option<String> {
     if !src.exists() {
         return None;

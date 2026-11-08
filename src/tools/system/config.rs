@@ -57,14 +57,14 @@ pub fn run(args: &[String]) {
         "pixel" | "pixelart" | "companion" => {
             let mut config = crate::ui::pixel_art::PixelArtConfig::load();
             if args.len() < 2 {
-                println!("Atlas Top Bar Pixel Art Companion:");
+                println!("Atlas Top Bar Pixel Art Companion [BETA]:");
                 println!("  Status:       {}", if config.enabled { "\x1b[1;32mon\x1b[0m" } else { "\x1b[1;31moff\x1b[0m" });
                 println!("  Preset:       \x1b[1;36m{}\x1b[0m", config.active_preset);
                 println!("  Speed:        {} fps", config.fps);
                 println!("  Color Mode:   {}", config.color_mode);
                 println!("  Activity 2x:  {}", if config.speed_boost_on_activity { "enabled" } else { "disabled" });
                 println!("  Config:       {}", crate::ui::pixel_art::pixel_art_config_path().display());
-                println!("\nUsage: atlas config pixel [on | off | preset <name> | list | import <path> | folder | new <name> | fps <0|2|4|8> | color <mode> | boost <bool>]");
+                println!("\nUsage: atlas config pixel [on | off | preset <name> | list | import <path> | delete <name> | folder | new <name> | fps <0|2|4|8> | color <mode> | boost <bool>]");
                 return;
             }
             match args[1].as_str() {
@@ -98,7 +98,7 @@ pub fn run(args: &[String]) {
                     }
                 }
                 "list" => {
-                    println!("\x1b[1;36mAtlas Builtin Minimalist Presets:\x1b[0m");
+                    println!("\x1b[1;36mAtlas Builtin Minimalist Presets [BETA]:\x1b[0m");
                     for p in crate::ui::pixel_art::PRESETS {
                         let active = if p.id == config.active_preset { " \x1b[1;32m(active)\x1b[0m" } else { "" };
                         println!("  \x1b[1m{:18}\x1b[0m [{:14}] {}{}", p.id, p.category.label(), p.desc, active);
@@ -138,6 +138,28 @@ pub fn run(args: &[String]) {
                         None => {
                             eprintln!("\x1b[1;31mError:\x1b[0m Failed to import sprite from '{}'. Check that file exists and has .gif or .png extension.", args[2]);
                         }
+                    }
+                }
+                "delete" | "remove" | "rm" => {
+                    if args.len() < 3 {
+                        eprintln!("Usage: atlas config pixel delete <name>");
+                        return;
+                    }
+                    let name = &args[2];
+                    if crate::ui::pixel_art::PRESETS.iter().any(|p| p.id == name) {
+                        eprintln!("\x1b[1;31mError:\x1b[0m Cannot delete built-in minimalist preset '{}'.", name);
+                        return;
+                    }
+                    if crate::ui::pixel_art::delete_sprite(name) {
+                        if config.active_preset == *name || config.active_preset == format!("sprite_{}", name) {
+                            config.active_preset = "hot_coffee".to_string();
+                            config.save();
+                            println!("\x1b[1;32m✓\x1b[0m Deleted sprite '{}' and reset active preset to hot_coffee.", name);
+                        } else {
+                            println!("\x1b[1;32m✓\x1b[0m Successfully deleted sprite '{}'.", name);
+                        }
+                    } else {
+                        eprintln!("\x1b[1;31mError:\x1b[0m Sprite '{}' not found in custom pixel art directory.", name);
                     }
                 }
                 "folder" => {

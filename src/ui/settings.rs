@@ -260,6 +260,21 @@ impl AtlasView {
                             })
                             .child(label),
                     )
+                    .children(if tab == SettingsTab::PixelArt {
+                        Some(
+                            div()
+                                .px(px(4.0))
+                                .py(px(1.0))
+                                .rounded(px(3.0))
+                                .bg(if is_active { theme.accent } else { rgba(0xEF444428) })
+                                .text_size(px(9.0))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(if is_active { rgb(0xFFFFFF) } else { theme.accent })
+                                .child("BETA"),
+                        )
+                    } else {
+                        None
+                    })
                     .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                         view.settings_tab = tab;
                         view.settings_scroll_pos = 0.0;
@@ -2673,17 +2688,52 @@ impl AtlasView {
                 )
                 .child(
                     div()
-                        .text_size(px(11.5))
-                        .text_color(sc_desc)
-                        .line_height(px(15.0))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(6.0))
                         .child(
-                            sprite
-                                .path
-                                .file_name()
-                                .and_then(|f| f.to_str())
-                                .unwrap_or("Custom sprite")
-                                .to_string(),
-                        ),
+                            div()
+                                .flex_1()
+                                .text_size(px(11.5))
+                                .text_color(sc_desc)
+                                .line_height(px(15.0))
+                                .overflow_hidden()
+                                .child(
+                                    sprite
+                                        .path
+                                        .file_name()
+                                        .and_then(|f| f.to_str())
+                                        .unwrap_or("Custom sprite")
+                                        .to_string(),
+                                ),
+                        )
+                        .child({
+                            let del_id = sprite_id.clone();
+                            div()
+                                .id(ElementId::named_usize("pixel-del-sprite-btn", s_idx))
+                                .px(px(7.0))
+                                .py(px(2.0))
+                                .rounded(px(4.0))
+                                .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
+                                .border_1()
+                                .border_color(theme.hairline)
+                                .hover(move |s| s.bg(rgba(0xEF444428)).border_color(rgba(0xEF444480)).text_color(rgb(0xEF4444)))
+                                .cursor_pointer()
+                                .text_size(px(10.5))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(sc_desc)
+                                .child("Delete")
+                                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                                    let _ = crate::ui::pixel_art::delete_sprite(&del_id);
+                                    if view.pixel_art.active_preset == del_id {
+                                        view.pixel_art.active_preset = "hot_coffee".to_string();
+                                        view.pixel_art.save();
+                                    }
+                                    cx.notify();
+                                }))
+                        }),
                 );
 
             preset_grid = preset_grid.child(card_el);
@@ -2796,10 +2846,45 @@ impl AtlasView {
                 )
                 .child(
                     div()
-                        .text_size(px(11.5))
-                        .text_color(sc_desc)
-                        .line_height(px(15.0))
-                        .child(custom.desc.clone()),
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_size(px(11.5))
+                                .text_color(sc_desc)
+                                .line_height(px(15.0))
+                                .overflow_hidden()
+                                .child(custom.desc.clone()),
+                        )
+                        .child({
+                            let del_id = custom.id.clone();
+                            div()
+                                .id(ElementId::named_usize("pixel-del-custom-btn", c_idx))
+                                .px(px(7.0))
+                                .py(px(2.0))
+                                .rounded(px(4.0))
+                                .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
+                                .border_1()
+                                .border_color(theme.hairline)
+                                .hover(move |s| s.bg(rgba(0xEF444428)).border_color(rgba(0xEF444480)).text_color(rgb(0xEF4444)))
+                                .cursor_pointer()
+                                .text_size(px(10.5))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(sc_desc)
+                                .child("Delete")
+                                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                                    let _ = crate::ui::pixel_art::delete_sprite(&del_id);
+                                    if view.pixel_art.active_preset == del_id {
+                                        view.pixel_art.active_preset = "hot_coffee".to_string();
+                                        view.pixel_art.save();
+                                    }
+                                    cx.notify();
+                                }))
+                        }),
                 );
 
             preset_grid = preset_grid.child(card_el);
@@ -2883,7 +2968,27 @@ impl AtlasView {
             .child(pixel_master_card)
             .child(
                 card()
-                    .child(section_header("ANIMATED PRESET LIBRARY"))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .justify_between()
+                            .child(section_header("ANIMATED PRESET LIBRARY"))
+                            .child(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(if is_dark { rgba(0xFFFFFF12) } else { rgba(0x0000000C) })
+                                    .border_1()
+                                    .border_color(theme.hairline)
+                                    .text_size(px(10.0))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(theme.accent)
+                                    .child("BETA"),
+                            ),
+                    )
                     .child(cat_pills_row)
                     .child(preset_grid),
             )
@@ -3090,7 +3195,7 @@ impl AtlasView {
                             SettingsTab::Scrolling => "Scrolling & Mouse".to_string(),
                             SettingsTab::Window => "Window & Splits".to_string(),
                             SettingsTab::Tools => "Tools & Satellites".to_string(),
-                            SettingsTab::PixelArt => "Pixel Art & Companion".to_string(),
+                            SettingsTab::PixelArt => "Pixel Art Companion [BETA]".to_string(),
                             SettingsTab::Shortcuts => "Keyboard Shortcuts".to_string(),
                             SettingsTab::Updates => "Updates & Config".to_string(),
                         }
