@@ -2459,8 +2459,8 @@ impl AtlasView {
                 self.pixel_art.color_mode.clone(),
                 theme.clone(),
                 is_dark,
-                64.0,
-                64.0,
+                130.0,
+                46.0,
             );
 
             let pid = preset.id;
@@ -2574,8 +2574,8 @@ impl AtlasView {
                 self.pixel_art.color_mode.clone(),
                 theme.clone(),
                 is_dark,
-                64.0,
-                64.0,
+                110.0,
+                46.0,
             );
 
             let sid = sprite_id.clone();
@@ -2666,6 +2666,24 @@ impl AtlasView {
             preset_grid = preset_grid.child(card_el);
         }
 
+        let size_options = vec![
+            ("compact".to_string(), "Compact (72px)".to_string()),
+            ("normal".to_string(), "Normal (80px)".to_string()),
+            ("wide".to_string(), "Wide (88px)".to_string()),
+        ];
+        let size_ctrl = segmented_control(
+            "pixel-size-ctrl",
+            size_options,
+            &self.pixel_art.size,
+            theme,
+            |size, view, cx| {
+                view.pixel_art.size = size;
+                view.pixel_art.save();
+                cx.notify();
+            },
+            cx,
+        );
+
         let fps_options = vec![
             (6u32, "Relaxed (6 FPS)".to_string()),
             (10u32, "Normal (10 FPS)".to_string()),
@@ -2717,6 +2735,12 @@ impl AtlasView {
 
         let pixel_controls_card = card()
             .child(section_header("KINEMATICS & COLOR TUNING"))
+            .child(setting_row(
+                "Top-Bar Display Size",
+                Some("Top-bar pill width: Compact (72px), Normal (80px), or Wide (88px)"),
+                size_ctrl.into_any_element(),
+                false,
+            ))
             .child(setting_row(
                 "Animation Frame Rate",
                 Some("Smooth studio animation frame rate (6, 10, or 14 FPS)"),

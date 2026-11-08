@@ -60,11 +60,12 @@ pub fn run(args: &[String]) {
                 println!("Atlas Top Bar Pixel Art Companion:");
                 println!("  Status:       {}", if config.enabled { "\x1b[1;32mon\x1b[0m" } else { "\x1b[1;31moff\x1b[0m" });
                 println!("  Preset:       \x1b[1;36m{}\x1b[0m", config.active_preset);
+                println!("  Display Size: \x1b[1m{}\x1b[0m", config.size);
                 println!("  Speed:        {} fps", config.fps);
                 println!("  Color Mode:   {}", config.color_mode);
-                println!("  Activity 2x:  {}", if config.speed_boost_on_activity { "enabled" } else { "disabled" });
+                println!("  Activity Surge: {}", if config.speed_boost_on_activity { "enabled (+25%)" } else { "disabled" });
                 println!("  Config:       {}", crate::ui::pixel_art::pixel_art_config_path().display());
-                println!("\nUsage: atlas config pixel [on | off | preset <name> | list | import <path> | folder | fps <n> | color <mode> | boost <bool>]");
+                println!("\nUsage: atlas config pixel [on | off | preset <name> | size <compact|normal|wide> | list | import <path> | folder | fps <n> | color <mode> | boost <bool>]");
                 return;
             }
             match args[1].as_str() {
@@ -129,6 +130,20 @@ pub fn run(args: &[String]) {
                         None => eprintln!("\x1b[1;31mError:\x1b[0m Failed to import sprite. Ensure file is a valid .gif or .png."),
                     }
                 }
+                "size" => {
+                    if args.len() < 3 {
+                        eprintln!("Usage: atlas config pixel size <compact|normal|wide>");
+                        return;
+                    }
+                    let s = args[2].to_lowercase();
+                    if s == "compact" || s == "normal" || s == "wide" {
+                        config.size = s;
+                        config.save();
+                        println!("\x1b[1;32m✓\x1b[0m Top bar pixel art display size set to {}.", config.size);
+                    } else {
+                        eprintln!("\x1b[1;31mError:\x1b[0m Size must be one of: compact, normal, wide");
+                    }
+                }
                 "folder" => {
                     let dir = crate::ui::pixel_art::pixel_sprites_dir();
                     crate::ui::settings::open_folder(&dir);
@@ -167,7 +182,7 @@ pub fn run(args: &[String]) {
                     println!("{}", crate::ui::pixel_art::pixel_art_config_path().display());
                 }
                 _ => {
-                    println!("Usage: atlas config pixel [on | off | preset <name> | list | import <path> | folder | fps <n> | color <mode> | boost <bool>]");
+                    println!("Usage: atlas config pixel [on | off | preset <name> | size <compact|normal|wide> | list | import <path> | folder | fps <n> | color <mode> | boost <bool>]");
                 }
             }
         }
