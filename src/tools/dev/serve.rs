@@ -1,6 +1,7 @@
 //! Instant static HTTP file server for current or specified directory.
 //!
 //! Zero-dependency static server with automatic MIME resolution, CORS support,
+//! directory traversal sandboxing, hidden/sensitive file protection,
 //! and beautiful Apple-inspired directory listing.
 
 use std::fs;
@@ -12,6 +13,9 @@ use std::thread;
 pub fn run(args: &[String]) {
     let mut port: u16 = 8000;
     let mut dir_str = ".".to_string();
+
+    let allow_lan = args.iter().any(|a| a == "--lan" || a == "--public" || a == "-p" || a == "--all");
+    let bind_host = if allow_lan { "0.0.0.0" } else { "127.0.0.1" };
 
     let mut parsed_args = Vec::new();
     for arg in args {
@@ -54,7 +58,7 @@ pub fn run(args: &[String]) {
     let mut active_port = port;
     for offset in 0..15 {
         let try_port = port + offset;
-        if let Ok(l) = TcpListener::bind(("0.0.0.0", try_port)) {
+        if let Ok(l) = TcpListener::bind((bind_host, try_port)) {
             listener = Some(l);
             active_port = try_port;
             break;
@@ -78,19 +82,30 @@ pub fn run(args: &[String]) {
     println!("\x1b[1;36m  ├--------------------------------------------------------┤\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;33mRoot Dir:\x1b[0m  {:<43} \x1b[1;36m│\x1b[0m", truncate_string(root_display_clean, 43));
     println!("\x1b[1;36m  │\x1b[0m  \x1b[1;32mLocal:\x1b[0m     http://localhost:{:<26} \x1b[1;36m│\x1b[0m", active_port);
-    println!("\x1b[1;36m  │\x1b[0m  \x1b[1;34mNetwork:\x1b[0m   http://{}:{:<24} \x1b[1;36m│\x1b[0m", local_ip, active_port);
+    if allow_lan {
+        println!("\x1b[1;36m  │\x1b[0m  \x1b[1;33mNetwork:\x1b[0m   http://{}:{:<24} \x1b[1;36m│\x1b[0m", local_ip, active_port);
+    } else {
+        println!("\x1b[1;36m  │\x1b[0m  \x1b[2mNetwork:   Protected (localhost 127.0.0.1 only)       \x1b[1;36m│\x1b[0m");
+    }
     println!("\x1b[1;36m  ├--------------------------------------------------------┤\x1b[0m");
     println!("\x1b[1;36m  │\x1b[0m  Press \x1b[33mCtrl + C\x1b[0m to terminate server                   \x1b[1;36m│\x1b[0m");
     println!("\x1b[1;36m  └--------------------------------------------------------┘\x1b[0m");
     println!();
-    println!("  \x1b[1;32mScan with your phone to open instantly:\x1b[0m");
-    println!();
-    let network_url = format!("http://{}:{}", local_ip, active_port);
-    super::qr::render_qr(&network_url);
-    println!();
-    println!("  \x1b[2mIf phone fails to load, Windows Firewall may block port {}. Run in Admin PS:\x1b[0m", active_port);
-    println!("  \x1b[33mNew-NetFirewallRule -DisplayName 'Atlas HTTP' -Direction Inbound -LocalPort {} -Protocol TCP -Action Allow\x1b[0m", active_port);
-    println!();
+
+    if allow_lan {
+        println!("  \x1b[1;33m⚠ SECURITY WARNING:\x1b[0m Server is exposed to your local network (0.0.0.0).");
+        println!("  \x1b[2mAnyone connected to your Wi-Fi or LAN can access files in this directory.\x1b[0m");
+        println!();
+        println!("  \x1b[1;32mScan with your phone to open instantly:\x1b[0m");
+        println!();
+        let network_url = format!("http://{}:{}", local_ip, active_port);
+        super::qr::render_qr(&network_url);
+        println!();
+    } else {
+        println!("  \x1b[1;32m✓ Localhost Sandbox Active:\x1b[0m Bound exclusively to 127.0.0.1.");
+        println!("  \x1b[2mTo share on your local Wi-Fi or phone, run: \x1b[1;36matlas serve --lan\x1b[0m");
+        println!();
+    }
 
     let root_arc = std::sync::Arc::new(root_path);
 
@@ -146,10 +161,27 @@ fn handle_client(mut stream: TcpStream, root: &Path) {
     let decoded_path = url_decode(raw_uri.split('?').next().unwrap_or("/"));
     let sanitized_path = decoded_path.trim_start_matches('/');
 
-    // Security check: prevent directory traversal
+    // Security check 1: prevent directory traversal
     if sanitized_path.contains("..") {
         let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 13\r\n\r\n403 Forbidden");
         println!("  \x1b[31m403\x1b[0m {} \x1b[2m{}\x1b[0m (directory traversal blocked)", method, raw_uri);
+        return;
+    }
+
+    // Security check 2: block hidden files and sensitive credentials
+    let is_sensitive = sanitized_path.split('/').any(|segment| {
+        segment.starts_with('.')
+            || segment.eq_ignore_ascii_case("id_rsa")
+            || segment.eq_ignore_ascii_case("id_ed25519")
+            || segment.ends_with(".env")
+            || segment.ends_with(".pem")
+            || segment.ends_with(".key")
+            || segment.ends_with(".pfx")
+            || segment.ends_with(".kdbx")
+    });
+    if is_sensitive {
+        let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 22\r\n\r\n403 Forbidden: Blocked");
+        println!("  \x1b[31m403\x1b[0m {} \x1b[2m{}\x1b[0m (sensitive file access blocked)", method, raw_uri);
         return;
     }
 
@@ -159,12 +191,21 @@ fn handle_client(mut stream: TcpStream, root: &Path) {
         root.join(sanitized_path)
     };
 
+    // Security check 3: canonical root boundary check
+    if let Ok(canonical_target) = target_path.canonicalize() {
+        if !canonical_target.starts_with(root) {
+            let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 13\r\n\r\n403 Forbidden");
+            println!("  \x1b[31m403\x1b[0m {} \x1b[2m{}\x1b[0m (out of root boundary blocked)", method, raw_uri);
+            return;
+        }
+    }
+
     if target_path.is_dir() {
         let index_file = target_path.join("index.html");
         if index_file.is_file() {
             serve_file(&stream, method, &index_file, raw_uri);
         } else {
-            serve_directory_listing(&stream, &target_path, sanitized_path, raw_uri);
+            serve_directory_listing(&stream, method, &target_path, sanitized_path, raw_uri);
         }
     } else if target_path.is_file() {
         serve_file(&stream, method, &target_path, raw_uri);
@@ -179,7 +220,7 @@ fn handle_client(mut stream: TcpStream, root: &Path) {
             not_found_html
         );
         let _ = stream.write_all(resp.as_bytes());
-        println!("  \x1b[31m404\x1b[0m {} \x1b[2m{}\x1b[0m", method, raw_uri);
+        println!("  \x1b[33m404\x1b[0m {} \x1b[2m{}\x1b[0m", method, raw_uri);
     }
 }
 
@@ -189,15 +230,15 @@ fn serve_file(mut stream: &TcpStream, method: &str, path: &Path, raw_uri: &str) 
         Err(_) => return,
     };
 
-    let mime = get_mime_type(path);
-    let size = metadata.len();
+    let content_type = get_mime_type(path);
+    let file_len = metadata.len();
 
-    let header = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
-        mime, size
+    let headers = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+        content_type, file_len
     );
 
-    if stream.write_all(header.as_bytes()).is_err() {
+    if stream.write_all(headers.as_bytes()).is_err() {
         return;
     }
 
@@ -212,16 +253,20 @@ fn serve_file(mut stream: &TcpStream, method: &str, path: &Path, raw_uri: &str) 
         }
     }
 
-    println!("  \x1b[32m200\x1b[0m {} \x1b[2m{}\x1b[0m ({})", method, raw_uri, format_bytes(size));
+    println!("  \x1b[1;32m200\x1b[0m {} \x1b[2m{}\x1b[0m ({})", method, raw_uri, format_size(file_len));
 }
 
-fn serve_directory_listing(mut stream: &TcpStream, dir: &Path, rel_path: &str, raw_uri: &str) {
+fn serve_directory_listing(mut stream: &TcpStream, method: &str, dir: &Path, rel_path: &str, raw_uri: &str) {
     let mut entries = Vec::new();
     if let Ok(read_dir) = fs::read_dir(dir) {
         for entry in read_dir.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
+            // Hide sensitive/dot files from directory listing
+            if name.starts_with('.') || name.eq_ignore_ascii_case("desktop.ini") {
+                continue;
+            }
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            let size = if is_dir { 0 } else { entry.metadata().map(|m| m.len()).unwrap_or(0) };
             entries.push((name, is_dir, size));
         }
     }
@@ -238,134 +283,153 @@ fn serve_directory_listing(mut stream: &TcpStream, dir: &Path, rel_path: &str, r
 
     let display_title = if rel_path.is_empty() { "/" } else { rel_path };
 
-    let mut rows_html = String::new();
+    let mut rows = String::new();
     if !rel_path.is_empty() {
-        rows_html.push_str(r#"<tr class="folder"><td>📁</td><td><a href="../">..</a></td><td>—</td></tr>"#);
+        rows.push_str("<tr><td colspan='2'><a href='..' class='back'>📁 ..</a></td><td>-</td></tr>\n");
     }
 
     for (name, is_dir, size) in entries {
-        let (icon, size_str, href) = if is_dir {
-            ("📁", "—".to_string(), format!("{}/", name))
-        } else {
-            ("📄", format_bytes(size), name.clone())
-        };
-        rows_html.push_str(&format!(
-            r#"<tr><td class="icon">{}</td><td><a href="{}">{}</a></td><td class="size">{}</td></tr>"#,
-            icon, href, name, size_str
+        let (icon, href_suffix) = if is_dir { ("📁", "/") } else { ("📄", "") };
+        let encoded_name = url_encode(&name);
+        let href = format!("{}{}", encoded_name, href_suffix);
+        let size_str = if is_dir { "-".to_string() } else { format_size(size) };
+        rows.push_str(&format!(
+            "<tr><td><span class='icon'>{}</span><a href='{}'>{}</a></td><td>{}</td></tr>\n",
+            icon, href, html_escape(&name), size_str
         ));
     }
 
-    let html = format!(
-        r#"<!DOCTYPE html>
+    let html = format!(r#"<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Atlas Serve: {}</title>
-  <style>
-    body {{
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0E0E0D;
-      color: #E8E4DC;
-      margin: 0;
-      padding: 32px;
-    }}
-    .card {{
-      max-width: 860px;
-      margin: 0 auto;
-      background: #161614;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }}
-    .header {{
-      padding: 20px 24px;
-      background: #1C1A16;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }}
-    h1 {{
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #E08A62;
-    }}
-    .path {{
-      color: #7A7570;
-      font-size: 13px;
-    }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-      font-size: 13px;
-    }}
-    th {{
-      padding: 12px 20px;
-      color: #7A7570;
-      font-weight: 500;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }}
-    td {{
-      padding: 10px 20px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-    }}
-    tr:hover td {{
-      background: rgba(255, 255, 255, 0.03);
-    }}
-    a {{
-      color: #E8E4DC;
-      text-decoration: none;
-    }}
-    a:hover {{
-      color: #E08A62;
-      text-decoration: underline;
-    }}
-    .icon {{
-      width: 24px;
-      text-align: center;
-    }}
-    .size {{
-      text-align: right;
-      color: #7A7570;
-      font-family: monospace;
-    }}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Index of /{}</title>
+<style>
+  :root {{
+    --bg: #0E0E0D;
+    --card: #161614;
+    --border: rgba(255, 255, 255, 0.08);
+    --fg: #E8E4DC;
+    --muted: #7A7570;
+    --accent: #E08A62;
+    --hover: rgba(255, 255, 255, 0.04);
+  }}
+  * {{ box-sizing: border-box; }}
+  body {{
+    margin: 0;
+    padding: 40px 20px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif;
+    display: flex;
+    justify-content: center;
+  }}
+  .container {{
+    width: 100%;
+    max-width: 860px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    overflow: hidden;
+  }}
+  .header {{
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }}
+  h1 {{
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--fg);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }}
+  .badge {{
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(224, 138, 98, 0.15);
+    color: var(--accent);
+  }}
+  table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }}
+  th {{
+    text-align: left;
+    padding: 10px 24px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+  }}
+  td {{
+    padding: 11px 24px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }}
+  tr:hover td {{
+    background: var(--hover);
+  }}
+  a {{
+    color: var(--fg);
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }}
+  a:hover {{
+    color: var(--accent);
+  }}
+  .icon {{
+    margin-right: 10px;
+    display: inline-block;
+  }}
+  .footer {{
+    padding: 14px 24px;
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+  }}
+</style>
 </head>
 <body>
-  <div class="card">
-    <div class="header">
-      <h1>Atlas File Server</h1>
-      <span class="path">Index of: {}</span>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 24px;"></th>
-          <th>Name</th>
-          <th style="text-align: right;">Size</th>
-        </tr>
-      </thead>
-      <tbody>
-        {}
-      </tbody>
-    </table>
+<div class="container">
+  <div class="header">
+    <h1><span>Index of</span> <span style="color:var(--accent)">{}</span></h1>
+    <span class="badge">Atlas HTTP Server</span>
   </div>
+  <table>
+    <thead>
+      <tr><th>Name</th><th style="width: 120px;">Size</th></tr>
+    </thead>
+    <tbody>
+      {}
+    </tbody>
+  </table>
+  <div class="footer">
+    <span>Atlas Satellites Suite</span>
+    <span>Zero-dependency Localhost Server</span>
+  </div>
+</div>
 </body>
-</html>"#,
-        display_title, display_title, rows_html
-    );
+</html>"#, html_escape(display_title), html_escape(display_title), rows);
 
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
         html.len(),
         html
     );
-
     let _ = stream.write_all(resp.as_bytes());
-    println!("  \x1b[32m200\x1b[0m GET \x1b[2m{}\x1b[0m (Directory listing)", raw_uri);
+    println!("  \x1b[1;32m200\x1b[0m {} \x1b[2m{}\x1b[0m (Directory listing)", method, raw_uri);
 }
 
 fn get_mime_type(path: &Path) -> &'static str {
@@ -392,32 +456,61 @@ fn get_mime_type(path: &Path) -> &'static str {
     }
 }
 
-fn format_bytes(bytes: u64) -> String {
-    if bytes < 1024 {
-        format!("{} B", bytes)
-    } else if bytes < 1024 * 1024 {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else if bytes < 1024 * 1024 * 1024 {
-        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
     } else {
-        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+        format!("{} B", bytes)
     }
 }
 
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 fn url_decode(s: &str) -> String {
-    let mut result = String::new();
-    let mut chars = s.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '%' {
-            let h1 = chars.next().unwrap_or('0');
-            let h2 = chars.next().unwrap_or('0');
-            if let Ok(byte) = u8::from_str_radix(&format!("{}{}", h1, h2), 16) {
-                result.push(byte as char);
+    let mut result = Vec::new();
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                result.push(b);
+                i += 3;
+                continue;
             }
-        } else if ch == '+' {
-            result.push(' ');
-        } else {
-            result.push(ch);
+        } else if bytes[i] == b'+' {
+            result.push(b' ');
+            i += 1;
+            continue;
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&result).to_string()
+}
+
+fn url_encode(s: &str) -> String {
+    let mut result = String::new();
+    for b in s.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(b as char);
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", b));
+            }
         }
     }
     result

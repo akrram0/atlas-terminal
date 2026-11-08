@@ -1,13 +1,20 @@
 //! `atlas ip`: Local network interfaces and public IP address inspector.
+//!
+//! Includes built-in privacy masking (`--mask` / `-m`) to redact sensitive IP octets
+//! and geographic information for screen recordings, presentations, and live streams.
 
 use std::process::Command;
 
 pub fn run(args: &[String]) {
     let show_only_public = !args.is_empty() && (args[0] == "public" || args[0] == "-p" || args[0] == "myip");
     let show_only_local = !args.is_empty() && (args[0] == "local" || args[0] == "-l");
+    let mask_privacy = args.iter().any(|a| a == "--mask" || a == "-m" || a == "--private" || a == "--redact");
 
     println!();
     println!("  \x1b[1;36mAtlas Network & IP Inspector\x1b[0m");
+    if mask_privacy {
+        println!("  \x1b[1;33m[PRIVACY MASK ACTIVE]\x1b[0m \x1b[2mSensitive IP octets & geo redacted\x1b[0m");
+    }
     println!("  \x1b[2m----------------------------------------------------------\x1b[0m");
 
     if !show_only_local {
@@ -16,12 +23,15 @@ pub fn run(args: &[String]) {
         let pub_ip = get_public_ip_info();
         match pub_ip {
             Some(info) => {
-                println!("\x1b[1;32m{}\x1b[0m", info.ip);
+                let display_ip = if mask_privacy { mask_ip(&info.ip) } else { info.ip };
+                println!("\x1b[1;32m{}\x1b[0m", display_ip);
                 if let Some(loc) = info.location {
-                    println!("  \x1b[1mLocation:\x1b[0m    {}", loc);
+                    let display_loc = if mask_privacy { mask_location(&loc) } else { loc };
+                    println!("  \x1b[1mLocation:\x1b[0m    {}", display_loc);
                 }
                 if let Some(org) = info.org {
-                    println!("  \x1b[1mISP / Org:\x1b[0m   \x1b[2m{}\x1b[0m", org);
+                    let display_org = if mask_privacy { mask_org(&org) } else { org };
+                    println!("  \x1b[1mISP / Org:\x1b[0m   \x1b[2m{}\x1b[0m", display_org);
                 }
             }
             None => {
@@ -34,11 +44,51 @@ pub fn run(args: &[String]) {
     if !show_only_public {
         // Local network interfaces
         println!("  \x1b[1mLocal Network Adapters:\x1b[0m");
-        list_local_interfaces();
+        list_local_interfaces(mask_privacy);
         println!("  \x1b[2m----------------------------------------------------------\x1b[0m");
     }
 
-    println!();
+    if !mask_privacy {
+        println!("  \x1b[2mTip: Run \x1b[1;36matlas ip -m\x1b[0m \x1b[2mto mask IP octets before sharing screenshots or streaming.\x1b[0m");
+        println!();
+    } else {
+        println!();
+    }
+}
+
+fn mask_ip(ip: &str) -> String {
+    if ip.contains(':') {
+        let parts: Vec<&str> = ip.split(':').collect();
+        if parts.len() >= 2 {
+            format!("{}:{}:****:****:****:****", parts[0], parts[1])
+        } else {
+            "****:****:****:****".to_string()
+        }
+    } else {
+        let parts: Vec<&str> = ip.split('.').collect();
+        if parts.len() == 4 {
+            format!("{}.{}.***.***", parts[0], parts[1])
+        } else {
+            "***.***.***.***".to_string()
+        }
+    }
+}
+
+fn mask_location(loc: &str) -> String {
+    let parts: Vec<&str> = loc.split(',').collect();
+    if parts.len() >= 2 {
+        format!("{}, **", parts[0].trim())
+    } else {
+        "**".to_string()
+    }
+}
+
+fn mask_org(org: &str) -> String {
+    if let Some(space_idx) = org.find(' ') {
+        format!("{} [Redacted for privacy]", &org[..space_idx])
+    } else {
+        "[Redacted for privacy]".to_string()
+    }
 }
 
 struct PublicIpInfo {
@@ -93,7 +143,7 @@ fn get_public_ip_info() -> Option<PublicIpInfo> {
     None
 }
 
-fn list_local_interfaces() {
+fn list_local_interfaces(mask_privacy: bool) {
     #[cfg(windows)]
     {
         if let Ok(out) = Command::new("ipconfig.exe").output() {
@@ -120,7 +170,12 @@ fn list_local_interfaces() {
                         } else {
                             "Gateway"
                         };
-                        println!("        \x1b[2m{:<8}\x1b[0m \x1b[1m{}\x1b[0m", key, clean_val);
+                        let display_val = if mask_privacy && (key == "IPv4" || key == "IPv6") {
+                            mask_ip(clean_val)
+                        } else {
+                            clean_val.to_string()
+                        };
+                        println!("        \x1b[2m{:<8}\x1b[0m \x1b[1m{}\x1b[0m", key, display_val);
                     }
                 }
             }

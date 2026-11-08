@@ -191,7 +191,7 @@ impl AtlasView {
             .into_any_element()
         };
 
-        // --- Horizontal Category Strip (Top Bar Style - No Sidebar) ---
+                // --- Horizontal Category Strip (Apple-Style Full-Width 2-Tier Header) ---
         let nav_items = [
             (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance", icons::SUN),
@@ -204,11 +204,23 @@ impl AtlasView {
             (SettingsTab::Updates, "Updates", icons::CLOUD_DOWNLOAD),
         ];
 
+        let active_tab_title = match self.settings_tab {
+            SettingsTab::General => "General Preferences",
+            SettingsTab::Appearance => "Appearance & Themes",
+            SettingsTab::Typography => "Typography & Font Scale",
+            SettingsTab::Scrolling => "Scrolling & Physics",
+            SettingsTab::Window => "Window & Glass Backdrop",
+            SettingsTab::Tools => "Satellites & Protocols",
+            SettingsTab::PixelArt => "Pixel Art Companion",
+            SettingsTab::Shortcuts => "Keyboard Shortcuts",
+            SettingsTab::Updates => "Updates & Release Channels",
+        };
+
         let mut top_nav_pills = div()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(5.0))
+            .gap(px(4.0))
             .flex_shrink_0()
             .relative()
             .left(px(-self.settings_nav_scroll));
@@ -234,13 +246,13 @@ impl AtlasView {
             top_nav_pills = top_nav_pills.child(
                 div()
                     .id(ElementId::named_usize("settings-top-nav-item", nav_idx))
-                    .h(px(30.0))
-                    .px(px(10.0))
+                    .h(px(28.0))
+                    .px(px(9.0))
                     .flex_shrink_0()
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(6.0))
+                    .gap(px(5.0))
                     .rounded(px(6.0))
                     .bg(item_bg)
                     .border_1()
@@ -249,10 +261,10 @@ impl AtlasView {
                     .cursor_pointer()
                     .hover(move |s| s.bg(hover_bg).text_color(sc_nav_active_fg))
                     .active(move |s| s.opacity(0.80))
-                    .child(icons::icon(icon).size(px(14.0)).text_color(if is_active { theme.accent } else { item_fg }))
+                    .child(icons::icon(icon).size(px(13.5)).text_color(if is_active { theme.accent } else { item_fg }))
                     .child(
                         div()
-                            .text_size(px(12.5))
+                            .text_size(px(12.0))
                             .font_weight(if is_active {
                                 FontWeight::SEMIBOLD
                             } else {
@@ -264,10 +276,10 @@ impl AtlasView {
                         Some(
                             div()
                                 .px(px(4.0))
-                                .py(px(1.0))
+                                .py(px(0.5))
                                 .rounded(px(3.0))
-                                .bg(if is_active { theme.accent } else { rgba(0xEF444428) })
-                                .text_size(px(9.0))
+                                .bg(if is_active { theme.accent } else { rgba(0xEF444424) })
+                                .text_size(px(8.5))
                                 .font_weight(FontWeight::BOLD)
                                 .text_color(if is_active { rgb(0xFFFFFF) } else { theme.accent })
                                 .child("BETA"),
@@ -282,17 +294,7 @@ impl AtlasView {
                         view.settings_scroll_handle.set_offset(gpui::Point::default());
                         view.settings_search_query.clear();
                         view.settings_search_active = false;
-                        let target_scroll = match tab {
-                            SettingsTab::General | SettingsTab::Appearance => 0.0,
-                            SettingsTab::Typography => 0.0,
-                            SettingsTab::Scrolling => 70.0,
-                            SettingsTab::Window => 150.0,
-                            SettingsTab::Tools => 230.0,
-                            SettingsTab::PixelArt => 300.0,
-                            SettingsTab::Shortcuts => 370.0,
-                            SettingsTab::Updates => 440.0,
-                        };
-                        view.settings_nav_scroll = target_scroll;
+                        // STABLE POSITIONING: Never shift or re-rank buttons on click!
                         view.sync_and_save_settings();
                         cx.notify();
                     }))
@@ -302,9 +304,8 @@ impl AtlasView {
 
         let nav_scroll_area = div()
             .id(ElementId::named_usize("settings-top-nav-scroll-area", 0))
-            .flex_1()
-            .min_w(px(0.0))
-            .h(px(36.0))
+            .w(relative(1.0))
+            .h(px(32.0))
             .overflow_hidden()
             .flex()
             .flex_row()
@@ -312,7 +313,7 @@ impl AtlasView {
             .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
                 let delta = match event.delta {
                     ScrollDelta::Lines(d) => {
-                        if d.x.abs() > 0.01 { d.x * 40.0 } else { d.y * 40.0 }
+                        if d.x.abs() > 0.01 { d.x * 30.0 } else { d.y * 30.0 }
                     }
                     ScrollDelta::Pixels(d) => {
                         let px_x = f32::from(d.x);
@@ -320,59 +321,10 @@ impl AtlasView {
                         if px_x.abs() > 0.01 { px_x } else { px_y }
                     }
                 };
-                view.settings_nav_scroll = (view.settings_nav_scroll - delta).clamp(0.0, 450.0);
+                view.settings_nav_scroll = (view.settings_nav_scroll - delta).clamp(0.0, 300.0);
                 cx.notify();
             }))
             .child(top_nav_pills);
-
-        let can_scroll_left = self.settings_nav_scroll > 4.0;
-        let nav_left_btn = div()
-            .id(ElementId::named_usize("settings-nav-scroll-left", 0))
-            .h(px(26.0))
-            .w(px(20.0))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(px(5.0))
-            .cursor_pointer()
-            .opacity(if can_scroll_left { 0.95 } else { 0.25 })
-            .hover(move |s| if can_scroll_left { s.bg(theme.card_hover).text_color(theme.chrome_fg_active) } else { s })
-            .child(icons::icon(icons::CHEVRON_LEFT).size(px(13.0)).text_color(sc_nav_idle_fg))
-            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                view.settings_nav_scroll = (view.settings_nav_scroll - 130.0).max(0.0);
-                cx.notify();
-            }));
-
-        let can_scroll_right = self.settings_nav_scroll < 380.0;
-        let nav_right_btn = div()
-            .id(ElementId::named_usize("settings-nav-scroll-right", 0))
-            .h(px(26.0))
-            .w(px(20.0))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(px(5.0))
-            .cursor_pointer()
-            .opacity(if can_scroll_right { 0.95 } else { 0.35 })
-            .hover(move |s| s.bg(theme.card_hover).text_color(theme.chrome_fg_active))
-            .child(icons::icon(icons::CHEVRON_RIGHT).size(px(13.0)).text_color(sc_nav_idle_fg))
-            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                view.settings_nav_scroll = (view.settings_nav_scroll + 130.0).min(450.0);
-                cx.notify();
-            }));
-
-        let nav_strip = div()
-            .flex_1()
-            .min_w(px(0.0))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(4.0))
-            .child(nav_left_btn)
-            .child(nav_scroll_area)
-            .child(nav_right_btn);
 
         let is_searching = !self.settings_search_query.trim().is_empty();
         let sc_search_bg = if is_dark { rgba(0xFFFFFF0D) } else { rgba(0x00000008) };
@@ -380,8 +332,8 @@ impl AtlasView {
 
         let search_bar = div()
             .id(ElementId::named_usize("settings-top-search", 0))
-            .h(px(30.0))
-            .w(if self.settings_search_active { px(180.0) } else { px(135.0) })
+            .h(px(28.0))
+            .w(if self.settings_search_active { px(200.0) } else { px(150.0) })
             .px(px(8.0))
             .flex()
             .flex_row()
@@ -405,7 +357,7 @@ impl AtlasView {
                     .text_color(if self.settings_search_query.is_empty() { sc_desc } else { sc_label })
                     .overflow_hidden()
                     .child(if self.settings_search_query.is_empty() {
-                        "Search...".to_string()
+                        "Search settings...".to_string()
                     } else {
                         self.settings_search_query.clone()
                     })
@@ -431,13 +383,13 @@ impl AtlasView {
 
         let back_btn = div()
             .id(ElementId::named_usize("settings-top-back-btn", 0))
-            .h(px(30.0))
-            .px(px(10.0))
+            .h(px(28.0))
+            .px(px(9.0))
             .flex_shrink_0()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(6.0))
+            .gap(px(5.0))
             .rounded(px(6.0))
             .border_1()
             .border_color(sc_back_border)
@@ -446,10 +398,10 @@ impl AtlasView {
             .hover(move |s| s.bg(theme.card_hover))
             .active(move |s| s.opacity(0.80))
             .text_color(sc_back_fg)
-            .child(icons::icon(icons::CLOSE).size(px(12.0)))
+            .child(icons::icon(icons::CLOSE).size(px(11.0)))
             .child(
                 div()
-                    .text_size(px(12.0))
+                    .text_size(px(11.5))
                     .font_weight(FontWeight::MEDIUM)
                     .child("Esc"),
             )
@@ -463,27 +415,73 @@ impl AtlasView {
 
         let top_nav = div()
             .id(ElementId::named_usize("settings-top-nav", 0))
-            .h(px(48.0))
             .flex_shrink_0()
             .w(relative(1.0))
-            .px(px(16.0))
             .flex()
-            .flex_row()
-            .items_center()
-            .justify_between()
-            .gap(px(10.0))
+            .flex_col()
             .border_b_1()
             .border_color(theme.hairline)
-            .child(nav_strip)
+            // Tier 1: Title, Active Category, Search Bar & Close Button
             .child(
                 div()
-                    .flex_shrink_0()
+                    .h(px(42.0))
+                    .px(px(16.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(8.0))
-                    .child(search_bar)
-                    .child(back_btn)
+                    .justify_between()
+                    .gap(px(10.0))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(icons::icon(icons::SETTINGS).size(px(15.0)).text_color(theme.accent))
+                            .child(
+                                div()
+                                    .text_size(px(13.5))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(sc_title)
+                                    .child("Settings"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.5))
+                                    .text_color(sc_desc)
+                                    .child("•"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(sc_desc)
+                                    .child(active_tab_title),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex_shrink_0()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(search_bar)
+                            .child(back_btn),
+                    ),
+            )
+            // Tier 2: Category Navigation Strip (Spans full width!)
+            .child(
+                div()
+                    .h(px(36.0))
+                    .px(px(12.0))
+                    .bg(if is_dark { rgba(0x00000028) } else { rgba(0x00000006) })
+                    .border_t_1()
+                    .border_color(theme.hairline)
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .child(nav_scroll_area),
             );
 
         // ==========================================
@@ -2316,11 +2314,66 @@ impl AtlasView {
                 true,
             ));
 
+        let security_privacy_card = card()
+            .child(section_header("SECURITY & DATA PRIVACY PROTOCOLS"))
+            .child(setting_row(
+                "Strict Localhost-First Sandboxing",
+                Some("atlas serve binds to 127.0.0.1 by default. Local network exposure (0.0.0.0) requires explicit '--lan' opt-in."),
+                div()
+                    .px(px(8.0))
+                    .py(px(3.0))
+                    .rounded(px(4.0))
+                    .bg(rgba(0x10B98124))
+                    .text_size(px(11.0))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(0x10B981))
+                    .child("STRICT LOCALHOST")
+                    .into_any_element(),
+                false,
+            ))
+            .child(setting_row(
+                "Directory Traversal & Secrets Shield",
+                Some("Automatic blocking of path traversal, .env, .git, SSH keys, certificates, and hidden credentials."),
+                div()
+                    .px(px(8.0))
+                    .py(px(3.0))
+                    .rounded(px(4.0))
+                    .bg(rgba(0x10B98124))
+                    .text_size(px(11.0))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(0x10B981))
+                    .child("CANONICAL SHIELD")
+                    .into_any_element(),
+                false,
+            ))
+            .child(setting_row(
+                "Privacy-Safe IP Redaction",
+                Some("Redact public IP octets and physical city/region for screen sharing or streaming with 'atlas ip --mask'."),
+                tool_action_row("atlas ip -m", 725),
+                false,
+            ))
+            .child(setting_row(
+                "Zero Cloud Telemetry Guarantee",
+                Some("Atlas Terminal and satellites transmit zero keystrokes, commands, or telemetry. 100% offline-first."),
+                div()
+                    .px(px(8.0))
+                    .py(px(3.0))
+                    .rounded(px(4.0))
+                    .bg(rgba(0x38BDF824))
+                    .text_size(px(11.0))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(rgb(0x38BDF8))
+                    .child("ZERO TELEMETRY")
+                    .into_any_element(),
+                true,
+            ));
+
         let tools_view = div()
             .flex()
             .flex_col()
             .gap(px(16.0))
             .child(tools_overview_card)
+            .child(security_privacy_card)
             .child(system_tools_card)
             .child(dev_tools_card)
             .child(net_tools_card)
