@@ -1153,6 +1153,26 @@ impl AtlasView {
             return;
         }
 
+
+        // Ghost text acceptance: Right Arrow, Tab, or End accepts the active inline suggestion
+        if !modifiers.control && !modifiers.alt && (key == "arrowright" || key == "right" || key == "tab" || key == "end") {
+            if let Some(ghost) = self.active_ghost_suggestion.borrow_mut().take() {
+                let bytes = ghost.into_bytes();
+                self.write_to_shell(&bytes);
+                cx.notify();
+                return;
+            }
+        }
+
+        // Escape: clear ghost suggestion
+        if key == "escape" && !modifiers.control && !modifiers.alt && !modifiers.shift {
+            if self.active_ghost_suggestion.borrow().is_some() {
+                *self.active_ghost_suggestion.borrow_mut() = None;
+                cx.notify();
+                return;
+            }
+        }
+
         let mode = self.active_mode();
         if let Some(bytes) = keymap::to_bytes(ks, mode) {
             self.write_to_shell(&bytes);

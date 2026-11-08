@@ -38,7 +38,40 @@ pub fn maybe_handle_cli() -> bool {
     };
 
     if !is_tool_cmd {
-        return false;
+        if std::path::Path::new(first).exists() || first == "." || first == ".." {
+            return false;
+        }
+
+        attach_parent_console();
+        eprintln!();
+        eprintln!("  \x1b[1;31matlas:\x1b[0m '{}' is not a registered satellite tool.", first);
+        eprintln!("  Even our deep-space radar couldn't find that one.");
+        eprintln!();
+
+        let known_tools = [
+            "jump", "z", "serve", "http", "hash", "crypto", "clip", "copy",
+            "top", "proc", "port", "jwt", "qr", "json", "jq", "diff",
+            "img", "view", "pick", "ai", "version", "info", "theme", "config", "hud", "bench"
+        ];
+        let mut close_matches: Vec<(&str, usize)> = known_tools
+            .iter()
+            .map(|t| (*t, levenshtein_distance(first, t)))
+            .filter(|(_, dist)| *dist <= 3)
+            .collect();
+        close_matches.sort_by_key(|(_, d)| *d);
+
+        if !close_matches.is_empty() {
+            eprintln!("  \x1b[1;33mDid you mean:\x1b[0m");
+            for (m, _) in close_matches.iter().take(3) {
+                eprintln!("    • \x1b[1;36matlas {}\x1b[0m", m);
+            }
+            eprintln!();
+        }
+
+        eprintln!("  Run \x1b[1;36matlas -h\x1b[0m to view the full constellation of tools.");
+        eprintln!();
+        let _ = std::io::stderr().flush();
+        std::process::exit(1);
     }
 
     // Attach to parent console and configure standard handles
@@ -239,4 +272,25 @@ mod tests {
         assert!(visual::dispatch("pick", &["--help".to_string()]));
         assert!(visual::dispatch("ai", &["--help".to_string()]));
     }
+}
+
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let m = a_chars.len();
+    let n = b_chars.len();
+    let mut dp = vec![vec![0; n + 1]; m + 1];
+
+    for i in 0..=m { dp[i][0] = i; }
+    for j in 0..=n { dp[0][j] = j; }
+
+    for i in 1..=m {
+        for j in 1..=n {
+            let cost = if a_chars[i - 1].to_ascii_lowercase() == b_chars[j - 1].to_ascii_lowercase() { 0 } else { 1 };
+            dp[i][j] = (dp[i - 1][j] + 1)
+                .min(dp[i][j - 1] + 1)
+                .min(dp[i - 1][j - 1] + cost);
+        }
+    }
+    dp[m][n]
 }

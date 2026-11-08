@@ -407,6 +407,118 @@ chpwd() {{
 }
 
 #[cfg(test)]
+
+pub fn predict_ghost_suggestion(line_before_cursor: &str, current_dir: Option<&Path>) -> Option<String> {
+    let trimmed_right = line_before_cursor.trim_end();
+    if trimmed_right.is_empty() {
+        return None;
+    }
+
+    // Extract the token currently being typed touching the cursor
+    let last_token = if let Some(last_quote) = trimmed_right.rfind('"') {
+        &trimmed_right[last_quote + 1..]
+    } else {
+        trimmed_right.split_whitespace().last().unwrap_or("")
+    };
+
+    if last_token.is_empty() {
+        return None;
+    }
+
+    // Do not suggest if the user is typing flags (e.g. -h, --help)
+    if last_token.starts_with('-') {
+        return None;
+    }
+
+    // Identify if the command before last_token is a directory command (cd, z, pushd, dir, ls, etc.)
+    let before_last_token = trimmed_right[..trimmed_right.len() - last_token.len()].trim();
+    let is_dir_command = before_last_token.ends_with("cd")
+        || before_last_token.ends_with("z")
+        || before_last_token.ends_with("jump")
+        || before_last_token.ends_with("pushd")
+        || before_last_token.ends_with("dir")
+        || before_last_token.ends_with("ls")
+        || before_last_token.ends_with("code")
+        || before_last_token.ends_with("nvim")
+        || before_last_token.ends_with("vim");
+
+    // 1. Check local filesystem in current directory or specified parent directory
+    let (parent_path, prefix) = if last_token.contains('/') || last_token.contains('\\') {
+        let p = Path::new(last_token);
+        let parent = if let Some(parent) = p.parent() {
+            if let Some(cwd) = current_dir {
+                cwd.join(parent)
+            } else {
+                parent.to_path_buf()
+            }
+        } else {
+            current_dir.map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."))
+        };
+        let file_prefix = p.file_name().and_then(|f| f.to_str()).unwrap_or("");
+        (parent, file_prefix)
+    } else {
+        (
+            current_dir.map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")),
+            last_token,
+        )
+    };
+
+    if !prefix.is_empty() {
+        let prefix_lower = prefix.to_lowercase();
+        if let Ok(entries) = fs::read_dir(&parent_path) {
+            let mut matches: Vec<(String, bool)> = Vec::new();
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                    if is_dir_command && !is_dir {
+                        continue;
+                    }
+                    if name.to_lowercase().starts_with(&prefix_lower) && name.len() > prefix.len() {
+                        matches.push((name, is_dir));
+                    }
+                }
+            }
+
+            // Sort: prefer directories, then shortest name
+            matches.sort_by(|(a_name, a_dir), (b_name, b_dir)| {
+                b_dir.cmp(a_dir).then_with(|| a_name.len().cmp(&b_name.len()))
+            });
+
+            if let Some((best_name, _is_dir)) = matches.first() {
+                let suffix = &best_name[prefix.len()..];
+                return Some(suffix.to_string());
+            }
+        }
+    }
+
+    // 2. Check remembered directories in frecency store (dirs.json)
+    let store = load_store();
+    let prefix_lower = last_token.to_lowercase();
+    let now = current_timestamp();
+
+    let mut frecency_matches: Vec<(String, f64)> = Vec::new();
+    for entry in store.entries {
+        let path = Path::new(&entry.path);
+        let folder_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+        let score = calculate_frecency(entry.count, entry.last_seen, now);
+
+        if folder_name.to_lowercase().starts_with(&prefix_lower) && folder_name.len() > last_token.len() {
+            let suffix = &folder_name[last_token.len()..];
+            frecency_matches.push((suffix.to_string(), score));
+        } else if entry.path.to_lowercase().starts_with(&prefix_lower) && entry.path.len() > last_token.len() {
+            let suffix = &entry.path[last_token.len()..];
+            frecency_matches.push((suffix.to_string(), score));
+        }
+    }
+
+    frecency_matches.sort_by(|(_, score_a), (_, score_b)| score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal));
+    if let Some((suffix, _)) = frecency_matches.first() {
+        return Some(suffix.clone());
+    }
+
+    None
+}
+
 mod tests {
     use super::*;
 
@@ -434,5 +546,23 @@ mod tests {
     fn test_normalize_path() {
         let p = normalize_path("\"C:/Users/Test/Repo\"");
         assert!(p.contains("Test"));
+    }
+
+    #[test]
+    fn test_ghost_suggestion_prediction() {
+        let temp = std::env::temp_dir().join("atlas_ghost_test_pred");
+        let _ = fs::create_dir_all(temp.join("Desktop"));
+        let _ = fs::create_dir_all(temp.join("Documents"));
+
+        let res = predict_ghost_suggestion("cd desk", Some(&temp));
+        assert_eq!(res, Some("top".to_string()));
+
+        let res2 = predict_ghost_suggestion("cd doc", Some(&temp));
+        assert_eq!(res2, Some("uments".to_string()));
+
+        assert_eq!(predict_ghost_suggestion("cd -h", Some(&temp)), None);
+        assert_eq!(predict_ghost_suggestion("", Some(&temp)), None);
+
+        let _ = fs::remove_dir_all(temp);
     }
 }

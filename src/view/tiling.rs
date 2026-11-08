@@ -810,6 +810,46 @@ impl AtlasView {
                 0.25 + 0.75 * (self.cursor_breath_phase.sin() * 0.5 + 0.5)
             };
 
+
+        // Compute ghost autocomplete suggestion for active pane
+        let ghost_text = if pane_ix == tab.active_pane {
+            let session = pane.session.borrow();
+            let is_alt_screen = session.term.mode().contains(alacritty_terminal::term::TermMode::ALT_SCREEN);
+            let show_cursor = session.term.mode().contains(alacritty_terminal::term::TermMode::SHOW_CURSOR);
+            let is_scrolled = session.term.renderable_content().display_offset > 0;
+
+            if !is_alt_screen && show_cursor && !is_scrolled {
+                let content = session.term.renderable_content();
+                let cursor_row = content.cursor.point.line;
+                let cursor_col = content.cursor.point.column.0;
+                let grid = session.term.grid();
+                let cols = session.cols;
+
+                // Check if cursor is at the end of input (cells after cursor_col are empty)
+                let is_end_of_input = (cursor_col..cols).all(|c| {
+                    grid[cursor_row][alacritty_terminal::index::Column(c)].c == ' '
+                });
+
+                if is_end_of_input && cursor_col > 0 {
+                    let mut line_buf = String::new();
+                    for c in 0..cursor_col {
+                        line_buf.push(grid[cursor_row][alacritty_terminal::index::Column(c)].c);
+                    }
+                    let res = crate::tools::system::jump::predict_ghost_suggestion(&line_buf, pane.cwd.as_deref());
+                    *self.active_ghost_suggestion.borrow_mut() = res.clone();
+                    res
+                } else {
+                    *self.active_ghost_suggestion.borrow_mut() = None;
+                    None
+                }
+            } else {
+                *self.active_ghost_suggestion.borrow_mut() = None;
+                None
+            }
+        } else {
+            None
+        };
+
             cell = cell.child(TerminalElement {
                 session: pane.session.clone(),
                 theme: theme.clone(),
@@ -843,6 +883,7 @@ impl AtlasView {
                 } else {
                     Vec::new()
                 },
+                ghost_text: ghost_text.clone(),
                 active_search_match: if self.search_open {
                     Some(self.search_index)
                 } else {

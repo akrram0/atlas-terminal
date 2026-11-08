@@ -37,6 +37,7 @@ pub struct TerminalElement {
     pub hovered_link: Option<crate::url::DetectedUrl>,
     pub search_matches: Vec<(alacritty_terminal::index::Point, alacritty_terminal::index::Point)>,
     pub active_search_match: Option<usize>,
+    pub ghost_text: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -382,7 +383,50 @@ impl Element for TerminalElement {
             if self.active_bg.a > 0.01 {
                 window.paint_quad(fill(bounds, self.active_bg));
             }
-            for (row_index, row) in rows.iter().enumerate() {
+    
+        // Paint inline ghost-text autocomplete suggestion
+        if let Some(ref ghost) = self.ghost_text {
+            if let Some((target_row, target_col)) = cursor_cell {
+                let cell_w = cell_width;
+                let ghost_col = if cursor_shape == CursorShape::Block {
+                    target_col + 1
+                } else {
+                    target_col
+                };
+                if ghost_col < cols {
+                    let gx0 = left + cell_w * ghost_col as f32;
+                    let gy0 = top + cell_height * target_row as f32 + self.subpixel_y;
+                    let ghost_fg = Rgba {
+                        r: default_cursor.r,
+                        g: default_cursor.g,
+                        b: default_cursor.b,
+                        a: 0.38,
+                    };
+                    let ghost_run = TextRun {
+                        len: ghost.len(),
+                        font: self.font.clone(),
+                        color: ghost_fg.into(),
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    };
+                    let line = text_system.shape_line(
+                        ghost.clone().into(),
+                        font_size,
+                        &[ghost_run],
+                        Some(px(cell_w)),
+                    );
+                    let _ = line.paint(
+                        point(px(gx0), px(gy0)),
+                        px(cell_height),
+                        window,
+                        cx,
+                    );
+                }
+            }
+        }
+
+        for (row_index, row) in rows.iter().enumerate() {
                 let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
                 let y1 = y0 + cell_height;
                 let x = |col: usize| left + cell_width * col as f32;

@@ -95,14 +95,26 @@ pub fn run(args: &[String]) {
 
     if force_osc || (is_atlas && !force_blocks) {
         // Output OSC 1337 inline file protocol for Atlas GPU texture rendering
+        let (orig_w, orig_h) = img.dimensions();
+        let aspect = orig_h as f32 / orig_w.max(1) as f32;
+        let cols = target_width.clamp(20, 80);
+        // Monospace cells are approximately twice as tall as they are wide (~1:2 aspect)
+        let rows = ((cols as f32 * aspect * 0.50).round() as usize).clamp(4, 32);
+
         let b64 = BASE64_STANDARD.encode(&file_bytes);
-        print!("\x1b]1337;File=inline=1;size={};name={}:{}{}",
+        print!("\x1b]1337;File=inline=1;width={}cells;height={}cells;size={};name={}:{}{}",
+            cols,
+            rows,
             file_bytes.len(),
             BASE64_STANDARD.encode(file_name.as_bytes()),
             b64,
             "\x07"
         );
-        println!();
+        // Reserve vertical grid cells and scrollback rows for the image on PTY so the
+        // shell prompt renders below the image and user can scroll up to view the full picture.
+        for _ in 0..rows {
+            println!();
+        }
     } else {
         // High-definition truecolor ANSI half-blocks
         render_halfblocks(&img, target_width);

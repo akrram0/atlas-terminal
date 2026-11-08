@@ -188,6 +188,7 @@ pub struct AtlasView {
     pub(crate) settings_scroll_pos: f32,
     pub(crate) settings_scroll_target: f32,
     pub(crate) settings_nav_scroll: f32,
+    pub(crate) active_ghost_suggestion: std::cell::RefCell<Option<String>>,
     pub(crate) hovered_link: Option<(usize, crate::url::DetectedUrl)>,
     pub(crate) sidebar_open: bool,
     pub(crate) sidebar_expansion: f32,
@@ -378,6 +379,7 @@ impl AtlasView {
             settings_scroll_pos: 0.0,
             settings_scroll_target: 0.0,
             settings_nav_scroll: 0.0,
+            active_ghost_suggestion: std::cell::RefCell::new(None),
             hovered_link: None,
             sidebar_open: true,
             sidebar_expansion: 1.0,
@@ -817,6 +819,7 @@ impl AtlasView {
                                     continue;
                                 };
                                 if pane.cwd.as_deref() != Some(cwd.as_path()) {
+                                    crate::tools::system::jump::record_visit(&cwd.to_string_lossy());
                                     pane.cwd = Some(cwd);
                                     changed = true;
                                 }

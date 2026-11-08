@@ -83,6 +83,14 @@ pub fn run(args: &[String]) {
     println!("\x1b[1;36m  │\x1b[0m  Press \x1b[33mCtrl + C\x1b[0m to terminate server                   \x1b[1;36m│\x1b[0m");
     println!("\x1b[1;36m  └--------------------------------------------------------┘\x1b[0m");
     println!();
+    println!("  \x1b[1;32mScan with your phone to open instantly:\x1b[0m");
+    println!();
+    let network_url = format!("http://{}:{}", local_ip, active_port);
+    super::qr::render_qr(&network_url);
+    println!();
+    println!("  \x1b[2mIf phone fails to load, Windows Firewall may block port {}. Run in Admin PS:\x1b[0m", active_port);
+    println!("  \x1b[33mNew-NetFirewallRule -DisplayName 'Atlas HTTP' -Direction Inbound -LocalPort {} -Protocol TCP -Action Allow\x1b[0m", active_port);
+    println!();
 
     let root_arc = std::sync::Arc::new(root_path);
 
