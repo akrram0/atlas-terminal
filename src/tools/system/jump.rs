@@ -406,8 +406,6 @@ chpwd() {{
     }
 }
 
-#[cfg(test)]
-
 pub fn predict_ghost_suggestion(line_before_cursor: &str, current_dir: Option<&Path>) -> Option<String> {
     let trimmed_right = line_before_cursor.trim_end();
     if trimmed_right.is_empty() {
@@ -519,6 +517,7 @@ pub fn predict_ghost_suggestion(line_before_cursor: &str, current_dir: Option<&P
     None
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
