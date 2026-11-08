@@ -502,6 +502,7 @@ impl AtlasView {
 
                     // 1b. Top Bar Pixel Art Companion continuous animation ticker
                     let pixel_art_active = view.pixel_art.enabled || (view.settings_open && view.settings_tab == crate::config::SettingsTab::PixelArt);
+                    let mut pixel_art_animating = false;
                     if pixel_art_active {
                         if view.pixel_art.fps == 0 {
                             if view.pixel_art_frame != 0 {
@@ -522,7 +523,7 @@ impl AtlasView {
                                 view.pixel_art_last_frame = std::time::Instant::now();
                                 needs_paint = true;
                             }
-                            active_motion = true;
+                            pixel_art_animating = true;
                         }
                     }
 
@@ -784,13 +785,13 @@ impl AtlasView {
                         cx.notify();
                     }
 
-                    (active_motion, should_breathe)
+                    (active_motion, should_breathe, pixel_art_animating)
                 });
                 match alive {
-                    Ok((active_motion, should_breathe)) => {
+                    Ok((active_motion, should_breathe, pixel_art_animating)) => {
                         next_sleep_ms = if active_motion {
                             4
-                        } else if should_breathe {
+                        } else if should_breathe || pixel_art_animating {
                             16
                         } else {
                             33

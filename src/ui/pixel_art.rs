@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Cursor;
+use image::GenericImage;
 use std::sync::{Arc, RwLock};
 
 use gpui::prelude::*;
@@ -198,6 +199,9 @@ impl PixelArtConfig {
 // Native Animated GIF & Horizontal PNG Sprite Sheet Decoder
 // ---------------------------------------------------------------------------
 
+pub const MAX_SPRITE_DIM: u32 = 72;
+pub const MAX_SPRITE_FRAMES: usize = 64;
+
 #[derive(Clone)]
 pub struct DecodedSpriteAnimation {
     #[allow(dead_code)]
@@ -210,44 +214,92 @@ pub struct DecodedSpriteAnimation {
     pub render_image: Arc<RenderImage>,
 }
 
-static SPRITES_CACHE: RwLock<Option<(std::time::Instant, HashMap<String, DecodedSpriteAnimation>)>> =
-    RwLock::new(None);
+#[derive(Clone)]
+struct CachedSprite {
+    mtime: std::time::SystemTime,
+    file_size: u64,
+    sprite: Arc<DecodedSpriteAnimation>,
+}
+
+static SPRITES_CACHE: RwLock<Option<HashMap<String, CachedSprite>>> = RwLock::new(None);
+static LAST_DISK_CHECK: RwLock<Option<std::time::Instant>> = RwLock::new(None);
 
 fn decode_gif(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<DecodedSpriteAnimation> {
     use image::codecs::gif::GifDecoder;
     use image::AnimationDecoder;
 
     let decoder = GifDecoder::new(Cursor::new(bytes)).ok()?;
-    let mut frames = decoder.into_frames().collect_frames().ok()?;
-    if frames.is_empty() {
+    let raw_frames = decoder.into_frames().collect_frames().ok()?;
+    if raw_frames.is_empty() {
         return None;
     }
 
-    let (width, height) = {
-        let f0 = &frames[0];
-        (f0.buffer().width(), f0.buffer().height())
+    let orig_w = raw_frames[0].buffer().width();
+    let orig_h = raw_frames[0].buffer().height();
+    if orig_w == 0 || orig_h == 0 {
+        return None;
+    }
+
+    // Subsample frame count if excessive to prevent CPU & RAM ballooning
+    let sampled_frames: Vec<image::Frame> = if raw_frames.len() > MAX_SPRITE_FRAMES {
+        let step = (raw_frames.len() as f32) / (MAX_SPRITE_FRAMES as f32);
+        let mut list = Vec::with_capacity(MAX_SPRITE_FRAMES);
+        for i in 0..MAX_SPRITE_FRAMES {
+            let idx = ((i as f32 * step).floor() as usize).min(raw_frames.len() - 1);
+            list.push(raw_frames[idx].clone());
+        }
+        list
+    } else {
+        raw_frames
     };
 
-    if width == 0 || height == 0 {
-        return None;
-    }
+    // Calculate downscaled bounds maintaining aspect ratio
+    let (target_w, target_h) = if orig_w > MAX_SPRITE_DIM || orig_h > MAX_SPRITE_DIM {
+        if orig_w >= orig_h {
+            let h = ((orig_h as f32 / orig_w as f32) * MAX_SPRITE_DIM as f32).round() as u32;
+            (MAX_SPRITE_DIM, h.max(1))
+        } else {
+            let w = ((orig_w as f32 / orig_h as f32) * MAX_SPRITE_DIM as f32).round() as u32;
+            (w.max(1), MAX_SPRITE_DIM)
+        }
+    } else {
+        (orig_w, orig_h)
+    };
 
-    // Convert RGBA -> BGRA in-place for GPUI's hardware GPU texture pipeline
-    for frame in &mut frames {
-        for pixel in frame.buffer_mut().pixels_mut() {
+    let needs_resize = target_w != orig_w || target_h != orig_h;
+    let mut final_frames = Vec::with_capacity(sampled_frames.len());
+
+    for frame in sampled_frames {
+        let mut buf = if needs_resize {
+            image::imageops::resize(
+                frame.buffer(),
+                target_w,
+                target_h,
+                image::imageops::FilterType::Nearest,
+            )
+        } else {
+            let mut b = image::RgbaImage::new(frame.buffer().width(), frame.buffer().height());
+            b.copy_from(frame.buffer(), 0, 0).ok();
+            b
+        };
+
+        // Convert RGBA -> BGRA in-place for GPUI's hardware GPU texture pipeline
+        for pixel in buf.pixels_mut() {
             pixel.0.swap(0, 2);
         }
+
+        final_frames.push(image::Frame::new(buf));
     }
 
-    let num_frames = frames.len();
-    let render_image = Arc::new(RenderImage::new(frames));
+    let num_frames = final_frames.len();
+    let render_image = Arc::new(RenderImage::new(final_frames));
 
     Some(DecodedSpriteAnimation {
         id,
         name,
         path,
-        width,
-        height,
+        width: target_w,
+        height: target_h,
         num_frames,
         render_image,
     })
@@ -255,7 +307,7 @@ fn decode_gif(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<D
 
 fn decode_png(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<DecodedSpriteAnimation> {
     let img = image::load_from_memory(bytes).ok()?;
-    let mut rgba_img = img.to_rgba8();
+    let rgba_img = img.to_rgba8();
     let width = rgba_img.width();
     let height = rgba_img.height();
     if width == 0 || height == 0 {
@@ -265,15 +317,24 @@ fn decode_png(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<D
     if width > height && width % height == 0 {
         // Horizontal sprite sheet (frame_size = height)
         let frame_size = height;
-        let num_frames = width / frame_size;
-        let mut frames = Vec::new();
+        let num_frames = (width / frame_size) as usize;
+        let max_take = num_frames.min(MAX_SPRITE_FRAMES);
+        let mut frames = Vec::with_capacity(max_take);
 
-        for i in 0..num_frames {
-            let mut sub_view = image::imageops::crop_imm(&rgba_img, i * frame_size, 0, frame_size, frame_size).to_image();
-            for pixel in sub_view.pixels_mut() {
+        let target_size = frame_size.min(MAX_SPRITE_DIM);
+        let needs_resize = target_size != frame_size;
+
+        for i in 0..max_take {
+            let sub_view = image::imageops::crop_imm(&rgba_img, (i as u32) * frame_size, 0, frame_size, frame_size).to_image();
+            let mut buf = if needs_resize {
+                image::imageops::resize(&sub_view, target_size, target_size, image::imageops::FilterType::Nearest)
+            } else {
+                sub_view
+            };
+            for pixel in buf.pixels_mut() {
                 pixel.0.swap(0, 2);
             }
-            frames.push(image::Frame::new(sub_view));
+            frames.push(image::Frame::new(buf));
         }
 
         let render_image = Arc::new(RenderImage::new(frames));
@@ -281,79 +342,171 @@ fn decode_png(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<D
             id,
             name,
             path,
-            width: frame_size,
-            height: frame_size,
-            num_frames: num_frames as usize,
+            width: target_size,
+            height: target_size,
+            num_frames: max_take,
             render_image,
         })
     } else {
         // Single static PNG sprite
-        for pixel in rgba_img.pixels_mut() {
+        let (target_w, target_h) = if width > MAX_SPRITE_DIM || height > MAX_SPRITE_DIM {
+            if width >= height {
+                let h = ((height as f32 / width as f32) * MAX_SPRITE_DIM as f32).round() as u32;
+                (MAX_SPRITE_DIM, h.max(1))
+            } else {
+                let w = ((width as f32 / height as f32) * MAX_SPRITE_DIM as f32).round() as u32;
+                (w.max(1), MAX_SPRITE_DIM)
+            }
+        } else {
+            (width, height)
+        };
+
+        let mut buf = if target_w != width || target_h != height {
+            image::imageops::resize(&rgba_img, target_w, target_h, image::imageops::FilterType::Nearest)
+        } else {
+            rgba_img
+        };
+
+        for pixel in buf.pixels_mut() {
             pixel.0.swap(0, 2);
         }
-        let render_image = Arc::new(RenderImage::new(vec![image::Frame::new(rgba_img)]));
+        let render_image = Arc::new(RenderImage::new(vec![image::Frame::new(buf)]));
         Some(DecodedSpriteAnimation {
             id,
             name,
             path,
-            width,
-            height,
+            width: target_w,
+            height: target_h,
             num_frames: 1,
             render_image,
         })
     }
 }
 
-/// Loads all decoded GIF & PNG sprites from `assets/pixel_art/` and `~/.config/atlas/pixel_art/`
-pub fn load_all_sprites() -> HashMap<String, DecodedSpriteAnimation> {
-    if let Ok(read_guard) = SPRITES_CACHE.read() {
-        if let Some((instant, ref map)) = *read_guard {
-            if instant.elapsed().as_millis() < 1500 {
-                return map.clone();
+/// Ensures sprites from `~/.config/atlas/pixel_art/` are synced into memory.
+/// Only reads and decodes files that are new or whose file size / mtime changed on disk.
+pub fn sync_sprites_cache(force: bool) {
+    if !force {
+        if let Ok(guard) = LAST_DISK_CHECK.read() {
+            if let Some(instant) = *guard {
+                if instant.elapsed().as_secs() < 4 {
+                    return;
+                }
             }
         }
     }
 
-    let mut map = HashMap::new();
+    if let Ok(mut guard) = LAST_DISK_CHECK.write() {
+        *guard = Some(std::time::Instant::now());
+    }
 
-    // Load user sprites and imported GIFs from ~/.config/atlas/pixel_art/
     let dir = custom_sprites_dir();
-    if dir.exists() {
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                if ext != "gif" && ext != "png" {
+    if !dir.exists() {
+        if let Ok(mut write_guard) = SPRITES_CACHE.write() {
+            *write_guard = Some(HashMap::new());
+        }
+        return;
+    }
+
+    let mut map = if let Ok(guard) = SPRITES_CACHE.read() {
+        guard.clone().unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
+
+    let mut current_ids = std::collections::HashSet::new();
+
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if ext != "gif" && ext != "png" {
+                continue;
+            }
+
+            let metadata = match fs::metadata(&path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let mtime = metadata.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            let file_size = metadata.len();
+
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("sprite");
+            let id = format!("sprite_{}", stem.to_lowercase().replace(' ', "_"));
+            current_ids.insert(id.clone());
+
+            // Check if already in cache and unchanged on disk
+            if let Some(cached) = map.get(&id) {
+                if cached.mtime == mtime && cached.file_size == file_size {
                     continue;
                 }
+            }
 
-                let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("sprite");
-                let id = format!("sprite_{}", stem.to_lowercase().replace(' ', "_"));
-                let name = stem.replace('_', " ").replace('-', " ");
+            // Read and decode changed or new file
+            let name = stem.replace('_', " ").replace('-', " ");
+            if let Ok(bytes) = fs::read(&path) {
+                let decoded = if ext == "gif" {
+                    decode_gif(id.clone(), name, path, &bytes)
+                } else {
+                    decode_png(id.clone(), name, path, &bytes)
+                };
 
-                if let Ok(bytes) = fs::read(&path) {
-                    let decoded = if ext == "gif" {
-                        decode_gif(id.clone(), name, path, &bytes)
-                    } else {
-                        decode_png(id.clone(), name, path, &bytes)
-                    };
-
-                    if let Some(sprite) = decoded {
-                        map.insert(id, sprite);
-                    }
+                if let Some(sprite) = decoded {
+                    map.insert(
+                        id,
+                        CachedSprite {
+                            mtime,
+                            file_size,
+                            sprite: Arc::new(sprite),
+                        },
+                    );
                 }
             }
         }
     }
 
-    if let Ok(mut write_guard) = SPRITES_CACHE.write() {
-        *write_guard = Some((std::time::Instant::now(), map.clone()));
-    }
+    // Retain only files that currently exist
+    map.retain(|k, _| current_ids.contains(k));
 
-    map
+    if let Ok(mut write_guard) = SPRITES_CACHE.write() {
+        *write_guard = Some(map);
+    }
 }
 
-/// Imports an external GIF or PNG file into `~/.config/atlas/pixel_art/` and returns preset ID
+pub fn get_decoded_sprite(id: &str) -> Option<Arc<DecodedSpriteAnimation>> {
+    // 1. Check existing in-memory cache
+    if let Ok(read_guard) = SPRITES_CACHE.read() {
+        if let Some(ref map) = *read_guard {
+            if let Some(cached) = map.get(id) {
+                return Some(Arc::clone(&cached.sprite));
+            }
+        }
+    }
+
+    // 2. If missing or cache empty, sync from disk
+    sync_sprites_cache(false);
+
+    if let Ok(read_guard) = SPRITES_CACHE.read() {
+        if let Some(ref map) = *read_guard {
+            if let Some(cached) = map.get(id) {
+                return Some(Arc::clone(&cached.sprite));
+            }
+        }
+    }
+
+    None
+}
+
+/// Loads all decoded GIF & PNG sprites from `~/.config/atlas/pixel_art/`
+pub fn load_all_sprites() -> HashMap<String, Arc<DecodedSpriteAnimation>> {
+    sync_sprites_cache(false);
+    if let Ok(read_guard) = SPRITES_CACHE.read() {
+        if let Some(ref map) = *read_guard {
+            return map.iter().map(|(k, v)| (k.clone(), Arc::clone(&v.sprite))).collect();
+        }
+    }
+    HashMap::new()
+}
 
 /// Deletes an imported sprite or custom JSON file from disk and invalidates caches
 pub fn delete_sprite(preset_id: &str) -> bool {
@@ -398,9 +551,7 @@ pub fn delete_sprite(preset_id: &str) -> bool {
     }
 
     if deleted {
-        if let Ok(mut lock) = SPRITES_CACHE.write() {
-            *lock = None;
-        }
+        sync_sprites_cache(true);
         if let Ok(mut lock) = CUSTOM_SPRITES_CACHE.write() {
             *lock = None;
         }
@@ -431,9 +582,7 @@ pub fn import_sprite_from_path(src: &Path) -> Option<String> {
     }
 
     // Invalidate cache
-    if let Ok(mut lock) = SPRITES_CACHE.write() {
-        *lock = None;
-    }
+    sync_sprites_cache(true);
 
     let stem = dest_path.file_stem().and_then(|s| s.to_str())?;
     let id = format!("sprite_{}", stem.to_lowercase().replace(' ', "_"));
@@ -542,7 +691,7 @@ pub fn create_custom_template(name: &str) -> std::io::Result<PathBuf> {
 pub fn load_custom_sprites() -> Vec<CustomSprite> {
     if let Ok(read_guard) = CUSTOM_SPRITES_CACHE.read() {
         if let Some((instant, ref list)) = *read_guard {
-            if instant.elapsed().as_millis() < 1200 {
+            if instant.elapsed().as_millis() < 5000 {
                 return list.clone();
             }
         }
@@ -1213,8 +1362,7 @@ pub fn render_pixel_canvas(
         move |_bounds, _window, _cx| (),
         move |bounds, _, window, _cx| {
             // 1. High-fidelity hardware GPU rendering for imported GIFs and PNG sprites
-            let sprite_map = load_all_sprites();
-            if let Some(sprite) = sprite_map.get(&pid) {
+            if let Some(sprite) = get_decoded_sprite(&pid) {
                 let frame_idx = if sprite.num_frames > 0 {
                     (tick as usize) % sprite.num_frames
                 } else {
