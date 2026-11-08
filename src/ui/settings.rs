@@ -2667,7 +2667,7 @@ impl AtlasView {
                                     .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
                                     .text_size(px(10.0))
                                     .text_color(theme.accent)
-                                    .child(format!("GIF ({}f)", sprite.frames.len())),
+                                    .child(format!("GIF ({}f, {}x{})", sprite.num_frames, sprite.width, sprite.height)),
                             )
                         }),
                 )

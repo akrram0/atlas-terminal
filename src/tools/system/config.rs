@@ -110,7 +110,7 @@ pub fn run(args: &[String]) {
                         entries.sort_by(|a, b| a.0.cmp(&b.0));
                         for (id, s) in entries {
                             let active = if id == config.active_preset { " \x1b[1;32m(active)\x1b[0m" } else { "" };
-                            let tag = format!("GIF ({}f)", s.frames.len());
+                            let tag = format!("GIF ({}f, {}x{})", s.num_frames, s.width, s.height);
                             println!("  \x1b[1m{:18}\x1b[0m [{:14}] {}{}", id, tag, s.path.display(), active);
                         }
                     }

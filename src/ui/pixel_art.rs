@@ -10,10 +10,11 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::io::Cursor;
+use std::sync::{Arc, RwLock};
 
 use gpui::prelude::*;
-use gpui::{canvas, fill, point, px, rgba, size, Bounds, IntoElement, Rgba};
+use gpui::{canvas, fill, point, px, rgba, size, Bounds, Corners, IntoElement, RenderImage, Rgba};
 use serde::{Deserialize, Serialize};
 
 use crate::theme::Theme;
@@ -198,23 +199,15 @@ impl PixelArtConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
-pub struct DecodedFrame {
-    #[allow(dead_code)]
-    pub width: u32,
-    #[allow(dead_code)]
-    pub height: u32,
-    #[allow(dead_code)]
-    pub delay_ms: u32,
-    pub pixels: Vec<(u8, u8, Rgba)>,
-}
-
-#[derive(Clone)]
 pub struct DecodedSpriteAnimation {
     #[allow(dead_code)]
     pub id: String,
     pub name: String,
     pub path: PathBuf,
-    pub frames: Vec<DecodedFrame>,
+    pub width: u32,
+    pub height: u32,
+    pub num_frames: usize,
+    pub render_image: Arc<RenderImage>,
 }
 
 static SPRITES_CACHE: RwLock<Option<(std::time::Instant, HashMap<String, DecodedSpriteAnimation>)>> =
@@ -224,165 +217,91 @@ fn decode_gif(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<D
     use image::codecs::gif::GifDecoder;
     use image::AnimationDecoder;
 
-    let decoder = GifDecoder::new(std::io::Cursor::new(bytes)).ok()?;
-    let frames_iter = decoder.into_frames();
-
-    let mut frames = Vec::new();
-
-    for frame_res in frames_iter {
-        let frame = frame_res.ok()?;
-        let (delay_num, delay_den) = frame.delay().numer_denom_ms();
-        let delay_ms = if delay_den == 0 { 100 } else { (delay_num / delay_den).max(30) };
-
-        let buffer = frame.into_buffer();
-        let orig_w = buffer.width();
-        let orig_h = buffer.height();
-
-        // Scale to 24px tall nearest-neighbor if larger
-        let (target_w, target_h) = if orig_h > 24 {
-            let ratio = orig_w as f32 / orig_h as f32;
-            (((24.0 * ratio).round() as u32).max(1), 24u32)
-        } else {
-            (orig_w, orig_h)
-        };
-
-        let scaled = if target_w != orig_w || target_h != orig_h {
-            image::imageops::resize(&buffer, target_w, target_h, image::imageops::FilterType::Nearest)
-        } else {
-            buffer
-        };
-
-        let w = scaled.width();
-        let h = scaled.height();
-        let mut pixels = Vec::new();
-
-        for y in 0..h {
-            for x in 0..w {
-                let p = scaled.get_pixel(x, y);
-                if p[3] > 32 {
-                    let col = rgba(
-                        ((p[0] as u32) << 24)
-                            | ((p[1] as u32) << 16)
-                            | ((p[2] as u32) << 8)
-                            | (p[3] as u32),
-                    );
-                    pixels.push((x as u8, y as u8, col));
-                }
-            }
-        }
-
-        frames.push(DecodedFrame {
-            width: w,
-            height: h,
-            delay_ms,
-            pixels,
-        });
-    }
-
+    let decoder = GifDecoder::new(Cursor::new(bytes)).ok()?;
+    let mut frames = decoder.into_frames().collect_frames().ok()?;
     if frames.is_empty() {
         return None;
     }
+
+    let (width, height) = {
+        let f0 = &frames[0];
+        (f0.buffer().width(), f0.buffer().height())
+    };
+
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    // Convert RGBA -> BGRA in-place for GPUI's hardware GPU texture pipeline
+    for frame in &mut frames {
+        for pixel in frame.buffer_mut().pixels_mut() {
+            pixel.0.swap(0, 2);
+        }
+    }
+
+    let num_frames = frames.len();
+    let render_image = Arc::new(RenderImage::new(frames));
 
     Some(DecodedSpriteAnimation {
         id,
         name,
         path,
-        frames,
+        width,
+        height,
+        num_frames,
+        render_image,
     })
 }
 
 fn decode_png(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<DecodedSpriteAnimation> {
     let img = image::load_from_memory(bytes).ok()?;
-    let rgba_img = img.to_rgba8();
+    let mut rgba_img = img.to_rgba8();
     let width = rgba_img.width();
     let height = rgba_img.height();
-
-    let mut frames = Vec::new();
-    let delay_ms = 100;
+    if width == 0 || height == 0 {
+        return None;
+    }
 
     if width > height && width % height == 0 {
         // Horizontal sprite sheet (frame_size = height)
         let frame_size = height;
         let num_frames = width / frame_size;
+        let mut frames = Vec::new();
 
         for i in 0..num_frames {
-            let sub_view = image::imageops::crop_imm(&rgba_img, i * frame_size, 0, frame_size, frame_size).to_image();
-            let scaled = if frame_size > 24 {
-                image::imageops::resize(&sub_view, 24, 24, image::imageops::FilterType::Nearest)
-            } else {
-                sub_view
-            };
-
-            let w = scaled.width();
-            let h = scaled.height();
-            let mut pixels = Vec::new();
-
-            for y in 0..h {
-                for x in 0..w {
-                    let p = scaled.get_pixel(x, y);
-                    if p[3] > 32 {
-                        let col = rgba(
-                            ((p[0] as u32) << 24)
-                                | ((p[1] as u32) << 16)
-                                | ((p[2] as u32) << 8)
-                                | (p[3] as u32),
-                        );
-                        pixels.push((x as u8, y as u8, col));
-                    }
-                }
+            let mut sub_view = image::imageops::crop_imm(&rgba_img, i * frame_size, 0, frame_size, frame_size).to_image();
+            for pixel in sub_view.pixels_mut() {
+                pixel.0.swap(0, 2);
             }
-            frames.push(DecodedFrame {
-                width: w,
-                height: h,
-                delay_ms,
-                pixels,
-            });
+            frames.push(image::Frame::new(sub_view));
         }
+
+        let render_image = Arc::new(RenderImage::new(frames));
+        Some(DecodedSpriteAnimation {
+            id,
+            name,
+            path,
+            width: frame_size,
+            height: frame_size,
+            num_frames: num_frames as usize,
+            render_image,
+        })
     } else {
-        let scaled = if height > 24 {
-            let ratio = width as f32 / height as f32;
-            let target_w = ((24.0 * ratio).round() as u32).max(1);
-            image::imageops::resize(&rgba_img, target_w, 24, image::imageops::FilterType::Nearest)
-        } else {
-            rgba_img
-        };
-
-        let w = scaled.width();
-        let h = scaled.height();
-        let mut pixels = Vec::new();
-
-        for y in 0..h {
-            for x in 0..w {
-                let p = scaled.get_pixel(x, y);
-                if p[3] > 32 {
-                    let col = rgba(
-                        ((p[0] as u32) << 24)
-                            | ((p[1] as u32) << 16)
-                            | ((p[2] as u32) << 8)
-                            | (p[3] as u32),
-                    );
-                    pixels.push((x as u8, y as u8, col));
-                }
-            }
+        // Single static PNG sprite
+        for pixel in rgba_img.pixels_mut() {
+            pixel.0.swap(0, 2);
         }
-        frames.push(DecodedFrame {
-            width: w,
-            height: h,
-            delay_ms,
-            pixels,
-        });
+        let render_image = Arc::new(RenderImage::new(vec![image::Frame::new(rgba_img)]));
+        Some(DecodedSpriteAnimation {
+            id,
+            name,
+            path,
+            width,
+            height,
+            num_frames: 1,
+            render_image,
+        })
     }
-
-    if frames.is_empty() {
-        return None;
-    }
-
-    Some(DecodedSpriteAnimation {
-        id,
-        name,
-        path,
-        frames,
-    })
 }
 
 /// Loads all decoded GIF & PNG sprites from `assets/pixel_art/` and `~/.config/atlas/pixel_art/`
@@ -591,6 +510,14 @@ pub fn load_custom_sprites() -> Vec<CustomSprite> {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(sprite) = serde_json::from_str::<CustomSprite>(&content) {
                         if !sprite.frames.is_empty() {
+                            // Filter out duplicates that match built-in presets or internal heart templates
+                            if PRESETS.iter().any(|p| p.id == sprite.id || p.name.eq_ignore_ascii_case(&sprite.name))
+                                || sprite.id == "custom_heart"
+                                || sprite.id == "pixel_heart"
+                                || sprite.id == "template_24x24"
+                            {
+                                continue;
+                            }
                             sprites.push(sprite);
                         }
                     }
@@ -1184,21 +1111,7 @@ pub fn render_frame(
         }
     }
 
-    // 2. Check decoded GIF & PNG sprites (XwI4.gif, user imported GIFs/PNGs)
-    let sprite_map = load_all_sprites();
-    if let Some(sprite) = sprite_map.get(preset_id) {
-        if !sprite.frames.is_empty() {
-            let frame_idx = (tick as usize) % sprite.frames.len();
-            let frame = &sprite.frames[frame_idx];
-            for &(px_x, px_y, original) in &frame.pixels {
-                let final_col = map_color(original, color_mode, theme_accent, is_dark);
-                pixels.push((px_x, px_y, final_col));
-            }
-            return pixels;
-        }
-    }
-
-    // 3. Check custom JSON sprites (~/.config/atlas/pixel_art/*.json)
+        // 2. Check custom JSON sprites (~/.config/atlas/pixel_art/*.json)
     let custom_sprites = load_custom_sprites();
     if let Some(custom) = custom_sprites.iter().find(|s| s.id == preset_id) {
         if !custom.frames.is_empty() {
@@ -1225,7 +1138,7 @@ pub fn render_frame(
         }
     }
 
-    // 4. Safe fallback to default preset
+    // 3. Fallback to default preset
     if preset_id != "hot_coffee" {
         return render_frame("hot_coffee", tick, color_mode, theme_accent, is_dark);
     }
@@ -1233,7 +1146,9 @@ pub fn render_frame(
     pixels
 }
 
-/// Renders a native GPUI Canvas element using solid contiguous square pixels
+/// Renders a native GPUI Canvas element
+/// - Uses direct hardware GPU texture painting (`window.paint_image`) for imported GIFs/PNGs at full native resolution
+/// - Uses solid contiguous square pixels for procedural and custom JSON pixel art
 pub fn render_pixel_canvas(
     preset_id: String,
     tick: u64,
@@ -1244,10 +1159,61 @@ pub fn render_pixel_canvas(
     target_height: f32,
 ) -> impl IntoElement {
     let accent = theme.accent;
+    let pid = preset_id.clone();
     canvas(
         move |_bounds, _window, _cx| (),
         move |bounds, _, window, _cx| {
-            let pixels = render_frame(&preset_id, tick, &color_mode, accent, is_dark);
+            // 1. High-fidelity hardware GPU rendering for imported GIFs and PNG sprites
+            let sprite_map = load_all_sprites();
+            if let Some(sprite) = sprite_map.get(&pid) {
+                let frame_idx = if sprite.num_frames > 0 {
+                    (tick as usize) % sprite.num_frames
+                } else {
+                    0
+                };
+                let is_grayscale = color_mode == "monochrome";
+
+                let bounds_w = f32::from(bounds.size.width);
+                let bounds_h = f32::from(bounds.size.height);
+
+                let aspect = if sprite.height > 0 {
+                    sprite.width as f32 / sprite.height as f32
+                } else {
+                    1.0
+                };
+
+                let bounds_aspect = if bounds_h > 0.0 { bounds_w / bounds_h } else { 1.0 };
+
+                let (draw_w, draw_h) = if aspect > bounds_aspect {
+                    let w = bounds_w;
+                    let h = (w / aspect).min(bounds_h);
+                    (w, h)
+                } else {
+                    let h = bounds_h;
+                    let w = (h * aspect).min(bounds_w);
+                    (w, h)
+                };
+
+                let draw_x = f32::from(bounds.origin.x) + (bounds_w - draw_w) * 0.5;
+                let draw_y = f32::from(bounds.origin.y) + (bounds_h - draw_h) * 0.5;
+
+                let img_bounds = Bounds::new(
+                    point(px(draw_x), px(draw_y)),
+                    size(px(draw_w), px(draw_h)),
+                );
+
+                let _ = window.paint_image(
+                    img_bounds,
+                    Corners::default(),
+                    sprite.render_image.clone(),
+                    frame_idx,
+                    is_grayscale,
+                );
+                return;
+            }
+
+            // 2. Solid contiguous square pixel GPU canvas for procedural presets and JSON sprites
+            let pixels = render_frame(&pid, tick, &color_mode, accent, is_dark);
             let pixel_w = bounds.size.width / (GRID_WIDTH as f32);
             let pixel_h = bounds.size.height / (GRID_HEIGHT as f32);
 
