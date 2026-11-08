@@ -2327,6 +2327,34 @@ impl AtlasView {
                     .gap(px(8.0))
                     .child(
                         div()
+                            .id(ElementId::named_usize("pixel-import-btn", 0))
+                            .px(px(11.0))
+                            .py(px(4.0))
+                            .rounded(px(5.0))
+                            .bg(theme.accent)
+                            .hover(move |s| s.opacity(0.85))
+                            .cursor_pointer()
+                            .text_size(px(11.5))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(rgb(0xFFFFFF))
+                            .child("Import GIF / Sprite")
+                            .on_click(cx.listener(|_view, _: &ClickEvent, _window, cx| {
+                                cx.spawn(async move |this, cx| {
+                                    let picked = smol::unblock(crate::ui::pixel_art::pick_sprite_file).await;
+                                    if let Some(path) = picked {
+                                        if let Some(preset_id) = crate::ui::pixel_art::import_sprite_from_path(&path) {
+                                            let _ = this.update(cx, |view, cx| {
+                                                view.pixel_art.active_preset = preset_id;
+                                                view.pixel_art.save();
+                                                cx.notify();
+                                            });
+                                        }
+                                    }
+                                }).detach();
+                            })),
+                    )
+                    .child(
+                        div()
                             .id(ElementId::named_usize("pixel-open-folder-btn", 0))
                             .px(px(10.0))
                             .py(px(4.0))
@@ -2371,9 +2399,8 @@ impl AtlasView {
         let cat_filters: &[(&'static str, &'static str)] = &[
             ("all", "All"),
             ("cozy", "Cozy & Chill"),
-            ("cyber", "Cyber & Hacker"),
             ("system", "System & Retro"),
-            ("custom", "Custom"),
+            ("custom", "Custom & GIFs"),
         ];
 
         let mut cat_pills_row = div()
@@ -2538,6 +2565,130 @@ impl AtlasView {
             preset_grid = preset_grid.child(card_el);
         }
 
+        let all_sprites = crate::ui::pixel_art::load_all_sprites();
+        let mut sprite_entries: Vec<_> = all_sprites.into_iter().collect();
+        sprite_entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (s_idx, (sprite_id, sprite)) in sprite_entries.iter().enumerate() {
+            if self.pixel_art_category_filter != "all"
+                && self.pixel_art_category_filter != "custom"
+            {
+                continue;
+            }
+
+            let is_active = self.pixel_art.active_preset == *sprite_id;
+            let card_border = if is_active {
+                theme.accent
+            } else if is_dark {
+                rgba(0xFFFFFF14)
+            } else {
+                rgba(0x00000010)
+            };
+            let card_bg = if is_active {
+                Rgba { a: 0.12, ..theme.accent }
+            } else if is_dark {
+                rgba(0x00000040)
+            } else {
+                rgba(0xFFFFFF60)
+            };
+
+            let preview_canvas = crate::ui::pixel_art::render_pixel_canvas(
+                sprite_id.clone(),
+                self.pixel_art_frame,
+                self.pixel_art.color_mode.clone(),
+                theme.clone(),
+                is_dark,
+                64.0,
+                64.0,
+            );
+
+            let sid = sprite_id.clone();
+            let card_el = div()
+                .id(ElementId::named_usize("pixel-sprite-card", s_idx))
+                .w(px(220.0))
+                .flex()
+                .flex_col()
+                .gap(px(8.0))
+                .p(px(12.0))
+                .rounded(px(8.0))
+                .bg(card_bg)
+                .border_1()
+                .border_color(card_border)
+                .cursor_pointer()
+                .hover(move |s| s.border_color(theme.accent))
+                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                    view.pixel_art.active_preset = sid.clone();
+                    view.pixel_art.save();
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .w(relative(1.0))
+                        .h(px(76.0))
+                        .rounded(px(5.0))
+                        .bg(if is_dark { rgba(0x00000080) } else { rgba(0x00000012) })
+                        .border_1()
+                        .border_color(theme.hairline)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(preview_canvas),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(13.0))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(sc_title)
+                                .child(sprite.name.clone()),
+                        )
+                        .children(if is_active {
+                            Some(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(theme.accent)
+                                    .text_size(px(10.0))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(rgb(0xFFFFFF))
+                                    .child("ACTIVE"),
+                            )
+                        } else {
+                            Some(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
+                                    .text_size(px(10.0))
+                                    .text_color(theme.accent)
+                                    .child(format!("GIF ({}f)", sprite.frames.len())),
+                            )
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(sc_desc)
+                        .line_height(px(15.0))
+                        .child(
+                            sprite
+                                .path
+                                .file_name()
+                                .and_then(|f| f.to_str())
+                                .unwrap_or("Custom sprite")
+                                .to_string(),
+                        ),
+                );
+
+            preset_grid = preset_grid.child(card_el);
+        }
+
         let custom_sprites = crate::ui::pixel_art::load_custom_sprites();
         for (c_idx, custom) in custom_sprites.iter().enumerate() {
             if self.pixel_art_category_filter != "all"
@@ -2655,9 +2806,10 @@ impl AtlasView {
         }
 
         let fps_options = vec![
-            (6u32, "Slow (6 FPS)".to_string()),
-            (10u32, "Normal (10 FPS)".to_string()),
-            (16u32, "Fast (16 FPS)".to_string()),
+            (0u32, "Static (Still)".to_string()),
+            (2u32, "Calm (2 FPS)".to_string()),
+            (4u32, "Smooth (4 FPS)".to_string()),
+            (8u32, "Dynamic (8 FPS)".to_string()),
         ];
         let fps_ctrl = segmented_control(
             "pixel-fps-ctrl",
@@ -2707,7 +2859,7 @@ impl AtlasView {
             .child(section_header("KINEMATICS & COLOR TUNING"))
             .child(setting_row(
                 "Animation Frame Rate",
-                Some("Frame rate of continuous loop on background timer (6, 10, or 16 FPS)"),
+                Some("Static (still icon), Calm (2 FPS), Smooth (4 FPS), or Dynamic (8 FPS)"),
                 fps_ctrl.into_any_element(),
                 false,
             ))
@@ -2781,8 +2933,8 @@ impl AtlasView {
                 ("Atlas AI Companion", "Tools & Satellites", SettingsTab::Tools, "Command explanations, error diagnostic advisor, and CLI assistance"),
                 ("Atlas Dynamic Island (hud)", "Tools & Satellites", SettingsTab::Tools, "Trigger macOS-style notifications and status pulses via OSC 1338"),
                 ("Pixel Art Companion", "Pixel Art & Companion", SettingsTab::PixelArt, "Top bar animated companion widget"),
-                ("Pixel Art Presets", "Pixel Art & Companion", SettingsTab::PixelArt, "Hot Coffee, Campfire, Matrix, Cassette, Radar, Server, Wave"),
-                ("Animation Frame Rate (FPS)", "Pixel Art & Companion", SettingsTab::PixelArt, "Continuous loop speed (6, 10, 16 FPS)"),
+                ("Pixel Art Presets", "Pixel Art & Companion", SettingsTab::PixelArt, "Hot Coffee, Campfire, Tux, Cassette, Cat, Prompt, Imported GIFs"),
+                ("Animation Frame Rate (FPS)", "Pixel Art & Companion", SettingsTab::PixelArt, "Continuous loop speed (Static, 2, 4, 8 FPS)"),
                 ("Pixel Art Color Mode", "Pixel Art & Companion", SettingsTab::PixelArt, "Original truecolor, Theme Accent, or Monochrome"),
                 ("Pixel Art Activity Boost", "Pixel Art & Companion", SettingsTab::PixelArt, "Double animation cadence during active terminal typing"),
                 ("Atlas Benchmark", "Tools & Satellites", SettingsTab::Tools, "Measure PTY throughput and 24-bit truecolor rendering"),
@@ -2958,7 +3110,7 @@ impl AtlasView {
                             SettingsTab::Scrolling => "Control scroll velocity, eliminate runaway acceleration, and manage clipboard buffers.".to_string(),
                             SettingsTab::Window => "Tab bar position, tiling split gaps, and window framing.".to_string(),
                             SettingsTab::Tools => "Zero-dependency developer companions and CLI satellites.".to_string(),
-                            SettingsTab::PixelArt => "Nothing-OS geometric matrix shaders and artist-made animated GIF / PNG sprites.".to_string(),
+                            SettingsTab::PixelArt => "Minimalist pixel companions and artist-made animated GIF / PNG sprites.".to_string(),
                             SettingsTab::Shortcuts => "Review native navigation keystrokes or record custom keybindings.".to_string(),
                             SettingsTab::Updates => "Software release channels, background update checks, and configuration files.".to_string(),
                         }

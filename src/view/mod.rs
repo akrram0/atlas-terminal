@@ -503,20 +503,27 @@ impl AtlasView {
                     // 1b. Top Bar Pixel Art Companion continuous animation ticker
                     let pixel_art_active = view.pixel_art.enabled || (view.settings_open && view.settings_tab == crate::config::SettingsTab::PixelArt);
                     if pixel_art_active {
-                        let typing_recent = view.cursor_last_typing.elapsed().as_millis() < 800;
-                        let base_fps = view.pixel_art.fps.clamp(1, 60);
-                        let effective_fps = if view.pixel_art.speed_boost_on_activity && typing_recent {
-                            (base_fps * 5) / 4
+                        if view.pixel_art.fps == 0 {
+                            if view.pixel_art_frame != 0 {
+                                view.pixel_art_frame = 0;
+                                needs_paint = true;
+                            }
                         } else {
-                            base_fps
-                        };
-                        let frame_interval_ms = (1000 / effective_fps.max(1)) as u128;
-                        if view.pixel_art_last_frame.elapsed().as_millis() >= frame_interval_ms {
-                            view.pixel_art_frame = view.pixel_art_frame.wrapping_add(1);
-                            view.pixel_art_last_frame = std::time::Instant::now();
-                            needs_paint = true;
+                            let typing_recent = view.cursor_last_typing.elapsed().as_millis() < 800;
+                            let base_fps = view.pixel_art.fps.clamp(1, 60);
+                            let effective_fps = if view.pixel_art.speed_boost_on_activity && typing_recent {
+                                (base_fps * 5) / 4
+                            } else {
+                                base_fps
+                            };
+                            let frame_interval_ms = (1000 / effective_fps.max(1)) as u128;
+                            if view.pixel_art_last_frame.elapsed().as_millis() >= frame_interval_ms {
+                                view.pixel_art_frame = view.pixel_art_frame.wrapping_add(1);
+                                view.pixel_art_last_frame = std::time::Instant::now();
+                                needs_paint = true;
+                            }
+                            active_motion = true;
                         }
-                        active_motion = true;
                     }
 
                     // 2. Theme crossfade interpolation (zero-flash smooth transition)
