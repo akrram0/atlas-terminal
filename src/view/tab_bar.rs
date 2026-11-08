@@ -631,26 +631,20 @@ impl AtlasView {
             .gap(px(6.0));
 
         if self.pixel_art.enabled {
-            let (capsule_w, canvas_w) = match self.pixel_art.size.as_str() {
-                "compact" => (72.0, 64.0),
-                "normal" => (80.0, 72.0),
-                _ => (88.0, 80.0),
-            };
-
             let companion_canvas = crate::ui::pixel_art::render_pixel_canvas(
                 self.pixel_art.active_preset.clone(),
                 self.pixel_art_frame,
                 self.pixel_art.color_mode.clone(),
                 theme.clone(),
                 is_dark_theme,
-                canvas_w,
-                22.0,
+                26.0,
+                26.0,
             );
 
             let companion_capsule = div()
                 .id(ElementId::named_usize("topbar-pixel-companion", 0))
-                .w(px(capsule_w))
-                .h(px(26.0))
+                .w(px(48.0))
+                .h(px(28.0))
                 .px(px(4.0))
                 .flex()
                 .flex_row()

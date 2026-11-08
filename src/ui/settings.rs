@@ -2318,41 +2318,13 @@ impl AtlasView {
                 false,
             ))
             .child(setting_row(
-                "Import & Manage Pixel Sprites",
-                Some("Import real animated .gif files or .png sprite sheets with pixel-crisp nearest-neighbor filtering"),
+                "Custom Sprites Directory",
+                Some("Handcraft your own 24x24 companions in ~/.config/atlas/pixel_art/"),
                 div()
                     .flex()
                     .flex_row()
                     .items_center()
                     .gap(px(8.0))
-                    .child(
-                        div()
-                            .id(ElementId::named_usize("pixel-import-btn", 0))
-                            .px(px(11.0))
-                            .py(px(4.0))
-                            .rounded(px(5.0))
-                            .bg(theme.accent)
-                            .hover(move |s| s.opacity(0.85))
-                            .cursor_pointer()
-                            .text_size(px(11.5))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(rgb(0xFFFFFF))
-                            .child("Import GIF / Sprite")
-                            .on_click(cx.listener(|_view, _: &ClickEvent, _window, cx| {
-                                cx.spawn(async move |this, cx| {
-                                    let picked = smol::unblock(crate::ui::pixel_art::pick_sprite_file).await;
-                                    if let Some(path) = picked {
-                                        if let Some(preset_id) = crate::ui::pixel_art::import_sprite_from_path(&path) {
-                                            let _ = this.update(cx, |view, cx| {
-                                                view.pixel_art.active_preset = preset_id;
-                                                view.pixel_art.save();
-                                                cx.notify();
-                                            });
-                                        }
-                                    }
-                                }).detach();
-                            })),
-                    )
                     .child(
                         div()
                             .id(ElementId::named_usize("pixel-open-folder-btn", 0))
@@ -2367,9 +2339,29 @@ impl AtlasView {
                             .text_size(px(11.5))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(sc_title)
-                            .child("Open Sprites Folder")
+                            .child("Open Folder")
                             .on_click(cx.listener(|_, _: &ClickEvent, _window, _| {
-                                open_folder(&crate::ui::pixel_art::pixel_sprites_dir());
+                                open_folder(&crate::ui::pixel_art::custom_sprites_dir());
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("pixel-new-template-btn", 0))
+                            .px(px(10.0))
+                            .py(px(4.0))
+                            .rounded(px(5.0))
+                            .bg(if is_dark { rgba(0xFFFFFF12) } else { rgba(0x0000000C) })
+                            .border_1()
+                            .border_color(theme.hairline)
+                            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                            .cursor_pointer()
+                            .text_size(px(11.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.accent)
+                            .child("+ New Template")
+                            .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
+                                let _ = crate::ui::pixel_art::create_custom_template("my_companion");
+                                cx.notify();
                             })),
                     )
                     .into_any_element(),
@@ -2378,8 +2370,10 @@ impl AtlasView {
 
         let cat_filters: &[(&'static str, &'static str)] = &[
             ("all", "All"),
-            ("geometric", "Matrix Shaders"),
-            ("sprites", "GIFs & Sprites"),
+            ("cozy", "Cozy & Chill"),
+            ("cyber", "Cyber & Hacker"),
+            ("system", "System & Retro"),
+            ("custom", "Custom"),
         ];
 
         let mut cat_pills_row = div()
@@ -2432,7 +2426,7 @@ impl AtlasView {
 
         for (p_idx, preset) in crate::ui::pixel_art::PRESETS.iter().enumerate() {
             if self.pixel_art_category_filter != "all"
-                && self.pixel_art_category_filter != "geometric"
+                && preset.category.as_str() != self.pixel_art_category_filter
             {
                 continue;
             }
@@ -2459,8 +2453,8 @@ impl AtlasView {
                 self.pixel_art.color_mode.clone(),
                 theme.clone(),
                 is_dark,
-                130.0,
-                46.0,
+                64.0,
+                64.0,
             );
 
             let pid = preset.id;
@@ -2544,15 +2538,16 @@ impl AtlasView {
             preset_grid = preset_grid.child(card_el);
         }
 
-        let all_sprites = crate::ui::pixel_art::load_all_sprites();
-        for (s_idx, (sprite_id, sprite)) in all_sprites.iter().enumerate() {
+        let custom_sprites = crate::ui::pixel_art::load_custom_sprites();
+        for (c_idx, custom) in custom_sprites.iter().enumerate() {
             if self.pixel_art_category_filter != "all"
-                && self.pixel_art_category_filter != "sprites"
+                && self.pixel_art_category_filter != "custom"
+                && custom.category != self.pixel_art_category_filter
             {
                 continue;
             }
 
-            let is_active = self.pixel_art.active_preset == *sprite_id;
+            let is_active = self.pixel_art.active_preset == custom.id;
             let card_border = if is_active {
                 theme.accent
             } else if is_dark {
@@ -2569,18 +2564,18 @@ impl AtlasView {
             };
 
             let preview_canvas = crate::ui::pixel_art::render_pixel_canvas(
-                sprite_id.clone(),
+                custom.id.clone(),
                 self.pixel_art_frame,
                 self.pixel_art.color_mode.clone(),
                 theme.clone(),
                 is_dark,
-                110.0,
-                46.0,
+                64.0,
+                64.0,
             );
 
-            let sid = sprite_id.clone();
+            let cid = custom.id.clone();
             let card_el = div()
-                .id(ElementId::named_usize("pixel-sprite-card", s_idx))
+                .id(ElementId::named_usize("pixel-custom-card", c_idx))
                 .w(px(220.0))
                 .flex()
                 .flex_col()
@@ -2593,7 +2588,7 @@ impl AtlasView {
                 .cursor_pointer()
                 .hover(move |s| s.border_color(theme.accent))
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                    view.pixel_art.active_preset = sid.clone();
+                    view.pixel_art.active_preset = cid.clone();
                     view.pixel_art.save();
                     cx.notify();
                 }))
@@ -2621,7 +2616,7 @@ impl AtlasView {
                                 .text_size(px(13.0))
                                 .font_weight(FontWeight::BOLD)
                                 .text_color(sc_title)
-                                .child(sprite.name.clone()),
+                                .child(custom.name.clone()),
                         )
                         .children(if is_active {
                             Some(
@@ -2644,7 +2639,7 @@ impl AtlasView {
                                     .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
                                     .text_size(px(10.0))
                                     .text_color(theme.accent)
-                                    .child(format!("SPRITE ({}f)", sprite.frames.len())),
+                                    .child("CUSTOM"),
                             )
                         }),
                 )
@@ -2653,41 +2648,16 @@ impl AtlasView {
                         .text_size(px(11.5))
                         .text_color(sc_desc)
                         .line_height(px(15.0))
-                        .child(
-                            sprite
-                                .path
-                                .file_name()
-                                .and_then(|f| f.to_str())
-                                .unwrap_or("Custom sprite")
-                                .to_string(),
-                        ),
+                        .child(custom.desc.clone()),
                 );
 
             preset_grid = preset_grid.child(card_el);
         }
 
-        let size_options = vec![
-            ("compact".to_string(), "Compact (72px)".to_string()),
-            ("normal".to_string(), "Normal (80px)".to_string()),
-            ("wide".to_string(), "Wide (88px)".to_string()),
-        ];
-        let size_ctrl = segmented_control(
-            "pixel-size-ctrl",
-            size_options,
-            &self.pixel_art.size,
-            theme,
-            |size, view, cx| {
-                view.pixel_art.size = size;
-                view.pixel_art.save();
-                cx.notify();
-            },
-            cx,
-        );
-
         let fps_options = vec![
-            (6u32, "Relaxed (6 FPS)".to_string()),
+            (6u32, "Slow (6 FPS)".to_string()),
             (10u32, "Normal (10 FPS)".to_string()),
-            (14u32, "Dynamic (14 FPS)".to_string()),
+            (16u32, "Fast (16 FPS)".to_string()),
         ];
         let fps_ctrl = segmented_control(
             "pixel-fps-ctrl",
@@ -2736,14 +2706,8 @@ impl AtlasView {
         let pixel_controls_card = card()
             .child(section_header("KINEMATICS & COLOR TUNING"))
             .child(setting_row(
-                "Top-Bar Display Size",
-                Some("Top-bar pill width: Compact (72px), Normal (80px), or Wide (88px)"),
-                size_ctrl.into_any_element(),
-                false,
-            ))
-            .child(setting_row(
                 "Animation Frame Rate",
-                Some("Smooth studio animation frame rate (6, 10, or 14 FPS)"),
+                Some("Frame rate of continuous loop on background timer (6, 10, or 16 FPS)"),
                 fps_ctrl.into_any_element(),
                 false,
             ))
@@ -2755,7 +2719,7 @@ impl AtlasView {
             ))
             .child(setting_row(
                 "Speed Boost on Activity",
-                Some("Gentle tempo surge (+25%) during active terminal typing or command execution"),
+                Some("Temporarily double frame rate (2x) when typing or running commands"),
                 boost_ctrl.into_any_element(),
                 true,
             ));
