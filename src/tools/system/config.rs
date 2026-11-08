@@ -64,7 +64,7 @@ pub fn run(args: &[String]) {
                 println!("  Color Mode:   {}", config.color_mode);
                 println!("  Activity 2x:  {}", if config.speed_boost_on_activity { "enabled" } else { "disabled" });
                 println!("  Config:       {}", crate::ui::pixel_art::pixel_art_config_path().display());
-                println!("\nUsage: atlas config pixel [on | off | preset <name> | list | fps <n> | color <mode> | boost <bool>]");
+                println!("\nUsage: atlas config pixel [on | off | preset <name> | list | folder | new <name> | fps <n> | color <mode> | boost <bool>]");
                 return;
             }
             match args[1].as_str() {
@@ -84,7 +84,10 @@ pub fn run(args: &[String]) {
                         return;
                     }
                     let name = &args[2];
-                    if crate::ui::pixel_art::PRESETS.iter().any(|p| p.id == name) {
+                    let custom_sprites = crate::ui::pixel_art::load_custom_sprites();
+                    let is_builtin = crate::ui::pixel_art::PRESETS.iter().any(|p| p.id == name);
+                    let is_custom = custom_sprites.iter().any(|s| &s.id == name);
+                    if is_builtin || is_custom {
                         config.active_preset = name.to_string();
                         config.save();
                         println!("\x1b[1;32m✓\x1b[0m Active preset set to \x1b[1;36m{}\x1b[0m.", name);
@@ -97,6 +100,26 @@ pub fn run(args: &[String]) {
                     for p in crate::ui::pixel_art::PRESETS {
                         let active = if p.id == config.active_preset { " \x1b[1;32m(active)\x1b[0m" } else { "" };
                         println!("  \x1b[1m{:15}\x1b[0m [{:14}] {}{}", p.id, p.category.label(), p.desc, active);
+                    }
+                    let custom_sprites = crate::ui::pixel_art::load_custom_sprites();
+                    if !custom_sprites.is_empty() {
+                        println!("\n\x1b[1;35mCustom User Sprites (~/.config/atlas/pixel_art/):\x1b[0m");
+                        for s in &custom_sprites {
+                            let active = if s.id == config.active_preset { " \x1b[1;32m(active)\x1b[0m" } else { "" };
+                            println!("  \x1b[1m{:15}\x1b[0m [{:14}] {}{}", s.id, "Custom", s.desc, active);
+                        }
+                    }
+                }
+                "folder" => {
+                    let dir = crate::ui::pixel_art::custom_sprites_dir();
+                    crate::ui::settings::open_folder(&dir);
+                    println!("\x1b[1;32m✓\x1b[0m Opened custom sprites directory: {}", dir.display());
+                }
+                "new" | "create" => {
+                    let name = if args.len() >= 3 { &args[2] } else { "my_companion" };
+                    match crate::ui::pixel_art::create_custom_template(name) {
+                        Ok(p) => println!("\x1b[1;32m✓\x1b[0m Created new custom pixel art template at: {}", p.display()),
+                        Err(e) => eprintln!("\x1b[1;31mError:\x1b[0m Failed to create template: {}", e),
                     }
                 }
                 "fps" => {
@@ -132,7 +155,7 @@ pub fn run(args: &[String]) {
                     println!("{}", crate::ui::pixel_art::pixel_art_config_path().display());
                 }
                 _ => {
-                    println!("Usage: atlas config pixel [on | off | preset <name> | list | fps <n> | color <mode> | boost <bool>]");
+                    println!("Usage: atlas config pixel [on | off | preset <name> | list | folder | new <name> | fps <n> | color <mode> | boost <bool>]");
                 }
             }
         }

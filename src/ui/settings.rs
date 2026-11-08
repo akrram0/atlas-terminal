@@ -2315,6 +2315,56 @@ impl AtlasView {
                     .text_color(sc_desc)
                     .child(crate::ui::pixel_art::pixel_art_config_path().display().to_string())
                     .into_any_element(),
+                false,
+            ))
+            .child(setting_row(
+                "Custom Sprites Directory",
+                Some("Handcraft your own 24x24 companions in ~/.config/atlas/pixel_art/"),
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("pixel-open-folder-btn", 0))
+                            .px(px(10.0))
+                            .py(px(4.0))
+                            .rounded(px(5.0))
+                            .bg(if is_dark { rgba(0xFFFFFF12) } else { rgba(0x0000000C) })
+                            .border_1()
+                            .border_color(theme.hairline)
+                            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                            .cursor_pointer()
+                            .text_size(px(11.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(sc_title)
+                            .child("Open Folder")
+                            .on_click(cx.listener(|_, _: &ClickEvent, _window, _| {
+                                open_folder(&crate::ui::pixel_art::custom_sprites_dir());
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("pixel-new-template-btn", 0))
+                            .px(px(10.0))
+                            .py(px(4.0))
+                            .rounded(px(5.0))
+                            .bg(if is_dark { rgba(0xFFFFFF12) } else { rgba(0x0000000C) })
+                            .border_1()
+                            .border_color(theme.hairline)
+                            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                            .cursor_pointer()
+                            .text_size(px(11.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.accent)
+                            .child("+ New Template")
+                            .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
+                                let _ = crate::ui::pixel_art::create_custom_template("my_companion");
+                                cx.notify();
+                            })),
+                    )
+                    .into_any_element(),
                 true,
             ));
 
@@ -2323,6 +2373,7 @@ impl AtlasView {
             ("cozy", "Cozy & Chill"),
             ("cyber", "Cyber & Hacker"),
             ("system", "System & Retro"),
+            ("custom", "Custom"),
         ];
 
         let mut cat_pills_row = div()
@@ -2402,8 +2453,8 @@ impl AtlasView {
                 self.pixel_art.color_mode.clone(),
                 theme.clone(),
                 is_dark,
-                96.0,
-                48.0,
+                64.0,
+                64.0,
             );
 
             let pid = preset.id;
@@ -2428,7 +2479,7 @@ impl AtlasView {
                 .child(
                     div()
                         .w(relative(1.0))
-                        .h(px(56.0))
+                        .h(px(76.0))
                         .rounded(px(5.0))
                         .bg(if is_dark { rgba(0x00000080) } else { rgba(0x00000012) })
                         .border_1()
@@ -2482,6 +2533,122 @@ impl AtlasView {
                         .text_color(sc_desc)
                         .line_height(px(15.0))
                         .child(preset.desc),
+                );
+
+            preset_grid = preset_grid.child(card_el);
+        }
+
+        let custom_sprites = crate::ui::pixel_art::load_custom_sprites();
+        for (c_idx, custom) in custom_sprites.iter().enumerate() {
+            if self.pixel_art_category_filter != "all"
+                && self.pixel_art_category_filter != "custom"
+                && custom.category != self.pixel_art_category_filter
+            {
+                continue;
+            }
+
+            let is_active = self.pixel_art.active_preset == custom.id;
+            let card_border = if is_active {
+                theme.accent
+            } else if is_dark {
+                rgba(0xFFFFFF14)
+            } else {
+                rgba(0x00000010)
+            };
+            let card_bg = if is_active {
+                Rgba { a: 0.12, ..theme.accent }
+            } else if is_dark {
+                rgba(0x00000040)
+            } else {
+                rgba(0xFFFFFF60)
+            };
+
+            let preview_canvas = crate::ui::pixel_art::render_pixel_canvas(
+                custom.id.clone(),
+                self.pixel_art_frame,
+                self.pixel_art.color_mode.clone(),
+                theme.clone(),
+                is_dark,
+                64.0,
+                64.0,
+            );
+
+            let cid = custom.id.clone();
+            let card_el = div()
+                .id(ElementId::named_usize("pixel-custom-card", c_idx))
+                .w(px(220.0))
+                .flex()
+                .flex_col()
+                .gap(px(8.0))
+                .p(px(12.0))
+                .rounded(px(8.0))
+                .bg(card_bg)
+                .border_1()
+                .border_color(card_border)
+                .cursor_pointer()
+                .hover(move |s| s.border_color(theme.accent))
+                .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                    view.pixel_art.active_preset = cid.clone();
+                    view.pixel_art.save();
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .w(relative(1.0))
+                        .h(px(76.0))
+                        .rounded(px(5.0))
+                        .bg(if is_dark { rgba(0x00000080) } else { rgba(0x00000012) })
+                        .border_1()
+                        .border_color(theme.hairline)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(preview_canvas),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .justify_between()
+                        .child(
+                            div()
+                                .text_size(px(13.0))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(sc_title)
+                                .child(custom.name.clone()),
+                        )
+                        .children(if is_active {
+                            Some(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(theme.accent)
+                                    .text_size(px(10.0))
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(rgb(0xFFFFFF))
+                                    .child("ACTIVE"),
+                            )
+                        } else {
+                            Some(
+                                div()
+                                    .px(px(6.0))
+                                    .py(px(2.0))
+                                    .rounded(px(4.0))
+                                    .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
+                                    .text_size(px(10.0))
+                                    .text_color(theme.accent)
+                                    .child("CUSTOM"),
+                            )
+                        }),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(sc_desc)
+                        .line_height(px(15.0))
+                        .child(custom.desc.clone()),
                 );
 
             preset_grid = preset_grid.child(card_el);
@@ -2791,7 +2958,7 @@ impl AtlasView {
                             SettingsTab::Scrolling => "Control scroll velocity, eliminate runaway acceleration, and manage clipboard buffers.".to_string(),
                             SettingsTab::Window => "Tab bar position, tiling split gaps, and window framing.".to_string(),
                             SettingsTab::Tools => "Zero-dependency developer companions and CLI satellites.".to_string(),
-                            SettingsTab::PixelArt => "Crisp 32x16 procedural animated pixel companion rendered live in the top bar.".to_string(),
+                            SettingsTab::PixelArt => "Handcrafted 24x24 multi-frame animated pixel companion rendered live in the top bar.".to_string(),
                             SettingsTab::Shortcuts => "Review native navigation keystrokes or record custom keybindings.".to_string(),
                             SettingsTab::Updates => "Software release channels, background update checks, and configuration files.".to_string(),
                         }

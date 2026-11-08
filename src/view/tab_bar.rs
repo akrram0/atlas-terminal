@@ -637,18 +637,18 @@ impl AtlasView {
                 self.pixel_art.color_mode.clone(),
                 theme.clone(),
                 is_dark_theme,
-                32.0,
-                16.0,
+                24.0,
+                24.0,
             );
 
             let companion_capsule = div()
                 .id(ElementId::named_usize("topbar-pixel-companion", 0))
-                .h(px(26.0))
-                .px(px(6.0))
+                .h(px(28.0))
+                .px(px(4.0))
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap(px(5.0))
+                .justify_center()
                 .rounded(px(6.0))
                 .bg(resting_btn_bg)
                 .border_1()
