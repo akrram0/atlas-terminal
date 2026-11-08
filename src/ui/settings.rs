@@ -2283,6 +2283,39 @@ impl AtlasView {
                 true,
             ));
 
+        let net_tools_card = card()
+            .child(section_header("NETWORKING & CONNECTIVITY TOOLS"))
+            .child(setting_row(
+                "Network Connectivity Hub",
+                Some("Overview of network status, cloud connectivity health & quick utilities"),
+                tool_action_row("atlas net", 720),
+                false,
+            ))
+            .child(setting_row(
+                "Fast Latency Ping",
+                Some("TCP connection handshake & ping latency with jitter statistics and sparkline"),
+                tool_action_row("atlas ping 1.1.1.1", 721),
+                false,
+            ))
+            .child(setting_row(
+                "IPv4 & IPv6 DNS Resolver",
+                Some("High-performance DNS record resolution with latency benchmarks"),
+                tool_action_row("atlas dns github.com", 722),
+                false,
+            ))
+            .child(setting_row(
+                "Local & Public IP Inspector",
+                Some("Inspect local network adapter IPs and query public IP, ISP & geolocation"),
+                tool_action_row("atlas ip", 723),
+                false,
+            ))
+            .child(setting_row(
+                "HTTP Request Inspector",
+                Some("Inspect HTTP response status codes, timing metrics, and response bodies"),
+                tool_action_row("atlas http https://api.github.com", 724),
+                true,
+            ));
+
         let tools_view = div()
             .flex()
             .flex_col()
@@ -2290,6 +2323,7 @@ impl AtlasView {
             .child(tools_overview_card)
             .child(system_tools_card)
             .child(dev_tools_card)
+            .child(net_tools_card)
             .child(visual_tools_card);
 
         // ==========================================
@@ -3042,6 +3076,11 @@ impl AtlasView {
                 ("Animation Frame Rate (FPS)", "Pixel Art & Companion", SettingsTab::PixelArt, "Continuous loop speed (Static, 2, 4, 8 FPS)"),
                 ("Pixel Art Color Mode", "Pixel Art & Companion", SettingsTab::PixelArt, "Original truecolor, Theme Accent, or Monochrome"),
                 ("Pixel Art Activity Boost", "Pixel Art & Companion", SettingsTab::PixelArt, "Double animation cadence during active terminal typing"),
+                ("Atlas Network Hub", "Networking & Satellites", SettingsTab::Tools, "Global connectivity health, public IP, and quick network tests"),
+                ("Atlas Ping (net)", "Networking & Satellites", SettingsTab::Tools, "Fast TCP latency ping with jitter statistics and visual sparkline"),
+                ("Atlas DNS (net)", "Networking & Satellites", SettingsTab::Tools, "IPv4 & IPv6 DNS record resolution with timing benchmarks"),
+                ("Atlas IP (net)", "Networking & Satellites", SettingsTab::Tools, "Local network adapters and public IP/location inspector"),
+                ("Atlas HTTP (net)", "Networking & Satellites", SettingsTab::Tools, "Inspect HTTP status codes, timing metrics, and payload"),
                 ("Atlas Benchmark", "Tools & Satellites", SettingsTab::Tools, "Measure PTY throughput and 24-bit truecolor rendering"),
                 ("Atlas Theme Manager", "Tools & Satellites", SettingsTab::Tools, "Inspect palettes, switch themes, or export custom themes"),
                 ("Atlas Environment Info", "Tools & Satellites", SettingsTab::Tools, "Audit shells, WSL distros, and detected developer toolchains"),

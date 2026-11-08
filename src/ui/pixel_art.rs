@@ -316,16 +316,9 @@ pub fn load_all_sprites() -> HashMap<String, DecodedSpriteAnimation> {
 
     let mut map = HashMap::new();
 
-    // Check project assets directory and user config directory
-    let dirs = [
-        PathBuf::from("assets/pixel_art"),
-        custom_sprites_dir(),
-    ];
-
-    for dir in dirs {
-        if !dir.exists() {
-            continue;
-        }
+    // Load user sprites and imported GIFs from ~/.config/atlas/pixel_art/
+    let dir = custom_sprites_dir();
+    if dir.exists() {
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();

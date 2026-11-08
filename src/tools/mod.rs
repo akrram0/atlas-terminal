@@ -6,6 +6,7 @@
 use std::io::Write;
 
 pub mod dev;
+pub mod net;
 pub mod system;
 pub mod visual;
 
@@ -31,7 +32,9 @@ pub fn maybe_handle_cli() -> bool {
         // System domain
         "version" | "info" | "env" | "jump" | "z" | "top" | "proc" | "theme" | "config" | "pixel" | "pixelart" | "hud" | "island" | "bench" | "test-render" => true,
         // Dev domain
-        "port" | "ports" | "serve" | "http" | "hash" | "crypto" | "clip" | "copy" | "jwt" | "qr" | "json" | "jq" | "diff" => true,
+        "port" | "ports" | "serve" | "hash" | "crypto" | "clip" | "copy" | "jwt" | "qr" | "json" | "jq" | "diff" => true,
+        // Net domain
+        "net" | "network" | "ping" | "dns" | "lookup" | "ip" | "myip" | "http" | "curl" | "fetch" => true,
         // Visual domain
         "img" | "image" | "view" | "pick" | "hints" | "ai" | "ask" | "fix" => true,
         _ => false,
@@ -51,7 +54,7 @@ pub fn maybe_handle_cli() -> bool {
         let known_tools = [
             "jump", "z", "serve", "http", "hash", "crypto", "clip", "copy",
             "top", "proc", "port", "jwt", "qr", "json", "jq", "diff",
-            "img", "view", "pick", "ai", "version", "info", "theme", "config", "pixel", "hud", "bench"
+            "net", "ping", "dns", "ip", "http", "curl", "img", "view", "pick", "ai", "version", "info", "theme", "config", "pixel", "hud", "bench"
         ];
         let mut close_matches: Vec<(&str, usize)> = known_tools
             .iter()
@@ -93,6 +96,8 @@ pub fn maybe_handle_cli() -> bool {
                 true
             } else if dev::dispatch(cmd, subargs) {
                 true
+            } else if net::dispatch(cmd, subargs) {
+                true
             } else if visual::dispatch(cmd, subargs) {
                 true
             } else {
@@ -127,6 +132,13 @@ pub fn print_tools_help() {
     println!("    \x1b[1;36mpixel\x1b[0m             Top bar animated companion presets and kinematics");
     println!("    \x1b[1;36mhud, island\x1b[0m       Dynamic Island notification & status pulse trigger");
     println!("    \x1b[1;36mbench\x1b[0m             PTY throughput & 24-bit truecolor render bench");
+    println!();
+    println!("  \x1b[1;34mNETWORKING & CONNECTIVITY TOOLS:\x1b[0m");
+    println!("    \x1b[1;36mnet, network\x1b[0m      Global network health, status and connectivity overview");
+    println!("    \x1b[1;36mping\x1b[0m              Fast TCP/latency ping with jitter statistics and sparkline");
+    println!("    \x1b[1;36mdns, lookup\x1b[0m       IPv4 & IPv6 DNS record resolution with timing benchmarks");
+    println!("    \x1b[1;36mip, myip\x1b[0m          Local network adapters and public IP/location inspector");
+    println!("    \x1b[1;36mhttp, curl\x1b[0m        HTTP request inspector, timing breakdown & payload viewer");
     println!();
     println!("  \x1b[1;32mDEVELOPER PRODUCTIVITY TOOLS:\x1b[0m");
     println!("    \x1b[1;36mserve, http\x1b[0m       Instant zero-dependency static HTTP file server");
