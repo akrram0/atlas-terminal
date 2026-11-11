@@ -1058,6 +1058,168 @@ impl Theme {
             ],
         }
     }
+
+    pub fn atlas_ragnarok() -> Self {
+        Self {
+            bg: rgb(0x000000),
+            fg: rgb(0xFFFFFF),
+            cursor: rgb(0x3B82F6),
+            panel_bg: rgb(0x0A0A0A),
+            elevated_bg: rgb(0x141414),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x808080),
+            chrome_fg_active: rgb(0xFFFFFF),
+            faint_fg: rgb(0x505050),
+            hairline: rgba(0xFFFFFF10),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x3B82F626),
+            accent: rgb(0x3B82F6),
+            good: rgb(0x99FFE4),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x000000), rgb(0xFF8080), rgb(0x99FFE4), rgb(0x2563EB),
+                rgb(0xA0A0A0), rgb(0x3B82F6), rgb(0x99FFE4), rgb(0xFFFFFF),
+                rgb(0x505050), rgb(0xFF9999), rgb(0xB3FFE4), rgb(0x60A5FA),
+                rgb(0xB0B0B0), rgb(0x93C5FD), rgb(0x99FFE4), rgb(0xFFFFFF),
+            ],
+        }
+    }
+
+    pub fn black_metal() -> Self {
+        Self {
+            bg: rgb(0x000000),
+            fg: rgb(0xC1C1C1),
+            cursor: rgb(0xC1C1C1),
+            panel_bg: rgb(0x080808),
+            elevated_bg: rgb(0x121212),
+            elevated_border: rgba(0xFFFFFF18),
+            chrome_fg: rgb(0x888888),
+            chrome_fg_active: rgb(0xC1C1C1),
+            faint_fg: rgb(0x404040),
+            hairline: rgba(0xFFFFFF10),
+            card_hover: rgba(0xFFFFFF10),
+            card_active: rgba(0x99999926),
+            accent: rgb(0x999999),
+            good: rgb(0xA5AAA7),
+            sheet_border: rgba(0xFFFFFF14),
+            soft_bg: rgba(0xFFFFFF0F),
+            ansi: [
+                rgb(0x000000), rgb(0x5F8787), rgb(0xA5AAA7), rgb(0x626B67),
+                rgb(0x888888), rgb(0x999999), rgb(0xAAAAAA), rgb(0xC1C1C1),
+                rgb(0x404040), rgb(0x5F8787), rgb(0xA5AAA7), rgb(0x626B67),
+                rgb(0x888888), rgb(0x999999), rgb(0xAAAAAA), rgb(0xC1C1C1),
+            ],
+        }
+    }
+
+    pub fn neon_cyberpunk() -> Self {
+        Self {
+            bg: rgb(0x0B0C10),
+            fg: rgb(0xC5C6C7),
+            cursor: rgb(0x66FCF1),
+            panel_bg: rgb(0x07080A),
+            elevated_bg: rgb(0x14181F),
+            elevated_border: rgba(0x45A29E40),
+            chrome_fg: rgb(0x8A9BA8),
+            chrome_fg_active: rgb(0xC5C6C7),
+            faint_fg: rgb(0x455A64),
+            hairline: rgba(0x45A29E26),
+            card_hover: rgba(0x45A29E1A),
+            card_active: rgba(0x45A29E33),
+            accent: rgb(0x45A29E),
+            good: rgb(0x66FCF1),
+            sheet_border: rgba(0x45A29E33),
+            soft_bg: rgba(0x45A29E14),
+            ansi: [
+                rgb(0x0B0C10), rgb(0xFF0055), rgb(0x45A29E), rgb(0xFFE600),
+                rgb(0x1F2833), rgb(0xC5C6C7), rgb(0x66FCF1), rgb(0xFFFFFF),
+                rgb(0x45A29E), rgb(0xFF3377), rgb(0x66FCF1), rgb(0xFFEB33),
+                rgb(0x1F2833), rgb(0xC5C6C7), rgb(0x66FCF1), rgb(0xFFFFFF),
+            ],
+        }
+    }
+
+    pub fn sakura() -> Self {
+        Self {
+            bg: rgb(0xFFF5F7),
+            fg: rgb(0x4A1E2D),
+            cursor: rgb(0xE11D48),
+            panel_bg: rgb(0xFFE4EC),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgb(0xFBCFE8),
+            chrome_fg: rgb(0x834D5D),
+            chrome_fg_active: rgb(0x4A1E2D),
+            faint_fg: rgb(0xB28B96),
+            hairline: rgb(0xFCE7F3),
+            card_hover: rgb(0xFDE2E8),
+            card_active: rgba(0xE11D481A),
+            accent: rgb(0xE11D48),
+            good: rgb(0x059669),
+            sheet_border: rgb(0xF9A8D4),
+            soft_bg: rgb(0xFFF0F3),
+            ansi: [
+                rgb(0x4A1E2D), rgb(0xE11D48), rgb(0x059669), rgb(0xD97706),
+                rgb(0xDB2777), rgb(0x9333EA), rgb(0x0D9488), rgb(0x834D5D),
+                rgb(0xB28B96), rgb(0xF43F5E), rgb(0x10B981), rgb(0xF59E0B),
+                rgb(0xEC4899), rgb(0xA855F7), rgb(0x14B8A6), rgb(0x2A0E18),
+            ],
+        }
+    }
+
+    pub fn lavender() -> Self {
+        Self {
+            bg: rgb(0xF8F5FF),
+            fg: rgb(0x2E1065),
+            cursor: rgb(0x7C3AED),
+            panel_bg: rgb(0xEDE9FE),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgb(0xDDD6FE),
+            chrome_fg: rgb(0x6B5B95),
+            chrome_fg_active: rgb(0x2E1065),
+            faint_fg: rgb(0xA78BFA),
+            hairline: rgb(0xEDE9FE),
+            card_hover: rgb(0xE9E3FC),
+            card_active: rgba(0x7C3AED1A),
+            accent: rgb(0x7C3AED),
+            good: rgb(0x10B981),
+            sheet_border: rgb(0xC4B5FD),
+            soft_bg: rgb(0xF3E8FF),
+            ansi: [
+                rgb(0x2E1065), rgb(0xDC2626), rgb(0x059669), rgb(0xD97706),
+                rgb(0x7C3AED), rgb(0x9333EA), rgb(0x0891B2), rgb(0x6B5B95),
+                rgb(0x9484B8), rgb(0xEF4444), rgb(0x10B981), rgb(0xF59E0B),
+                rgb(0x8B5CF6), rgb(0xC084FC), rgb(0x06B6D4), rgb(0x1E0A45),
+            ],
+        }
+    }
+
+    pub fn peach() -> Self {
+        Self {
+            bg: rgb(0xFFF7F2),
+            fg: rgb(0x431407),
+            cursor: rgb(0xEA580C),
+            panel_bg: rgb(0xFFEDD5),
+            elevated_bg: rgb(0xFFFFFF),
+            elevated_border: rgb(0xFED7AA),
+            chrome_fg: rgb(0x9A5B32),
+            chrome_fg_active: rgb(0x431407),
+            faint_fg: rgb(0xC28B68),
+            hairline: rgb(0xFFEDD5),
+            card_hover: rgb(0xFFE4C7),
+            card_active: rgba(0xEA580C1A),
+            accent: rgb(0xEA580C),
+            good: rgb(0x16A34A),
+            sheet_border: rgb(0xFDBA74),
+            soft_bg: rgb(0xFFF1E8),
+            ansi: [
+                rgb(0x431407), rgb(0xDC2626), rgb(0x16A34A), rgb(0xCA8A04),
+                rgb(0xEA580C), rgb(0xDB2777), rgb(0x0D9488), rgb(0x9A5B32),
+                rgb(0xC28B68), rgb(0xF87171), rgb(0x22C55E), rgb(0xEAB308),
+                rgb(0xF97316), rgb(0xF472B6), rgb(0x14B8A6), rgb(0x290C04),
+            ],
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1109,6 +1271,9 @@ impl Preset {
             "classic" => "Classic Black",
             "atlas" => "Atlas Dark",
             "one" => "One Dark",
+            "atlas_ragnarok" | "ragnarok" => "Atlas Ragnarok",
+            "black_metal" | "black_metal_marduk" => "Black Metal (Marduk)",
+            "neon_cyberpunk" => "Neon Cyberpunk",
             _ => &self.name,
         }
     }
@@ -1128,6 +1293,9 @@ impl Preset {
             "nord" => "Nord Light",
             "tokyo_night" => "Tokyo Night Day",
             "one" => "One Light",
+            "sakura" => "Sakura Blossom",
+            "lavender" => "Lavender Haze",
+            "peach" => "Peach Sorbet",
             _ => &self.name,
         }
     }
@@ -1586,6 +1754,60 @@ impl ThemeRegistry {
                     is_custom: false,
                     theme_mode: ThemeModeSupport::Both,
                 },
+                Preset {
+                    id: "atlas_ragnarok".to_string(),
+                    name: "Atlas Ragnarok".to_string(),
+                    description: "High-contrast true black sheet with electric blue and mint accents.".to_string(),
+                    dark: Theme::atlas_ragnarok(),
+                    light: Theme::solarized_light(),
+                    is_custom: false,
+                    theme_mode: ThemeModeSupport::DarkOnly,
+                },
+                Preset {
+                    id: "black_metal".to_string(),
+                    name: "Black Metal (Marduk)".to_string(),
+                    description: "Deep monochromatic black metal aesthetic inspired by vintage Marduk artwork.".to_string(),
+                    dark: Theme::black_metal(),
+                    light: Theme::solarized_light(),
+                    is_custom: false,
+                    theme_mode: ThemeModeSupport::DarkOnly,
+                },
+                Preset {
+                    id: "neon_cyberpunk".to_string(),
+                    name: "Neon Cyberpunk".to_string(),
+                    description: "Electric cyberpunk theme with luminous teal and magenta highlights.".to_string(),
+                    dark: Theme::neon_cyberpunk(),
+                    light: Theme::solarized_light(),
+                    is_custom: false,
+                    theme_mode: ThemeModeSupport::DarkOnly,
+                },
+                Preset {
+                    id: "sakura".to_string(),
+                    name: "Sakura Blossom".to_string(),
+                    description: "Soft cherry blossom paper, deep plum noir text, and delicate rose accents.".to_string(),
+                    dark: Theme::catppuccin_dark(),
+                    light: Theme::sakura(),
+                    is_custom: false,
+                    theme_mode: ThemeModeSupport::LightOnly,
+                },
+                Preset {
+                    id: "lavender".to_string(),
+                    name: "Lavender Haze".to_string(),
+                    description: "Ethereal pastel lilac sheet, royal obsidian violet typography, and radiant amethyst accents.".to_string(),
+                    dark: Theme::catppuccin_dark(),
+                    light: Theme::lavender(),
+                    is_custom: false,
+                    theme_mode: ThemeModeSupport::LightOnly,
+                },
+                Preset {
+                    id: "peach".to_string(),
+                    name: "Peach Sorbet".to_string(),
+                    description: "Warm pastel peach silk, rich espresso noir typography, and vibrant tangerine coral accents.".to_string(),
+                    dark: Theme::catppuccin_dark(),
+                    light: Theme::peach(),
+                    is_custom: false,
+                    theme_mode: ThemeModeSupport::LightOnly,
+                },
             ],
         };
         registry.load_custom_themes();
@@ -1668,6 +1890,19 @@ Drop any `.json` theme file into this directory to immediately make it available
                     if let Ok(content) = std::fs::read_to_string(&path) {
                         if let Ok(custom) = serde_json::from_str::<CustomThemeFile>(&content) {
                             let preset = custom.to_preset();
+                            let is_official = self.presets.iter().any(|p| {
+                                !p.is_custom && (
+                                    p.id.eq_ignore_ascii_case(&preset.id)
+                                        || p.name.eq_ignore_ascii_case(&preset.name)
+                                        || p.dark_name().eq_ignore_ascii_case(&preset.name)
+                                        || p.light_name().eq_ignore_ascii_case(&preset.name)
+                                        || slugify(&p.name) == slugify(&preset.name)
+                                        || slugify(&p.id) == slugify(&preset.id)
+                                )
+                            });
+                            if is_official {
+                                continue;
+                            }
                             if let Some(pos) = self.presets.iter().position(|p| p.id.eq_ignore_ascii_case(&preset.id)) {
                                 self.presets[pos] = preset;
                             } else {
@@ -1712,6 +1947,24 @@ Drop any `.json` theme file into this directory to immediately make it available
         }
         if key_lower == "dracula_light" {
             return self.presets.iter().position(|p| p.id == "dracula");
+        }
+        if key_lower == "atlas_ragnarok" || key_lower == "ragnarok" {
+            return self.presets.iter().position(|p| p.id == "atlas_ragnarok");
+        }
+        if key_lower == "black_metal" || key_lower == "black_metal_marduk" || key_lower == "marduk" {
+            return self.presets.iter().position(|p| p.id == "black_metal");
+        }
+        if key_lower == "neon_cyberpunk" || key_lower == "cyberpunk" {
+            return self.presets.iter().position(|p| p.id == "neon_cyberpunk");
+        }
+        if key_lower == "sakura" || key_lower == "sakura_blossom" {
+            return self.presets.iter().position(|p| p.id == "sakura");
+        }
+        if key_lower == "lavender" || key_lower == "lavender_haze" {
+            return self.presets.iter().position(|p| p.id == "lavender");
+        }
+        if key_lower == "peach" || key_lower == "peach_sorbet" {
+            return self.presets.iter().position(|p| p.id == "peach");
         }
         self.presets.iter().position(|p| {
             p.id.eq_ignore_ascii_case(key)
@@ -1880,6 +2133,12 @@ mod tests {
         assert!(registry.find_by_name_or_id("osaka_jade").is_some(), "osaka_jade must exist");
         assert!(registry.find_by_name_or_id("dracula").is_some(), "dracula must exist");
         assert!(registry.find_by_name_or_id("rose_pine").is_some(), "rose_pine must exist");
+        assert!(registry.find_by_name_or_id("atlas_ragnarok").is_some(), "atlas_ragnarok must exist");
+        assert!(registry.find_by_name_or_id("black_metal").is_some(), "black_metal must exist");
+        assert!(registry.find_by_name_or_id("neon_cyberpunk").is_some(), "neon_cyberpunk must exist");
+        assert!(registry.find_by_name_or_id("sakura").is_some(), "sakura must exist");
+        assert!(registry.find_by_name_or_id("lavender").is_some(), "lavender must exist");
+        assert!(registry.find_by_name_or_id("peach").is_some(), "peach must exist");
     }
 
     #[test]
