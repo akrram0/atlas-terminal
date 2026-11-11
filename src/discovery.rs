@@ -837,20 +837,35 @@ fn query_registry_path(hkey: isize, subkey: &str) -> Option<String> {
 /// - Embeds `ATLAS_DIR` so `atlas` CLI commands always work inside all shells
 pub fn build_enriched_path() -> std::ffi::OsString {
     let mut paths: Vec<PathBuf> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut add_path = |p: PathBuf| {
+        let s = p.to_string_lossy();
+        let trimmed = s.trim().trim_matches('"').trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        let key = if cfg!(windows) {
+            trimmed.to_lowercase()
+        } else {
+            trimmed.to_string()
+        };
+        if seen.insert(key) {
+            paths.push(PathBuf::from(trimmed));
+        }
+    };
 
     // 0. Atlas directory so `atlas` CLI is always in PATH
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            paths.push(exe_dir.to_path_buf());
+            add_path(exe_dir.to_path_buf());
         }
     }
 
     // 1. Existing process PATH entries
     if let Some(current_path) = std::env::var_os("PATH") {
         for p in std::env::split_paths(&current_path) {
-            if !paths.contains(&p) {
-                paths.push(p);
-            }
+            add_path(p);
         }
     }
 
@@ -860,9 +875,7 @@ pub fn build_enriched_path() -> std::ffi::OsString {
         // HKEY_CURRENT_USER = 0x80000001
         if let Some(user_reg) = query_registry_path(-2147483647, "Environment") {
             for p in std::env::split_paths(&user_reg) {
-                if !paths.contains(&p) {
-                    paths.push(p);
-                }
+                add_path(p);
             }
         }
         // HKEY_LOCAL_MACHINE = 0x80000002
@@ -871,9 +884,7 @@ pub fn build_enriched_path() -> std::ffi::OsString {
             "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
         ) {
             for p in std::env::split_paths(&machine_reg) {
-                if !paths.contains(&p) {
-                    paths.push(p);
-                }
+                add_path(p);
             }
         }
     }
@@ -928,8 +939,8 @@ pub fn build_enriched_path() -> std::ffi::OsString {
     }
 
     for dir in explicit_dirs {
-        if dir.is_dir() && !paths.contains(&dir) {
-            paths.push(dir);
+        if dir.is_dir() {
+            add_path(dir);
         }
     }
 
