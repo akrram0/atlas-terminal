@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Cursor;
 use image::GenericImage;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use gpui::prelude::*;
 use gpui::{canvas, fill, point, px, rgba, size, Bounds, Corners, IntoElement, RenderImage, Rgba};
@@ -503,7 +503,7 @@ const BUNDLED_ELECTRIC_FOX: &[u8] = include_bytes!("../../assets/pixel_art/jolte
 const BUNDLED_SHADOW_BAT: &[u8] = include_bytes!("../../assets/pixel_art/shadow_bat.gif");
 const BUNDLED_DARK_KNIGHT: &[u8] = include_bytes!("../../assets/pixel_art/dark_knight.gif");
 
-static BUNDLED_SPRITES_CACHE: RwLock<Option<HashMap<String, Arc<DecodedSpriteAnimation>>>> = RwLock::new(None);
+static BUNDLED_SPRITES: OnceLock<HashMap<String, Arc<DecodedSpriteAnimation>>> = OnceLock::new();
 
 pub fn is_bundled_sprite_key(key: &str) -> bool {
     let lower = key.to_ascii_lowercase().replace(['-', ' '], "_");
@@ -530,82 +530,95 @@ pub fn is_bundled_sprite_key(key: &str) -> bool {
     )
 }
 
+pub fn is_procedural_preset(id: &str) -> bool {
+    matches!(
+        id,
+        "hot_coffee"
+            | "campfire"
+            | "pixel_heart"
+            | "beating_heart"
+            | "heart"
+            | "linux_tux"
+            | "linux_penguin"
+            | "tux"
+            | "retro_cassette"
+            | "cassette_tape"
+            | "cassette"
+            | "chibi_cat"
+            | "pixel_cat"
+            | "cat"
+    )
+}
+
 pub fn get_bundled_sprite(id: &str) -> Option<Arc<DecodedSpriteAnimation>> {
     let norm = id.to_ascii_lowercase().replace(['-', ' '], "_");
     let norm_stem = norm.strip_prefix("sprite_").unwrap_or(&norm);
 
-    // Fast path: read from cache
-    if let Ok(guard) = BUNDLED_SPRITES_CACHE.read() {
-        if let Some(ref map) = *guard {
-            if let Some(s) = map.get(norm_stem).or_else(|| map.get(&norm)) {
-                return Some(Arc::clone(s));
+    let map = BUNDLED_SPRITES.get_or_init(|| {
+        let mut map: HashMap<String, Arc<DecodedSpriteAnimation>> = HashMap::new();
+
+        let bundled_defs: &[(&str, &str, &[u8], &[&str])] = &[
+            (
+                "white_cat",
+                "White Cat",
+                BUNDLED_WHITE_CAT,
+                &["white_cat", "whitecat", "1aej", "sprite_1aej", "sprite_white_cat"],
+            ),
+            (
+                "blue_penguin",
+                "Playful Penguin",
+                BUNDLED_BLUE_PENGUIN,
+                &["blue_penguin", "bluepenguin", "penguin", "2qdh", "sprite_2qdh", "sprite_blue_penguin"],
+            ),
+            (
+                "electric_fox",
+                "Electric Fox",
+                BUNDLED_ELECTRIC_FOX,
+                &["electric_fox", "electricfox", "ws1q", "sprite_ws1q", "jolteon", "sprite_jolteon", "sprite_electric_fox"],
+            ),
+            (
+                "shadow_bat",
+                "Shadow Bat",
+                BUNDLED_SHADOW_BAT,
+                &["shadow_bat", "shadowbat", "xosa", "sprite_xosa", "bat", "sprite_shadow_bat"],
+            ),
+            (
+                "dark_knight",
+                "Dark Knight",
+                BUNDLED_DARK_KNIGHT,
+                &["dark_knight", "darkknight", "xwi4", "xwl4", "sprite_xwi4", "sprite_xwl4", "knight", "sprite_dark_knight"],
+            ),
+        ];
+
+        for &(canonical_id, name, bytes, aliases) in bundled_defs {
+            let path = PathBuf::from(format!("bundled://pixel_art/{}.gif", canonical_id));
+            if let Some(decoded) = decode_gif(canonical_id.to_string(), name.to_string(), path, bytes) {
+                let shared = Arc::new(decoded);
+                for &alias in aliases {
+                    map.insert(alias.to_string(), Arc::clone(&shared));
+                }
+                map.insert(canonical_id.to_string(), Arc::clone(&shared));
             }
         }
-    }
 
-    // Initialize bundled cache
-    let mut map: HashMap<String, Arc<DecodedSpriteAnimation>> = HashMap::new();
+        map
+    });
 
-    let bundled_defs: &[(&str, &str, &[u8], &[&str])] = &[
-        (
-            "white_cat",
-            "White Cat",
-            BUNDLED_WHITE_CAT,
-            &["white_cat", "whitecat", "1aej", "sprite_1aej", "sprite_white_cat"],
-        ),
-        (
-            "blue_penguin",
-            "Playful Penguin",
-            BUNDLED_BLUE_PENGUIN,
-            &["blue_penguin", "bluepenguin", "penguin", "2qdh", "sprite_2qdh", "sprite_blue_penguin"],
-        ),
-        (
-            "electric_fox",
-            "Electric Fox",
-            BUNDLED_ELECTRIC_FOX,
-            &["electric_fox", "electricfox", "ws1q", "sprite_ws1q", "jolteon", "sprite_jolteon", "sprite_electric_fox"],
-        ),
-        (
-            "shadow_bat",
-            "Shadow Bat",
-            BUNDLED_SHADOW_BAT,
-            &["shadow_bat", "shadowbat", "xosa", "sprite_xosa", "bat", "sprite_shadow_bat"],
-        ),
-        (
-            "dark_knight",
-            "Dark Knight",
-            BUNDLED_DARK_KNIGHT,
-            &["dark_knight", "darkknight", "xwi4", "xwl4", "sprite_xwi4", "sprite_xwl4", "knight", "sprite_dark_knight"],
-        ),
-    ];
-
-    for &(canonical_id, name, bytes, aliases) in bundled_defs {
-        let path = PathBuf::from(format!("bundled://pixel_art/{}.gif", canonical_id));
-        if let Some(decoded) = decode_gif(canonical_id.to_string(), name.to_string(), path, bytes) {
-            let shared = Arc::new(decoded);
-            for &alias in aliases {
-                map.insert(alias.to_string(), Arc::clone(&shared));
-            }
-            map.insert(canonical_id.to_string(), Arc::clone(&shared));
-        }
-    }
-
-    let result = map.get(norm_stem).or_else(|| map.get(&norm)).cloned();
-
-    if let Ok(mut guard) = BUNDLED_SPRITES_CACHE.write() {
-        *guard = Some(map);
-    }
-
-    result
+    map.get(norm_stem).or_else(|| map.get(&norm)).cloned()
 }
 
 pub fn get_decoded_sprite(id: &str) -> Option<Arc<DecodedSpriteAnimation>> {
-    // 1. Check bundled GIF presets first
+    // 1. Check bundled GIF presets first (instant OnceLock lookup)
     if let Some(bundled) = get_bundled_sprite(id) {
         return Some(bundled);
     }
 
-    // 2. Check existing in-memory cache
+    // 2. Procedural presets are never on disk
+    if is_procedural_preset(id) {
+        return None;
+    }
+
+    // 3. Check existing in-memory cache
     if let Ok(read_guard) = SPRITES_CACHE.read() {
         if let Some(ref map) = *read_guard {
             if let Some(cached) = map.get(id) {
@@ -614,7 +627,7 @@ pub fn get_decoded_sprite(id: &str) -> Option<Arc<DecodedSpriteAnimation>> {
         }
     }
 
-    // 3. If missing or cache empty, sync from disk
+    // 4. If missing or cache empty, sync from disk
     sync_sprites_cache(false);
 
     if let Ok(read_guard) = SPRITES_CACHE.read() {
@@ -1440,12 +1453,13 @@ pub fn render_pixel_canvas(
     target_height: f32,
 ) -> impl IntoElement {
     let accent = theme.accent;
-    let pid = preset_id.clone();
+    let maybe_sprite = get_decoded_sprite(&preset_id);
+    let pid = preset_id;
     canvas(
         move |_bounds, _window, _cx| (),
         move |bounds, _, window, _cx| {
             // 1. High-fidelity hardware GPU rendering for imported GIFs and PNG sprites
-            if let Some(sprite) = get_decoded_sprite(&pid) {
+            if let Some(ref sprite) = maybe_sprite {
                 let frame_idx = if sprite.num_frames > 0 {
                     (tick as usize) % sprite.num_frames
                 } else {

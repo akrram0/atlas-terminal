@@ -2789,15 +2789,16 @@ impl AtlasView {
             preset_grid = preset_grid.child(card_el);
         }
 
-        let all_sprites = crate::ui::pixel_art::load_all_sprites();
-        let mut sprite_entries: Vec<_> = all_sprites.into_iter().collect();
-        sprite_entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let sprite_entries: Vec<(String, std::sync::Arc<crate::ui::pixel_art::DecodedSpriteAnimation>)> =
+            if self.pixel_art_category_filter == "all" || self.pixel_art_category_filter == "custom" {
+                let all_sprites = crate::ui::pixel_art::load_all_sprites();
+                let mut entries: Vec<_> = all_sprites.into_iter().collect();
+                entries.sort_by(|a, b| a.0.cmp(&b.0));
+                entries
+            } else {
+                Vec::new()
+            };
         for (s_idx, (sprite_id, sprite)) in sprite_entries.iter().enumerate() {
-            if self.pixel_art_category_filter != "all"
-                && self.pixel_art_category_filter != "custom"
-            {
-                continue;
-            }
 
             let is_active = self.pixel_art.active_preset == *sprite_id;
             let card_border = if is_active {
@@ -2948,7 +2949,11 @@ impl AtlasView {
             preset_grid = preset_grid.child(card_el);
         }
 
-        let custom_sprites = crate::ui::pixel_art::load_custom_sprites();
+        let custom_sprites = if self.pixel_art_category_filter == "all" || self.pixel_art_category_filter == "custom" {
+            crate::ui::pixel_art::load_custom_sprites()
+        } else {
+            Vec::new()
+        };
         for (c_idx, custom) in custom_sprites.iter().enumerate() {
             if self.pixel_art_category_filter != "all"
                 && self.pixel_art_category_filter != "custom"
