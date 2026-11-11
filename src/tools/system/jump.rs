@@ -406,41 +406,126 @@ chpwd() {{
     }
 }
 
+fn strip_shell_prompt(line: &str) -> &str {
+    let line = line.trim_end();
+    let markers = ["> ", "$ ", "# ", "% ", "❯ ", "➜ ", "» "];
+    for marker in markers {
+        if let Some(pos) = line.rfind(marker) {
+            return line[pos + marker.len()..].trim_start();
+        }
+    }
+    if let Some(pos) = line.rfind('>') {
+        return line[pos + 1..].trim_start();
+    }
+    if let Some(pos) = line.rfind('$') {
+        return line[pos + 1..].trim_start();
+    }
+    line.trim_start()
+}
+
+const COMMON_CLI_COMMANDS: &[&str] = &[
+    "atlas", "cargo", "docker", "git", "npm", "pnpm", "python", "node", "rustc",
+    "clear", "cls", "exit", "history", "winget", "scoop", "code", "nvim", "vim",
+    "ip", "cd", "ls", "dir", "cat", "curl", "ssh", "ping", "grep",
+];
+
 pub fn predict_ghost_suggestion(line_before_cursor: &str, current_dir: Option<&Path>) -> Option<String> {
-    let trimmed_right = line_before_cursor.trim_end();
-    if trimmed_right.is_empty() {
+    let cmd_input = strip_shell_prompt(line_before_cursor);
+    if cmd_input.is_empty() {
         return None;
     }
 
-    // Extract the token currently being typed touching the cursor
-    let last_token = if let Some(last_quote) = trimmed_right.rfind('"') {
-        &trimmed_right[last_quote + 1..]
-    } else {
-        trimmed_right.split_whitespace().last().unwrap_or("")
-    };
+    if line_before_cursor.ends_with(' ') {
+        return None;
+    }
 
+    let tokens: Vec<&str> = cmd_input.split_whitespace().collect();
+    if tokens.is_empty() {
+        return None;
+    }
+
+    let last_token = tokens.last().copied().unwrap_or("");
     if last_token.is_empty() {
         return None;
     }
 
-    // Do not suggest if the user is typing flags (e.g. -h, --help)
+    // STRICT RULE: Never complete flags (-a, -p, --help, --mask, etc.) into folder names or commands
     if last_token.starts_with('-') {
         return None;
     }
 
-    // Identify if the command before last_token is a directory command (cd, z, pushd, dir, ls, etc.)
-    let before_last_token = trimmed_right[..trimmed_right.len() - last_token.len()].trim();
-    let is_dir_command = before_last_token.ends_with("cd")
-        || before_last_token.ends_with("z")
-        || before_last_token.ends_with("jump")
-        || before_last_token.ends_with("pushd")
-        || before_last_token.ends_with("dir")
-        || before_last_token.ends_with("ls")
-        || before_last_token.ends_with("code")
-        || before_last_token.ends_with("nvim")
-        || before_last_token.ends_with("vim");
+    let first_token = tokens[0].to_lowercase();
+    let is_single_token = tokens.len() == 1;
 
-    // 1. Check local filesystem in current directory or specified parent directory
+    // 1. Single token touching prompt: User is typing the executable / command name itself
+    if is_single_token {
+        let prefix_lower = last_token.to_lowercase();
+        for &cmd in COMMON_CLI_COMMANDS {
+            if cmd.starts_with(&prefix_lower) && cmd.len() > last_token.len() {
+                return Some(cmd[last_token.len()..].to_string());
+            }
+        }
+        return None;
+    }
+
+    // 2. Subcommand autocompletion for recognized tools
+    if tokens.len() == 2 {
+        let prefix_lower = last_token.to_lowercase();
+        if first_token == "ip" {
+            let subcmds = ["addr", "link", "route", "neigh"];
+            for &sub in &subcmds {
+                if sub.starts_with(&prefix_lower) && sub.len() > last_token.len() {
+                    return Some(sub[last_token.len()..].to_string());
+                }
+            }
+            return None;
+        } else if first_token == "atlas" {
+            let subcmds = ["ip", "serve", "wifi", "ports", "trace", "dns", "ping", "system", "sys", "jump", "top", "clean", "docs", "config"];
+            for &sub in &subcmds {
+                if sub.starts_with(&prefix_lower) && sub.len() > last_token.len() {
+                    return Some(sub[last_token.len()..].to_string());
+                }
+            }
+            return None;
+        } else if first_token == "git" {
+            let subcmds = ["status", "commit", "checkout", "branch", "push", "pull", "fetch", "rebase", "diff", "log", "clone", "add", "merge", "switch"];
+            for &sub in &subcmds {
+                if sub.starts_with(&prefix_lower) && sub.len() > last_token.len() {
+                    return Some(sub[last_token.len()..].to_string());
+                }
+            }
+            return None;
+        } else if first_token == "cargo" {
+            let subcmds = ["build", "check", "test", "run", "clippy", "add", "remove", "update", "clean"];
+            for &sub in &subcmds {
+                if sub.starts_with(&prefix_lower) && sub.len() > last_token.len() {
+                    return Some(sub[last_token.len()..].to_string());
+                }
+            }
+            return None;
+        }
+    }
+
+    // 3. Directory Navigation Context (cd, z, jump, pushd, dir, ls) OR explicit path prefix
+    let is_dir_command = matches!(
+        first_token.as_str(),
+        "cd" | "z" | "jump" | "pushd" | "dir" | "ls"
+    );
+    let is_explicit_path = last_token.contains('/')
+        || last_token.contains('\\')
+        || last_token.starts_with("./")
+        || last_token.starts_with(".\\")
+        || last_token.starts_with("../")
+        || last_token.starts_with("..\\")
+        || last_token.starts_with("~/")
+        || last_token.starts_with("~\\");
+
+    // If NOT a directory command and NOT an explicit path, NEVER autocomplete directory names!
+    if !is_dir_command && !is_explicit_path {
+        return None;
+    }
+
+    // Check local filesystem in current directory or specified parent directory
     let (parent_path, prefix) = if last_token.contains('/') || last_token.contains('\\') {
         let p = Path::new(last_token);
         let parent = if let Some(parent) = p.parent() {
@@ -477,41 +562,42 @@ pub fn predict_ghost_suggestion(line_before_cursor: &str, current_dir: Option<&P
                 }
             }
 
-            // Sort: prefer directories, then shortest name
             matches.sort_by(|(a_name, a_dir), (b_name, b_dir)| {
                 b_dir.cmp(a_dir).then_with(|| a_name.len().cmp(&b_name.len()))
             });
 
-            if let Some((best_name, _is_dir)) = matches.first() {
+            if let Some((best_name, _)) = matches.first() {
                 let suffix = &best_name[prefix.len()..];
                 return Some(suffix.to_string());
             }
         }
     }
 
-    // 2. Check remembered directories in frecency store (dirs.json)
-    let store = load_store();
-    let prefix_lower = last_token.to_lowercase();
-    let now = current_timestamp();
+    // Check frecency store for cd / z / jump
+    if is_dir_command {
+        let store = load_store();
+        let prefix_lower = last_token.to_lowercase();
+        let now = current_timestamp();
 
-    let mut frecency_matches: Vec<(String, f64)> = Vec::new();
-    for entry in store.entries {
-        let path = Path::new(&entry.path);
-        let folder_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
-        let score = calculate_frecency(entry.count, entry.last_seen, now);
+        let mut frecency_matches: Vec<(String, f64)> = Vec::new();
+        for entry in store.entries {
+            let path = Path::new(&entry.path);
+            let folder_name = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+            let score = calculate_frecency(entry.count, entry.last_seen, now);
 
-        if folder_name.to_lowercase().starts_with(&prefix_lower) && folder_name.len() > last_token.len() {
-            let suffix = &folder_name[last_token.len()..];
-            frecency_matches.push((suffix.to_string(), score));
-        } else if entry.path.to_lowercase().starts_with(&prefix_lower) && entry.path.len() > last_token.len() {
-            let suffix = &entry.path[last_token.len()..];
-            frecency_matches.push((suffix.to_string(), score));
+            if folder_name.to_lowercase().starts_with(&prefix_lower) && folder_name.len() > last_token.len() {
+                let suffix = &folder_name[last_token.len()..];
+                frecency_matches.push((suffix.to_string(), score));
+            } else if entry.path.to_lowercase().starts_with(&prefix_lower) && entry.path.len() > last_token.len() {
+                let suffix = &entry.path[last_token.len()..];
+                frecency_matches.push((suffix.to_string(), score));
+            }
         }
-    }
 
-    frecency_matches.sort_by(|(_, score_a), (_, score_b)| score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal));
-    if let Some((suffix, _)) = frecency_matches.first() {
-        return Some(suffix.clone());
+        frecency_matches.sort_by(|(_, score_a), (_, score_b)| score_b.partial_cmp(score_a).unwrap_or(std::cmp::Ordering::Equal));
+        if let Some((suffix, _)) = frecency_matches.first() {
+            return Some(suffix.clone());
+        }
     }
 
     None
@@ -559,8 +645,19 @@ mod tests {
         let res2 = predict_ghost_suggestion("cd doc", Some(&temp));
         assert_eq!(res2, Some("uments".to_string()));
 
+        // Strip prompt tests
+        let res3 = predict_ghost_suggestion("PS C:\\Users\\Neweye> cd desk", Some(&temp));
+        assert_eq!(res3, Some("top".to_string()));
+
+        // Flag test: Never complete flags into words or directories
+        assert_eq!(predict_ghost_suggestion("ip -a", Some(&temp)), None);
+        assert_eq!(predict_ghost_suggestion("PS C:\\Users\\Neweye> ip -a", Some(&temp)), None);
         assert_eq!(predict_ghost_suggestion("cd -h", Some(&temp)), None);
         assert_eq!(predict_ghost_suggestion("", Some(&temp)), None);
+
+        // Tool subcommand completion
+        assert_eq!(predict_ghost_suggestion("ip a", Some(&temp)), Some("ddr".to_string()));
+        assert_eq!(predict_ghost_suggestion("atl", Some(&temp)), Some("as".to_string()));
 
         let _ = fs::remove_dir_all(temp);
     }

@@ -14,6 +14,7 @@ use alacritty_terminal::term::color::{Colors, COUNT};
 use alacritty_terminal::vte::ansi::{Color, NamedColor, Rgb};
 use gpui::{rgb, rgba, Rgba};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct Theme {
@@ -1059,6 +1060,13 @@ impl Theme {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ThemeModeSupport {
+    Both,
+    DarkOnly,
+    LightOnly,
+}
+
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct Preset {
@@ -1068,6 +1076,7 @@ pub struct Preset {
     pub dark: Theme,
     pub light: Theme,
     pub is_custom: bool,
+    pub theme_mode: ThemeModeSupport,
 }
 
 impl Preset {
@@ -1075,6 +1084,14 @@ impl Preset {
     #[allow(dead_code)]
     pub fn theme(&self) -> &Theme {
         &self.dark
+    }
+
+    pub fn supports_dark(&self) -> bool {
+        self.theme_mode != ThemeModeSupport::LightOnly
+    }
+
+    pub fn supports_light(&self) -> bool {
+        self.theme_mode != ThemeModeSupport::DarkOnly
     }
 
     pub fn dark_name(&self) -> &str {
@@ -1368,6 +1385,19 @@ impl CustomThemeFile {
             ansi,
         };
 
+        let theme_mode = match self.mode.as_deref() {
+            Some(m) if m.eq_ignore_ascii_case("dark") => ThemeModeSupport::DarkOnly,
+            Some(m) if m.eq_ignore_ascii_case("light") => ThemeModeSupport::LightOnly,
+            Some(m) if m.eq_ignore_ascii_case("both") => ThemeModeSupport::Both,
+            _ => {
+                if is_light {
+                    ThemeModeSupport::LightOnly
+                } else {
+                    ThemeModeSupport::DarkOnly
+                }
+            }
+        };
+
         let (dark, light) = if is_light {
             let mut dark_comp = Theme::catppuccin_dark();
             dark_comp.cursor = cursor;
@@ -1387,6 +1417,7 @@ impl CustomThemeFile {
             dark,
             light,
             is_custom: true,
+            theme_mode,
         }
     }
 
@@ -1445,6 +1476,7 @@ impl ThemeRegistry {
                     dark: Theme::catppuccin_dark(),
                     light: Theme::catppuccin_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "gruvbox".to_string(),
@@ -1453,6 +1485,7 @@ impl ThemeRegistry {
                     dark: Theme::gruvbox_dark(),
                     light: Theme::gruvbox_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "barbie".to_string(),
@@ -1461,6 +1494,7 @@ impl ThemeRegistry {
                     dark: Theme::barbie_dark(),
                     light: Theme::barbie_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "osaka_jade".to_string(),
@@ -1469,6 +1503,7 @@ impl ThemeRegistry {
                     dark: Theme::osaka_jade(),
                     light: Theme::osaka_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "dracula".to_string(),
@@ -1477,6 +1512,7 @@ impl ThemeRegistry {
                     dark: Theme::dracula(),
                     light: Theme::dracula_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "rose_pine".to_string(),
@@ -1485,6 +1521,7 @@ impl ThemeRegistry {
                     dark: Theme::rose_pine(),
                     light: Theme::rose_pine_dawn(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "solarized".to_string(),
@@ -1493,6 +1530,7 @@ impl ThemeRegistry {
                     dark: Theme::solarized_dark(),
                     light: Theme::solarized_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "github".to_string(),
@@ -1501,6 +1539,7 @@ impl ThemeRegistry {
                     dark: Theme::github_dark(),
                     light: Theme::github_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "tokyo_night".to_string(),
@@ -1509,6 +1548,7 @@ impl ThemeRegistry {
                     dark: Theme::tokyo_night_dark(),
                     light: Theme::tokyo_night_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "nord".to_string(),
@@ -1517,6 +1557,7 @@ impl ThemeRegistry {
                     dark: Theme::nord_dark(),
                     light: Theme::nord_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "classic".to_string(),
@@ -1525,6 +1566,7 @@ impl ThemeRegistry {
                     dark: Theme::classic(),
                     light: Theme::classic_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "atlas".to_string(),
@@ -1533,6 +1575,7 @@ impl ThemeRegistry {
                     dark: Theme::dark(),
                     light: Theme::cream(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
                 Preset {
                     id: "one".to_string(),
@@ -1541,6 +1584,7 @@ impl ThemeRegistry {
                     dark: Theme::one_dark(),
                     light: Theme::one_light(),
                     is_custom: false,
+                    theme_mode: ThemeModeSupport::Both,
                 },
             ],
         };
@@ -1548,9 +1592,13 @@ impl ThemeRegistry {
         registry
     }
 
+    pub fn custom_themes_dir() -> PathBuf {
+        crate::user_data_dir().join("themes")
+    }
+
     /// Load user-installed custom themes from `~/.config/atlas/themes/`.
     pub fn load_custom_themes(&mut self) {
-        let themes_dir = crate::user_data_dir().join("themes");
+        let themes_dir = Self::custom_themes_dir();
         if !themes_dir.exists() {
             if let Ok(()) = std::fs::create_dir_all(&themes_dir) {
                 let readme = r#"# Atlas Terminal Custom Themes
@@ -1692,6 +1740,10 @@ Drop any `.json` theme file into this directory to immediately make it available
     pub fn next(&self, index: usize) -> usize {
         (index + 1) % self.presets.len()
     }
+}
+
+pub fn custom_themes_dir() -> PathBuf {
+    ThemeRegistry::custom_themes_dir()
 }
 
 #[cfg(test)]

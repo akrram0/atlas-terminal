@@ -38,7 +38,7 @@ use crate::ui::overlay::{
 };
 use crate::updater::{self, ReleaseInfo, UpdaterSettings};
 use crate::workspace::{
-    git_branch, git_cwd, home_dir,
+    git_branch, git_cwd,
     Tab,
 };
 
@@ -429,17 +429,10 @@ impl AtlasView {
             restored = view.restore_session(cx);
         }
         if !restored {
-            let startup_cwd = initial_dir.or_else(|| {
-                if view
-                    .app_settings
-                    .start_directory
-                    .eq_ignore_ascii_case("current")
-                {
-                    std::env::current_dir().ok().or_else(home_dir)
-                } else {
-                    home_dir()
-                }
-            });
+            let startup_cwd = crate::workspace::resolve_start_directory(
+                &view.app_settings.start_directory,
+                initial_dir,
+            );
             view.new_tab_with_cwd(default_shell_prof, startup_cwd, cx);
         }
         window.focus(&view.focus);
@@ -852,7 +845,7 @@ impl AtlasView {
                                 let Some(cwd) = pid_opt.and_then(crate::cwd::process_cwd) else {
                                     continue;
                                 };
-                                if pane.cwd.as_deref() != Some(cwd.as_path()) {
+                                if !crate::workspace::is_internal_app_dir(&cwd) && pane.cwd.as_deref() != Some(cwd.as_path()) {
                                     crate::tools::system::jump::record_visit(&cwd.to_string_lossy());
                                     pane.cwd = Some(cwd);
                                     changed = true;

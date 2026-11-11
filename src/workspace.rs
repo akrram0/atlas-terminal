@@ -70,6 +70,76 @@ pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE").map(PathBuf::from)
 }
 
+pub fn is_internal_app_dir(p: &Path) -> bool {
+    let p_str = p.to_string_lossy().to_lowercase();
+    if p_str.contains("appdata\\local\\programs\\atlas")
+        || p_str.contains("program files\\atlas")
+        || p_str.ends_with("system32")
+    {
+        return true;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            if p == parent {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub fn sanitize_working_dir(candidate: Option<PathBuf>) -> Option<PathBuf> {
+    if let Some(dir) = candidate {
+        if dir.is_dir() && !is_internal_app_dir(&dir) {
+            return Some(dir);
+        }
+    }
+    None
+}
+
+pub fn resolve_start_directory(
+    start_dir_setting: &str,
+    initial_dir: Option<PathBuf>,
+) -> Option<PathBuf> {
+    // 1. Explicit directory passed to CLI
+    if let Some(dir) = sanitize_working_dir(initial_dir) {
+        return Some(dir);
+    }
+
+    if start_dir_setting.eq_ignore_ascii_case("current") {
+        // 2. Process current working directory (e.g. if invoked from shell)
+        if let Some(dir) = sanitize_working_dir(std::env::current_dir().ok()) {
+            return Some(dir);
+        }
+
+        // 3. Last saved session active working directory
+        let session_path = crate::user_data_dir().join("sessions").join("last_session.json");
+        if let Ok(data) = std::fs::read_to_string(&session_path) {
+            if let Ok(saved) = serde_json::from_str::<crate::workspace::SavedSession>(&data) {
+                if let Some(tab) = saved.tabs.get(saved.active_tab).or_else(|| saved.tabs.first()) {
+                    if let Some(pane) = tab.panes.get(tab.active_pane).or_else(|| tab.panes.first()) {
+                        if let Some(dir) = sanitize_working_dir(pane.cwd.clone()) {
+                            return Some(dir);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Most recent directory from jump frecency store (dirs.json)
+        let store = crate::tools::system::jump::load_store();
+        for entry in &store.entries {
+            let p = PathBuf::from(&entry.path);
+            if let Some(dir) = sanitize_working_dir(Some(p)) {
+                return Some(dir);
+            }
+        }
+    }
+
+    // Default fallback: User's home directory
+    home_dir()
+}
+
 pub fn title_path(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {

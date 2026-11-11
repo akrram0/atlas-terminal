@@ -512,8 +512,11 @@ impl AtlasView {
             .p(px(14.0));
 
         for idx in 0..self.registry.len() {
-            let is_sel = self.theme_dark_id == idx;
             let preset = self.registry.preset(idx);
+            if !preset.supports_dark() {
+                continue;
+            }
+            let is_sel = self.theme_dark_id == idx;
             let preview_theme = &preset.dark;
 
             let card_border = if is_sel {
@@ -633,14 +636,24 @@ impl AtlasView {
                                 .children(if preset.is_custom {
                                     Some(
                                         div()
-                                            .px(px(5.0))
-                                            .py(px(1.0))
+                                            .id(ElementId::named_usize("dark-custom-badge", idx))
+                                            .px(px(6.0))
+                                            .py(px(1.5))
                                             .rounded(px(4.0))
                                             .bg(theme.soft_bg)
+                                            .border_1()
+                                            .border_color(theme.hairline)
+                                            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                                            .cursor_pointer()
                                             .text_size(px(10.0))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(theme.accent)
-                                            .child("Custom"),
+                                            .child("Custom")
+                                            .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
+                                                let dir = crate::theme::custom_themes_dir();
+                                                let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                                                cx.notify();
+                                            })),
                                     )
                                 } else {
                                     None
@@ -668,8 +681,11 @@ impl AtlasView {
             .p(px(14.0));
 
         for idx in 0..self.registry.len() {
-            let is_sel = self.theme_light_id == idx;
             let preset = self.registry.preset(idx);
+            if !preset.supports_light() {
+                continue;
+            }
+            let is_sel = self.theme_light_id == idx;
             let preview_theme = &preset.light;
 
             let card_border = if is_sel {
@@ -789,14 +805,24 @@ impl AtlasView {
                                 .children(if preset.is_custom {
                                     Some(
                                         div()
-                                            .px(px(5.0))
-                                            .py(px(1.0))
+                                            .id(ElementId::named_usize("dark-custom-badge", idx))
+                                            .px(px(6.0))
+                                            .py(px(1.5))
                                             .rounded(px(4.0))
                                             .bg(theme.soft_bg)
+                                            .border_1()
+                                            .border_color(theme.hairline)
+                                            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                                            .cursor_pointer()
                                             .text_size(px(10.0))
                                             .font_weight(FontWeight::MEDIUM)
                                             .text_color(theme.accent)
-                                            .child("Custom"),
+                                            .child("Custom")
+                                            .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
+                                                let dir = crate::theme::custom_themes_dir();
+                                                let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                                                cx.notify();
+                                            })),
                                     )
                                 } else {
                                     None
@@ -2906,29 +2932,39 @@ impl AtlasView {
                                 .text_color(sc_title)
                                 .child(custom.name.clone()),
                         )
-                        .children(if is_active {
-                            Some(
-                                div()
-                                    .px(px(6.0))
-                                    .py(px(2.0))
-                                    .rounded(px(4.0))
-                                    .bg(theme.accent)
-                                    .text_size(px(10.0))
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(rgb(0xFFFFFF))
-                                    .child("ACTIVE"),
-                            )
+                        .child(if is_active {
+                            div()
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .rounded(px(4.0))
+                                .bg(theme.accent)
+                                .text_size(px(10.0))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(rgb(0xFFFFFF))
+                                .child("ACTIVE")
+                                .into_any_element()
                         } else {
-                            Some(
-                                div()
-                                    .px(px(6.0))
-                                    .py(px(2.0))
-                                    .rounded(px(4.0))
-                                    .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
-                                    .text_size(px(10.0))
-                                    .text_color(theme.accent)
-                                    .child("CUSTOM"),
-                            )
+                            div()
+                                .id(ElementId::named_usize("pixel-custom-badge", c_idx))
+                                .px(px(6.0))
+                                .py(px(2.0))
+                                .rounded(px(4.0))
+                                .bg(if is_dark { rgba(0xFFFFFF10) } else { rgba(0x0000000A) })
+                                .border_1()
+                                .border_color(theme.hairline)
+                                .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                                .cursor_pointer()
+                                .text_size(px(10.0))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(theme.accent)
+                                .child("CUSTOM")
+                                .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                                    let dir = crate::ui::pixel_art::custom_sprites_dir();
+                                    let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                                    view.pixel_art_category_filter = "custom";
+                                    cx.notify();
+                                }))
+                                .into_any_element()
                         }),
                 )
                 .child(

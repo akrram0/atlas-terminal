@@ -87,20 +87,13 @@ impl AtlasView {
         self.settings_open = false;
 
         let spawn_cwd = cwd_override.or_else(|| {
-            // "Start directory" setting: home (default) or the active pane's
-            // current directory. An explicit override (CLI directory) wins.
             let start_current = self.app_settings.start_directory.eq_ignore_ascii_case("current");
             if start_current {
-                self.active_pane()
-                    .and_then(|pane| {
-                        pane.session
-                            .borrow()
-                            .pid
-                            .and_then(crate::cwd::process_cwd)
-                            .or_else(|| pane.cwd.clone())
-                    })
-                    .or_else(|| std::env::current_dir().ok())
-                    .or_else(home_dir)
+                let active_cwd = self.active_pane().and_then(|pane| {
+                    let live = pane.session.borrow().pid.and_then(crate::cwd::process_cwd);
+                    crate::workspace::sanitize_working_dir(live.or_else(|| pane.cwd.clone()))
+                });
+                active_cwd.or_else(|| crate::workspace::resolve_start_directory("current", None))
             } else {
                 home_dir()
             }
@@ -343,7 +336,7 @@ impl AtlasView {
         let inherit_cwd = match tab.panes.get(tab.active_pane) {
             Some(pane) => {
                 let live_cwd = pane.session.borrow().pid.and_then(crate::cwd::process_cwd);
-                live_cwd.or_else(|| pane.cwd.clone())
+                crate::workspace::sanitize_working_dir(live_cwd.or_else(|| pane.cwd.clone()))
             }
             None => None,
         };
@@ -931,12 +924,13 @@ impl AtlasView {
                     .iter()
                     .filter(|p| !p.closing)
                     .map(|p| {
-                        let cwd = p
+                        let live = p
                             .session
                             .borrow()
                             .pid
-                            .and_then(crate::cwd::process_cwd)
-                            .or_else(|| p.cwd.clone());
+                            .and_then(crate::cwd::process_cwd);
+                        let cwd = crate::workspace::sanitize_working_dir(live.or_else(|| p.cwd.clone()))
+                            .or_else(home_dir);
                         crate::workspace::SavedPane {
                             profile: p.profile.to_serialized_id(),
                             cwd,
@@ -997,7 +991,8 @@ impl AtlasView {
                 let epoch = self.next_epoch;
                 self.next_epoch += 1;
                 let profile = Profile::from_name(&saved_pane.profile);
-                let cwd = saved_pane.cwd;
+                let cwd = crate::workspace::sanitize_working_dir(saved_pane.cwd)
+                    .or_else(|| crate::workspace::resolve_start_directory("current", None));
 
                 match Session::spawn(
                     init_cols,
