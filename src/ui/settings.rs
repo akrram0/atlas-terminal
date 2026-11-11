@@ -634,26 +634,72 @@ impl AtlasView {
                                         .child(preset.dark_name().to_string()),
                                 )
                                 .children(if preset.is_custom {
+                                    let del_id = preset.id.clone();
+                                    let del_name = preset.name.clone();
                                     Some(
                                         div()
-                                            .id(ElementId::named_usize("dark-custom-badge", idx))
-                                            .px(px(6.0))
-                                            .py(px(1.5))
-                                            .rounded(px(4.0))
-                                            .bg(theme.soft_bg)
-                                            .border_1()
-                                            .border_color(theme.hairline)
-                                            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
-                                            .cursor_pointer()
-                                            .text_size(px(10.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(theme.accent)
-                                            .child("Custom")
-                                            .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
-                                                let dir = crate::theme::custom_themes_dir();
-                                                let _ = std::process::Command::new("explorer").arg(&dir).spawn();
-                                                cx.notify();
-                                            })),
+                                            .flex()
+                                            .flex_row()
+                                            .items_center()
+                                            .gap(px(4.0))
+                                            .child(
+                                                div()
+                                                    .id(ElementId::named_usize("dark-custom-badge", idx))
+                                                    .px(px(5.0))
+                                                    .py(px(1.5))
+                                                    .rounded(px(4.0))
+                                                    .bg(theme.soft_bg)
+                                                    .border_1()
+                                                    .border_color(theme.hairline)
+                                                    .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                                                    .cursor_pointer()
+                                                    .text_size(px(10.0))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(theme.accent)
+                                                    .child("Custom")
+                                                    .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
+                                                        let dir = crate::theme::custom_themes_dir();
+                                                        let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                                                        cx.notify();
+                                                    })),
+                                            )
+                                            .child(
+                                                div()
+                                                    .id(ElementId::named_usize("dark-custom-del-btn", idx))
+                                                    .px(px(5.0))
+                                                    .py(px(1.5))
+                                                    .rounded(px(4.0))
+                                                    .bg(if is_dark { rgba(0xFF3B3018) } else { rgba(0xFF3B3012) })
+                                                    .border_1()
+                                                    .border_color(if is_dark { rgba(0xFF453A35) } else { rgba(0xFF3B3028) })
+                                                    .hover(|s| s.bg(rgba(0xFF3B3033)).border_color(rgba(0xFF453A80)))
+                                                    .cursor_pointer()
+                                                    .text_size(px(10.0))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(rgb(0xFF453A))
+                                                    .child("Delete")
+                                                    .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                                                        let _ = crate::theme::delete_custom_theme(&del_id);
+                                                        view.registry.reload();
+                                                        let def_pos = view.registry.find_by_name_or_id("atlas").unwrap_or(0);
+                                                        if view.theme_dark_id >= view.registry.len()
+                                                            || view.registry.preset(view.theme_dark_id).id == del_id
+                                                        {
+                                                            view.set_dark_theme(def_pos, cx);
+                                                        }
+                                                        if view.theme_light_id >= view.registry.len()
+                                                            || view.registry.preset(view.theme_light_id).id == del_id
+                                                        {
+                                                            view.set_light_theme(def_pos, cx);
+                                                        }
+                                                        view.show_update_toast(
+                                                            format!("Deleted custom theme '{}'", del_name),
+                                                            true,
+                                                            cx,
+                                                        );
+                                                        cx.notify();
+                                                    })),
+                                            ),
                                     )
                                 } else {
                                     None
@@ -666,7 +712,9 @@ impl AtlasView {
                         }),
                 )
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                    view.set_dark_theme(idx, cx);
+                    if idx < view.registry.len() {
+                        view.set_dark_theme(idx, cx);
+                    }
                 }));
 
             dark_theme_grid = dark_theme_grid.child(theme_card);
@@ -803,26 +851,72 @@ impl AtlasView {
                                         .child(preset.light_name().to_string()),
                                 )
                                 .children(if preset.is_custom {
+                                    let del_id = preset.id.clone();
+                                    let del_name = preset.name.clone();
                                     Some(
                                         div()
-                                            .id(ElementId::named_usize("dark-custom-badge", idx))
-                                            .px(px(6.0))
-                                            .py(px(1.5))
-                                            .rounded(px(4.0))
-                                            .bg(theme.soft_bg)
-                                            .border_1()
-                                            .border_color(theme.hairline)
-                                            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
-                                            .cursor_pointer()
-                                            .text_size(px(10.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(theme.accent)
-                                            .child("Custom")
-                                            .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
-                                                let dir = crate::theme::custom_themes_dir();
-                                                let _ = std::process::Command::new("explorer").arg(&dir).spawn();
-                                                cx.notify();
-                                            })),
+                                            .flex()
+                                            .flex_row()
+                                            .items_center()
+                                            .gap(px(4.0))
+                                            .child(
+                                                div()
+                                                    .id(ElementId::named_usize("light-custom-badge", idx))
+                                                    .px(px(5.0))
+                                                    .py(px(1.5))
+                                                    .rounded(px(4.0))
+                                                    .bg(theme.soft_bg)
+                                                    .border_1()
+                                                    .border_color(theme.hairline)
+                                                    .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
+                                                    .cursor_pointer()
+                                                    .text_size(px(10.0))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(theme.accent)
+                                                    .child("Custom")
+                                                    .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
+                                                        let dir = crate::theme::custom_themes_dir();
+                                                        let _ = std::process::Command::new("explorer").arg(&dir).spawn();
+                                                        cx.notify();
+                                                    })),
+                                            )
+                                            .child(
+                                                div()
+                                                    .id(ElementId::named_usize("light-custom-del-btn", idx))
+                                                    .px(px(5.0))
+                                                    .py(px(1.5))
+                                                    .rounded(px(4.0))
+                                                    .bg(if is_dark { rgba(0xFF3B3018) } else { rgba(0xFF3B3012) })
+                                                    .border_1()
+                                                    .border_color(if is_dark { rgba(0xFF453A35) } else { rgba(0xFF3B3028) })
+                                                    .hover(|s| s.bg(rgba(0xFF3B3033)).border_color(rgba(0xFF453A80)))
+                                                    .cursor_pointer()
+                                                    .text_size(px(10.0))
+                                                    .font_weight(FontWeight::MEDIUM)
+                                                    .text_color(rgb(0xFF453A))
+                                                    .child("Delete")
+                                                    .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
+                                                        let _ = crate::theme::delete_custom_theme(&del_id);
+                                                        view.registry.reload();
+                                                        let def_pos = view.registry.find_by_name_or_id("atlas").unwrap_or(0);
+                                                        if view.theme_light_id >= view.registry.len()
+                                                            || view.registry.preset(view.theme_light_id).id == del_id
+                                                        {
+                                                            view.set_light_theme(def_pos, cx);
+                                                        }
+                                                        if view.theme_dark_id >= view.registry.len()
+                                                            || view.registry.preset(view.theme_dark_id).id == del_id
+                                                        {
+                                                            view.set_dark_theme(def_pos, cx);
+                                                        }
+                                                        view.show_update_toast(
+                                                            format!("Deleted custom theme '{}'", del_name),
+                                                            true,
+                                                            cx,
+                                                        );
+                                                        cx.notify();
+                                                    })),
+                                            ),
                                     )
                                 } else {
                                     None
@@ -835,7 +929,9 @@ impl AtlasView {
                         }),
                 )
                 .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
-                    view.set_light_theme(idx, cx);
+                    if idx < view.registry.len() {
+                        view.set_light_theme(idx, cx);
+                    }
                 }));
 
             light_theme_grid = light_theme_grid.child(theme_card);

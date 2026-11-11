@@ -66,6 +66,36 @@ impl Preset {
 
 pub const PRESETS: &[Preset] = &[
     Preset {
+        id: "white_cat",
+        name: "White Cat",
+        category: PresetCategory::Cozy,
+        desc: "Graceful white cat companion with gentle tail swish.",
+    },
+    Preset {
+        id: "blue_penguin",
+        name: "Playful Penguin",
+        category: PresetCategory::Cozy,
+        desc: "Adorable animated penguin with cheerful bouncing flippers.",
+    },
+    Preset {
+        id: "electric_fox",
+        name: "Electric Fox",
+        category: PresetCategory::Cozy,
+        desc: "Spirited lightning fox companion ready for quick keystrokes.",
+    },
+    Preset {
+        id: "shadow_bat",
+        name: "Shadow Bat",
+        category: PresetCategory::System,
+        desc: "Mysterious nocturnal shadow bat hovering quietly.",
+    },
+    Preset {
+        id: "dark_knight",
+        name: "Dark Knight",
+        category: PresetCategory::System,
+        desc: "Valiant knight in ornate plate armor guarding your terminal.",
+    },
+    Preset {
         id: "hot_coffee",
         name: "Hot Coffee",
         category: PresetCategory::Cozy,
@@ -100,12 +130,6 @@ pub const PRESETS: &[Preset] = &[
         name: "Pixel Cat",
         category: PresetCategory::Cozy,
         desc: "Cute minimalist kitty companion with twitching ears.",
-    },
-    Preset {
-        id: "terminal_prompt",
-        name: "Terminal Prompt",
-        category: PresetCategory::System,
-        desc: "Crisp retro green command prompt (>_) with breathing caret.",
     },
 ];
 
@@ -473,8 +497,115 @@ pub fn sync_sprites_cache(force: bool) {
     }
 }
 
+const BUNDLED_WHITE_CAT: &[u8] = include_bytes!("../../assets/pixel_art/white_cat.gif");
+const BUNDLED_BLUE_PENGUIN: &[u8] = include_bytes!("../../assets/pixel_art/blue_penguin.gif");
+const BUNDLED_ELECTRIC_FOX: &[u8] = include_bytes!("../../assets/pixel_art/jolteon.gif");
+const BUNDLED_SHADOW_BAT: &[u8] = include_bytes!("../../assets/pixel_art/shadow_bat.gif");
+const BUNDLED_DARK_KNIGHT: &[u8] = include_bytes!("../../assets/pixel_art/dark_knight.gif");
+
+static BUNDLED_SPRITES_CACHE: RwLock<Option<HashMap<String, Arc<DecodedSpriteAnimation>>>> = RwLock::new(None);
+
+pub fn is_bundled_sprite_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase().replace(['-', ' '], "_");
+    let stem = lower.strip_prefix("sprite_").unwrap_or(&lower);
+    matches!(
+        stem,
+        "white_cat"
+            | "whitecat"
+            | "1aej"
+            | "blue_penguin"
+            | "bluepenguin"
+            | "2qdh"
+            | "electric_fox"
+            | "electricfox"
+            | "ws1q"
+            | "jolteon"
+            | "shadow_bat"
+            | "shadowbat"
+            | "xosa"
+            | "dark_knight"
+            | "darkknight"
+            | "xwi4"
+            | "xwl4"
+    )
+}
+
+pub fn get_bundled_sprite(id: &str) -> Option<Arc<DecodedSpriteAnimation>> {
+    let norm = id.to_ascii_lowercase().replace(['-', ' '], "_");
+    let norm_stem = norm.strip_prefix("sprite_").unwrap_or(&norm);
+
+    // Fast path: read from cache
+    if let Ok(guard) = BUNDLED_SPRITES_CACHE.read() {
+        if let Some(ref map) = *guard {
+            if let Some(s) = map.get(norm_stem).or_else(|| map.get(&norm)) {
+                return Some(Arc::clone(s));
+            }
+        }
+    }
+
+    // Initialize bundled cache
+    let mut map: HashMap<String, Arc<DecodedSpriteAnimation>> = HashMap::new();
+
+    let bundled_defs: &[(&str, &str, &[u8], &[&str])] = &[
+        (
+            "white_cat",
+            "White Cat",
+            BUNDLED_WHITE_CAT,
+            &["white_cat", "whitecat", "1aej", "sprite_1aej", "sprite_white_cat"],
+        ),
+        (
+            "blue_penguin",
+            "Playful Penguin",
+            BUNDLED_BLUE_PENGUIN,
+            &["blue_penguin", "bluepenguin", "penguin", "2qdh", "sprite_2qdh", "sprite_blue_penguin"],
+        ),
+        (
+            "electric_fox",
+            "Electric Fox",
+            BUNDLED_ELECTRIC_FOX,
+            &["electric_fox", "electricfox", "ws1q", "sprite_ws1q", "jolteon", "sprite_jolteon", "sprite_electric_fox"],
+        ),
+        (
+            "shadow_bat",
+            "Shadow Bat",
+            BUNDLED_SHADOW_BAT,
+            &["shadow_bat", "shadowbat", "xosa", "sprite_xosa", "bat", "sprite_shadow_bat"],
+        ),
+        (
+            "dark_knight",
+            "Dark Knight",
+            BUNDLED_DARK_KNIGHT,
+            &["dark_knight", "darkknight", "xwi4", "xwl4", "sprite_xwi4", "sprite_xwl4", "knight", "sprite_dark_knight"],
+        ),
+    ];
+
+    for &(canonical_id, name, bytes, aliases) in bundled_defs {
+        let path = PathBuf::from(format!("bundled://pixel_art/{}.gif", canonical_id));
+        if let Some(decoded) = decode_gif(canonical_id.to_string(), name.to_string(), path, bytes) {
+            let shared = Arc::new(decoded);
+            for &alias in aliases {
+                map.insert(alias.to_string(), Arc::clone(&shared));
+            }
+            map.insert(canonical_id.to_string(), Arc::clone(&shared));
+        }
+    }
+
+    let result = map.get(norm_stem).or_else(|| map.get(&norm)).cloned();
+
+    if let Ok(mut guard) = BUNDLED_SPRITES_CACHE.write() {
+        *guard = Some(map);
+    }
+
+    result
+}
+
 pub fn get_decoded_sprite(id: &str) -> Option<Arc<DecodedSpriteAnimation>> {
-    // 1. Check existing in-memory cache
+    // 1. Check bundled GIF presets first
+    if let Some(bundled) = get_bundled_sprite(id) {
+        return Some(bundled);
+    }
+
+    // 2. Check existing in-memory cache
     if let Ok(read_guard) = SPRITES_CACHE.read() {
         if let Some(ref map) = *read_guard {
             if let Some(cached) = map.get(id) {
@@ -483,7 +614,7 @@ pub fn get_decoded_sprite(id: &str) -> Option<Arc<DecodedSpriteAnimation>> {
         }
     }
 
-    // 2. If missing or cache empty, sync from disk
+    // 3. If missing or cache empty, sync from disk
     sync_sprites_cache(false);
 
     if let Ok(read_guard) = SPRITES_CACHE.read() {
@@ -502,7 +633,11 @@ pub fn load_all_sprites() -> HashMap<String, Arc<DecodedSpriteAnimation>> {
     sync_sprites_cache(false);
     if let Ok(read_guard) = SPRITES_CACHE.read() {
         if let Some(ref map) = *read_guard {
-            return map.iter().map(|(k, v)| (k.clone(), Arc::clone(&v.sprite))).collect();
+            return map
+                .iter()
+                .filter(|(k, _)| !is_bundled_sprite_key(k))
+                .map(|(k, v)| (k.clone(), Arc::clone(&v.sprite)))
+                .collect();
         }
     }
     HashMap::new()
@@ -1143,66 +1278,6 @@ const CAT_FRAMES: &[&[&str]] = &[
     ],
 ];
 
-// 7. Terminal Prompt (>_)
-const PROMPT_PALETTE: &[(char, u32)] = &[
-    ('G', 0x10B981FF),
-    ('H', 0x6EE7B7FF),
-];
-
-const PROMPT_FRAMES: &[&[&str]] = &[
-    &[
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-        "..GG....................",
-        "..GGGG..................",
-        "....GGGG................",
-        "......GGGG..............",
-        "........GGGG............",
-        "..........GGGG..........",
-        "............GGGG........",
-        "..........GGGG..........",
-        "........GGGG............",
-        "......GGGG..............",
-        "....GGGG................",
-        "..GGGG..................",
-        "..GG......HHHHHHHH......",
-        "..........HHHHHHHH......",
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-    ],
-    &[
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-        "..GG....................",
-        "..GGGG..................",
-        "....GGGG................",
-        "......GGGG..............",
-        "........GGGG............",
-        "..........GGGG..........",
-        "............GGGG........",
-        "..........GGGG..........",
-        "........GGGG............",
-        "......GGGG..............",
-        "....GGGG................",
-        "..GGGG..................",
-        "..GG....................",
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-        "........................",
-    ],
-];
 
 fn get_builtin_sprite(preset_id: &str) -> Option<BuiltinSprite> {
     match preset_id {
@@ -1218,21 +1293,29 @@ fn get_builtin_sprite(preset_id: &str) -> Option<BuiltinSprite> {
             palette: HEART_PALETTE,
             frames: HEART_FRAMES,
         }),
-        "linux_tux" | "linux_penguin" | "tux" => Some(BuiltinSprite {
+        "white_cat" | "whitecat" | "1aej" | "chibi_cat" | "pixel_cat" | "cat" => Some(BuiltinSprite {
+            palette: CAT_PALETTE,
+            frames: CAT_FRAMES,
+        }),
+        "blue_penguin" | "bluepenguin" | "2qdh" | "linux_tux" | "linux_penguin" | "tux" => Some(BuiltinSprite {
             palette: TUX_PALETTE,
             frames: TUX_FRAMES,
+        }),
+        "electric_fox" | "electricfox" | "ws1q" | "jolteon" => Some(BuiltinSprite {
+            palette: CAMPFIRE_PALETTE,
+            frames: CAMPFIRE_FRAMES,
+        }),
+        "shadow_bat" | "shadowbat" | "xosa" => Some(BuiltinSprite {
+            palette: HEART_PALETTE,
+            frames: HEART_FRAMES,
+        }),
+        "dark_knight" | "darkknight" | "xwi4" | "xwl4" => Some(BuiltinSprite {
+            palette: CASSETTE_PALETTE,
+            frames: CASSETTE_FRAMES,
         }),
         "retro_cassette" | "cassette_tape" | "cassette" => Some(BuiltinSprite {
             palette: CASSETTE_PALETTE,
             frames: CASSETTE_FRAMES,
-        }),
-        "chibi_cat" | "pixel_cat" | "cat" => Some(BuiltinSprite {
-            palette: CAT_PALETTE,
-            frames: CAT_FRAMES,
-        }),
-        "terminal_prompt" | "prompt" => Some(BuiltinSprite {
-            palette: PROMPT_PALETTE,
-            frames: PROMPT_FRAMES,
         }),
         _ => None,
     }
@@ -1483,5 +1566,34 @@ mod tests {
     fn test_8bit_heart_pixels() {
         let pixels = render_frame("pixel_heart", 0, "original", rgba(0xE08A62FF), true);
         assert!(pixels.len() >= 40, "Heart must render rich 8-bit pixels");
+    }
+
+    #[test]
+    fn test_bundled_gifs_load_successfully() {
+        for &(id, name) in &[
+            ("white_cat", "White Cat"),
+            ("blue_penguin", "Playful Penguin"),
+            ("electric_fox", "Electric Fox"),
+            ("shadow_bat", "Shadow Bat"),
+            ("dark_knight", "Dark Knight"),
+        ] {
+            let sprite = get_bundled_sprite(id);
+            assert!(sprite.is_some(), "Bundled GIF '{}' must be decodable", id);
+            let s = sprite.unwrap();
+            assert_eq!(s.name, name);
+            assert!(s.num_frames > 0, "Bundled GIF '{}' must have frames", id);
+        }
+    }
+
+    #[test]
+    fn test_bundled_aliases_resolve() {
+        assert!(get_bundled_sprite("1aej").is_some());
+        assert!(get_bundled_sprite("2qdh").is_some());
+        assert!(get_bundled_sprite("ws1q").is_some());
+        assert!(get_bundled_sprite("xosa").is_some());
+        assert!(get_bundled_sprite("xwi4").is_some());
+        assert!(get_bundled_sprite("jolteon").is_some());
+        assert!(is_bundled_sprite_key("1aej"));
+        assert!(is_bundled_sprite_key("sprite_ws1q"));
     }
 }

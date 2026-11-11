@@ -1736,6 +1736,10 @@ Drop any `.json` theme file into this directory to immediately make it available
         }
     }
 
+    pub fn reload(&mut self) {
+        *self = Self::standard();
+    }
+
     #[allow(dead_code)]
     pub fn next(&self, index: usize) -> usize {
         (index + 1) % self.presets.len()
@@ -1744,6 +1748,53 @@ Drop any `.json` theme file into this directory to immediately make it available
 
 pub fn custom_themes_dir() -> PathBuf {
     ThemeRegistry::custom_themes_dir()
+}
+
+/// Deletes a custom theme `.json` file from `~/.config/atlas/themes/`.
+/// Matches by theme ID, name, or filename stem.
+pub fn delete_custom_theme(theme_id: &str) -> bool {
+    let themes_dir = custom_themes_dir();
+    if !themes_dir.exists() {
+        return false;
+    }
+    let norm_id = theme_id.to_ascii_lowercase().replace(['-', ' '], "_");
+    let mut deleted = false;
+
+    if let Ok(entries) = std::fs::read_dir(&themes_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                let norm_file_stem = file_name.to_ascii_lowercase().replace(['-', ' '], "_");
+
+                // 1. Direct filename stem match
+                if norm_file_stem == norm_id || file_name.eq_ignore_ascii_case(theme_id) {
+                    if std::fs::remove_file(&path).is_ok() {
+                        deleted = true;
+                    }
+                    continue;
+                }
+
+                // 2. Parse file and match internal id or name
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(custom) = serde_json::from_str::<CustomThemeFile>(&content) {
+                        let custom_id = custom.id.as_deref().unwrap_or("");
+                        let custom_slug = slugify(&custom.name);
+                        if custom_id.eq_ignore_ascii_case(theme_id)
+                            || custom_slug == norm_id
+                            || custom.name.eq_ignore_ascii_case(theme_id)
+                        {
+                            if std::fs::remove_file(&path).is_ok() {
+                                deleted = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    deleted
 }
 
 #[cfg(test)]
@@ -1863,5 +1914,10 @@ mod tests {
         assert!(!preset.dark.is_light());
         assert_eq!(preset.dark.ansi[1], rgb(0xC50F1F));
         assert_eq!(preset.dark.ansi[2], rgb(0x13A10E));
+    }
+
+    #[test]
+    fn test_delete_custom_theme_nonexistent() {
+        assert!(!delete_custom_theme("nonexistent_theme_xyz123"));
     }
 }

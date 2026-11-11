@@ -74,46 +74,74 @@ impl AtlasView {
         self.show_update_toast(format!("{} ({})", mode_label, preset_name), true, cx);
     }
 
-    /// Cycle to the next theme preset (Atlas, GitHub, One, Solarized, Tokyo Night, Catppuccin, Nord, Classic).
+    /// Cycle to the next theme preset (filtered by current mode support).
     pub fn next_theme(&mut self, cx: &mut Context<Self>) {
         let is_light = match self.theme_mode.as_str() {
             "light" => true,
             "dark" => false,
             _ => crate::theme::is_system_light_mode(),
         };
+        let valid_indices: Vec<usize> = (0..self.registry.len())
+            .filter(|&i| {
+                let p = self.registry.preset(i);
+                if is_light { p.supports_light() } else { p.supports_dark() }
+            })
+            .collect();
+
+        if valid_indices.is_empty() {
+            return;
+        }
+
         let current_idx = if is_light { self.theme_light_id } else { self.theme_dark_id };
-        let next_idx = (current_idx + 1) % self.registry.len();
+        let current_pos = valid_indices.iter().position(|&i| i == current_idx).unwrap_or(0);
+        let next_idx = valid_indices[(current_pos + 1) % valid_indices.len()];
+
         if is_light {
             self.set_light_theme(next_idx, cx);
         } else {
             self.set_dark_theme(next_idx, cx);
         }
         let preset = self.registry.preset(next_idx);
+        let name = if is_light { preset.light_name() } else { preset.dark_name() };
         let mode_label = if is_light { "Light" } else { "Dark" };
-        self.show_update_toast(format!("Theme: {} ({})", preset.name, mode_label), true, cx);
+        self.show_update_toast(format!("Theme: {} ({})", name, mode_label), true, cx);
     }
 
-    /// Cycle to the previous theme preset.
+    /// Cycle to the previous theme preset (filtered by current mode support).
     pub fn prev_theme(&mut self, cx: &mut Context<Self>) {
         let is_light = match self.theme_mode.as_str() {
             "light" => true,
             "dark" => false,
             _ => crate::theme::is_system_light_mode(),
         };
+        let valid_indices: Vec<usize> = (0..self.registry.len())
+            .filter(|&i| {
+                let p = self.registry.preset(i);
+                if is_light { p.supports_light() } else { p.supports_dark() }
+            })
+            .collect();
+
+        if valid_indices.is_empty() {
+            return;
+        }
+
         let current_idx = if is_light { self.theme_light_id } else { self.theme_dark_id };
-        let prev_idx = if current_idx == 0 {
-            self.registry.len() - 1
+        let current_pos = valid_indices.iter().position(|&i| i == current_idx).unwrap_or(0);
+        let prev_idx = if current_pos == 0 {
+            valid_indices[valid_indices.len() - 1]
         } else {
-            current_idx - 1
+            valid_indices[current_pos - 1]
         };
+
         if is_light {
             self.set_light_theme(prev_idx, cx);
         } else {
             self.set_dark_theme(prev_idx, cx);
         }
         let preset = self.registry.preset(prev_idx);
+        let name = if is_light { preset.light_name() } else { preset.dark_name() };
         let mode_label = if is_light { "Light" } else { "Dark" };
-        self.show_update_toast(format!("Theme: {} ({})", preset.name, mode_label), true, cx);
+        self.show_update_toast(format!("Theme: {} ({})", name, mode_label), true, cx);
     }
 
     /// Set dark theme preset.
