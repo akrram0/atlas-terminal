@@ -670,6 +670,10 @@ pub fn find_tool_in_system(tool_name: &str) -> Option<String> {
         explicit_dirs.push(local_path.join("pnpm").join("bin"));
         explicit_dirs.push(local_path.join("pnpm"));
         explicit_dirs.push(local_path.join("Microsoft").join("WinGet").join("Links"));
+        explicit_dirs.push(local_path.join("Microsoft").join("WindowsApps"));
+        explicit_dirs.push(local_path.join("Programs").join("oh-my-posh").join("bin"));
+        explicit_dirs.push(local_path.join("Programs").join("starship"));
+        explicit_dirs.push(local_path.join("Programs").join("starship").join("bin"));
         explicit_dirs.push(local_path.join("Programs").join(tool_name));
         explicit_dirs.push(local_path.join("Programs").join(tool_name).join("bin"));
         explicit_dirs.push(local_path.join("Programs").join("Antigravity"));
@@ -713,6 +717,223 @@ pub fn find_executable_on_path(name: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(windows)]
+fn query_registry_path(hkey: isize, subkey: &str) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+
+    unsafe extern "system" {
+        fn RegOpenKeyExW(
+            hKey: isize,
+            lpSubKey: *const u16,
+            ulOptions: u32,
+            samDesired: u32,
+            phkResult: *mut isize,
+        ) -> i32;
+        fn RegQueryValueExW(
+            hKey: isize,
+            lpValueName: *const u16,
+            lpReserved: *mut u32,
+            lpType: *mut u32,
+            lpData: *mut u8,
+            lpcbData: *mut u32,
+        ) -> i32;
+        fn RegCloseKey(hKey: isize) -> i32;
+        fn ExpandEnvironmentStringsW(
+            lpSrc: *const u16,
+            lpDst: *mut u16,
+            nSize: u32,
+        ) -> u32;
+    }
+
+    const KEY_READ: u32 = 0x20019;
+    let subkey_w: Vec<u16> = std::ffi::OsStr::new(subkey)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let value_w: Vec<u16> = std::ffi::OsStr::new("Path")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut key: isize = 0;
+    let status = unsafe {
+        RegOpenKeyExW(
+            hkey,
+            subkey_w.as_ptr(),
+            0,
+            KEY_READ,
+            &mut key,
+        )
+    };
+    if status != 0 || key == 0 {
+        return None;
+    }
+
+    let mut buf_size: u32 = 0;
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            value_w.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut buf_size,
+        )
+    };
+    if status != 0 || buf_size == 0 {
+        unsafe { RegCloseKey(key) };
+        return None;
+    }
+
+    let mut buf = vec![0u8; buf_size as usize];
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            value_w.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            buf.as_mut_ptr(),
+            &mut buf_size,
+        )
+    };
+    unsafe { RegCloseKey(key) };
+
+    if status != 0 {
+        return None;
+    }
+
+    let u16_slice: &[u16] = unsafe {
+        std::slice::from_raw_parts(buf.as_ptr() as *const u16, buf_size as usize / 2)
+    };
+    let raw_w = if let Some((&0, rest)) = u16_slice.split_last() {
+        rest
+    } else {
+        u16_slice
+    };
+
+    let raw_w_null: Vec<u16> = raw_w.iter().copied().chain(std::iter::once(0)).collect();
+    let needed = unsafe { ExpandEnvironmentStringsW(raw_w_null.as_ptr(), std::ptr::null_mut(), 0) };
+    if needed > 0 {
+        let mut expanded = vec![0u16; needed as usize];
+        let written = unsafe {
+            ExpandEnvironmentStringsW(raw_w_null.as_ptr(), expanded.as_mut_ptr(), needed)
+        };
+        if written > 0 {
+            if let Some((&0, rest)) = expanded.split_last() {
+                return Some(String::from_utf16_lossy(rest));
+            }
+            return Some(String::from_utf16_lossy(&expanded));
+        }
+    }
+
+    Some(String::from_utf16_lossy(raw_w))
+}
+
+/// Builds an enriched, de-duplicated `PATH` for spawned terminal sessions.
+/// - Loads the real-time User (`HKCU\Environment`) and System (`HKLM\...\Environment`) Registry `PATH`
+/// - Ensures well-known prompt engines (`oh-my-posh`, `starship`) and package managers (`pnpm`, `npm`, `cargo`, `scoop`, `bun`, `winget`) are discoverable
+/// - Embeds `ATLAS_DIR` so `atlas` CLI commands always work inside all shells
+pub fn build_enriched_path() -> std::ffi::OsString {
+    let mut paths: Vec<PathBuf> = Vec::new();
+
+    // 0. Atlas directory so `atlas` CLI is always in PATH
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            paths.push(exe_dir.to_path_buf());
+        }
+    }
+
+    // 1. Existing process PATH entries
+    if let Some(current_path) = std::env::var_os("PATH") {
+        for p in std::env::split_paths(&current_path) {
+            if !paths.contains(&p) {
+                paths.push(p);
+            }
+        }
+    }
+
+    // 2. Windows Registry: User PATH (HKCU\Environment) & Machine PATH (HKLM)
+    #[cfg(windows)]
+    {
+        // HKEY_CURRENT_USER = 0x80000001
+        if let Some(user_reg) = query_registry_path(-2147483647, "Environment") {
+            for p in std::env::split_paths(&user_reg) {
+                if !paths.contains(&p) {
+                    paths.push(p);
+                }
+            }
+        }
+        // HKEY_LOCAL_MACHINE = 0x80000002
+        if let Some(machine_reg) = query_registry_path(
+            -2147483646,
+            "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment",
+        ) {
+            for p in std::env::split_paths(&machine_reg) {
+                if !paths.contains(&p) {
+                    paths.push(p);
+                }
+            }
+        }
+    }
+
+    // 3. Explicit well-known tool directories
+    let mut explicit_dirs = Vec::new();
+
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let local_path = PathBuf::from(&local);
+        explicit_dirs.push(local_path.join("Programs").join("oh-my-posh").join("bin"));
+        explicit_dirs.push(local_path.join("Microsoft").join("WindowsApps"));
+        explicit_dirs.push(local_path.join("Microsoft").join("WinGet").join("Links"));
+        explicit_dirs.push(local_path.join("Programs").join("starship"));
+        explicit_dirs.push(local_path.join("Programs").join("starship").join("bin"));
+        explicit_dirs.push(local_path.join("pnpm").join("bin"));
+        explicit_dirs.push(local_path.join("pnpm"));
+        explicit_dirs.push(local_path.join("agy").join("bin"));
+
+        // Scan WinGet package directories for JanDeDobbeleer.OhMyPosh
+        let winget_pkgs = local_path.join("Microsoft").join("WinGet").join("Packages");
+        if let Ok(entries) = std::fs::read_dir(&winget_pkgs) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.file_name().and_then(|n| n.to_str()).map_or(false, |s| s.contains("OhMyPosh")) {
+                    let bin = p.join("bin");
+                    explicit_dirs.push(if bin.is_dir() { bin } else { p });
+                }
+            }
+        }
+    }
+
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        explicit_dirs.push(PathBuf::from(appdata).join("npm"));
+    }
+
+    if let Some(profile) = std::env::var_os("USERPROFILE") {
+        let prof_path = PathBuf::from(profile);
+        explicit_dirs.push(prof_path.join("scoop").join("shims"));
+        explicit_dirs.push(prof_path.join("scoop").join("apps").join("oh-my-posh").join("current").join("bin"));
+        explicit_dirs.push(prof_path.join(".cargo").join("bin"));
+        explicit_dirs.push(prof_path.join(".bun").join("bin"));
+        explicit_dirs.push(prof_path.join(".local").join("bin"));
+        explicit_dirs.push(prof_path.join(".oh-my-posh").join("bin"));
+    }
+
+    if let Some(prog_files) = std::env::var_os("ProgramFiles") {
+        explicit_dirs.push(PathBuf::from(prog_files).join("oh-my-posh").join("bin"));
+    }
+
+    if let Some(prog_files_x86) = std::env::var_os("ProgramFiles(x86)") {
+        explicit_dirs.push(PathBuf::from(prog_files_x86).join("oh-my-posh").join("bin"));
+    }
+
+    for dir in explicit_dirs {
+        if dir.is_dir() && !paths.contains(&dir) {
+            paths.push(dir);
+        }
+    }
+
+    std::env::join_paths(paths).unwrap_or_else(|_| std::env::var_os("PATH").unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -884,5 +1105,16 @@ mod tests {
         let env = scan_environment_sync();
         println!("DETECTED ENVIRONMENT ON MACHINE:\n{:#?}", env);
         assert!(!env.shells.is_empty(), "must detect at least one shell on Windows");
+    }
+
+    #[test]
+    fn test_build_enriched_path() {
+        let enriched = build_enriched_path();
+        let paths: Vec<PathBuf> = std::env::split_paths(&enriched).collect();
+        assert!(!paths.is_empty(), "enriched PATH must never be empty");
+        // Verify no empty paths or malformed segments
+        for p in &paths {
+            assert!(!p.as_os_str().is_empty(), "PATH segments must not be empty");
+        }
     }
 }

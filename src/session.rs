@@ -479,7 +479,8 @@ impl Session {
                                  & \"$env:ATLAS_DIR\\atlas.exe\" @args \
                              } else { \
                                  $p = Start-Process -FilePath \"$env:ATLAS_EXE\" -ArgumentList $args -NoNewWindow -Wait -PassThru; \
-                                 $global:LASTEXITCODE = $p.ExitCode \
+                                 $global:LASTEXITCODE = $p.ExitCode; \
+                                 $null = $p \
                              } \
                          }; \
                          function global:atlas-terminal { \
@@ -487,7 +488,8 @@ impl Session {
                                  & \"$env:ATLAS_DIR\\atlas.exe\" @args \
                              } else { \
                                  $p = Start-Process -FilePath \"$env:ATLAS_EXE\" -ArgumentList $args -NoNewWindow -Wait -PassThru; \
-                                 $global:LASTEXITCODE = $p.ExitCode \
+                                 $global:LASTEXITCODE = $p.ExitCode; \
+                                 $null = $p \
                              } \
                          }; \
                          function global:z { \
@@ -585,72 +587,23 @@ impl Session {
                     }
                 }
             }
-            // Ensure package manager bins (pnpm, npm) are included in PATH so
-            // devtools like OpenCode are always discoverable by child shells.
-            if let Some(path) = std::env::var_os("PATH") {
-                let mut paths = std::env::split_paths(&path).collect::<Vec<_>>();
-                let mut added = false;
-                if let Ok(exe) = std::env::current_exe() {
-                    cmd.env("ATLAS_EXE", &exe);
-                    if let Some(exe_dir) = exe.parent() {
-                        cmd.env("ATLAS_DIR", exe_dir);
-                        let shim_cmd = exe_dir.join("atlas.cmd");
-                        let cmd_content = "@echo off\r\nif exist \"%~dp0atlas.exe\" (\r\n  \"%~dp0atlas.exe\" %*\r\n) else (\r\n  start /b /wait \"\" \"%~dp0atlas-terminal.exe\" %*\r\n)\r\n";
-                        let _ = std::fs::write(&shim_cmd, cmd_content);
+            // Ensure package manager bins and developer tools are discoverable
+            if let Ok(exe) = std::env::current_exe() {
+                cmd.env("ATLAS_EXE", &exe);
+                if let Some(exe_dir) = exe.parent() {
+                    cmd.env("ATLAS_DIR", exe_dir);
+                    let shim_cmd = exe_dir.join("atlas.cmd");
+                    let cmd_content = "@echo off\r\nif exist \"%~dp0atlas.exe\" (\r\n  \"%~dp0atlas.exe\" %*\r\n) else (\r\n  start /b /wait \"\" \"%~dp0atlas-terminal.exe\" %*\r\n)\r\n";
+                    let _ = std::fs::write(&shim_cmd, cmd_content);
 
-                        let shim_sh = exe_dir.join("atlas");
-                        let sh_content = "#!/usr/bin/env sh\nif [ -f \"$(dirname \"$0\")/atlas.exe\" ]; then\n  exec \"$(dirname \"$0\")/atlas.exe\" \"$@\"\nelse\n  exec \"$(dirname \"$0\")/atlas-terminal.exe\" \"$@\"\nfi\n";
-                        let _ = std::fs::write(&shim_sh, sh_content);
-
-                        let exe_dir_buf = exe_dir.to_path_buf();
-                        if !paths.contains(&exe_dir_buf) {
-                            paths.insert(0, exe_dir_buf);
-                            added = true;
-                        }
-                    }
-                }
-                if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-                    let pnpm_bin = PathBuf::from(&local_app_data).join("pnpm").join("bin");
-                    if pnpm_bin.is_dir() && !paths.contains(&pnpm_bin) {
-                        paths.insert(0, pnpm_bin);
-                        added = true;
-                    }
-                    let pnpm_root = PathBuf::from(&local_app_data).join("pnpm");
-                    if pnpm_root.is_dir() && !paths.contains(&pnpm_root) {
-                        paths.insert(0, pnpm_root);
-                        added = true;
-                    }
-                    let winget_links = PathBuf::from(&local_app_data).join("Microsoft").join("WinGet").join("Links");
-                    if winget_links.is_dir() && !paths.contains(&winget_links) {
-                        paths.insert(0, winget_links);
-                        added = true;
-                    }
-                }
-                if let Some(app_data) = std::env::var_os("APPDATA") {
-                    let npm_bin = PathBuf::from(app_data).join("npm");
-                    if npm_bin.is_dir() && !paths.contains(&npm_bin) {
-                        paths.insert(0, npm_bin);
-                        added = true;
-                    }
-                }
-                if let Some(user_profile) = std::env::var_os("USERPROFILE") {
-                    let bun_bin = PathBuf::from(&user_profile).join(".bun").join("bin");
-                    if bun_bin.is_dir() && !paths.contains(&bun_bin) {
-                        paths.insert(0, bun_bin);
-                        added = true;
-                    }
-                    let scoop_shims = PathBuf::from(&user_profile).join("scoop").join("shims");
-                    if scoop_shims.is_dir() && !paths.contains(&scoop_shims) {
-                        paths.insert(0, scoop_shims);
-                        added = true;
-                    }
-                }
-                if added {
-                    if let Ok(new_path) = std::env::join_paths(paths) {
-                        cmd.env("PATH", new_path);
-                    }
+                    let shim_sh = exe_dir.join("atlas");
+                    let sh_content = "#!/usr/bin/env sh\nif [ -f \"$(dirname \"$0\")/atlas.exe\" ]; then\n  exec \"$(dirname \"$0\")/atlas.exe\" \"$@\"\nelse\n  exec \"$(dirname \"$0\")/atlas-terminal.exe\" \"$@\"\nfi\n";
+                    let _ = std::fs::write(&shim_sh, sh_content);
                 }
             }
+            // Real-time Windows Registry refresh & well-known CLI/prompt engines enrichment
+            let enriched_path = crate::discovery::build_enriched_path();
+            cmd.env("PATH", enriched_path);
             if let Some(comspec) = std::env::var_os("COMSPEC") {
                 cmd.env("COMSPEC", comspec);
             }
