@@ -32,10 +32,17 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.40",
-    codename: "Velocity & Aesthetics",
+    version: "0.2.41",
+    codename: "Interactive Canvas & Precision Scrolling",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "Canvas & Scrolling",
+            icon: icons::REFRESH,
+            title: "Interactive Visible Scrollbar & Touchpad Dragging",
+            description: "Full mouse and touchpad drag-to-scroll, track click paging, configurable visibility (Always / Auto-Hide / Hidden), and Ctrl+Shift+Up/Down line scrolling (Issue #6).",
+            badge: Some("Issue #6 Fixed"),
+        },
         FeatureHighlight {
             category: "Release Hub",
             icon: icons::SPARKLE,
@@ -795,7 +802,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.40");
+        assert_eq!(release.version, "0.2.41");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);

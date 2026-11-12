@@ -34,6 +34,8 @@ pub struct TerminalElement {
     pub cursor_alpha: f32,
     pub subpixel_y: f32,
     pub scrollbar_opacity: f32,
+    pub scrollbar_dragging: bool,
+    pub scrollbar_mode: String,
     pub hovered_link: Option<crate::url::DetectedUrl>,
     pub search_matches: Vec<(alacritty_terminal::index::Point, alacritty_terminal::index::Point)>,
     pub active_search_match: Option<usize>,
@@ -831,44 +833,107 @@ impl Element for TerminalElement {
         }
 
         // --------------------------------------------------------------------
-        // Floating auto-hiding scrollbar indicator (Apple/macOS style)
+        // Floating scrollbar indicator & drag handle (Apple/macOS style)
         // Suppressed in TUI / alt-screen mode so it never defaces full-screen TUI apps.
         // --------------------------------------------------------------------
-        if self.scrollbar_opacity > 0.01 && !is_alt_screen {
+        let is_always = self.scrollbar_mode == "always";
+        let is_hidden = self.scrollbar_mode == "hidden";
+        let effective_opacity = if is_hidden {
+            0.0
+        } else if self.scrollbar_dragging || is_always {
+            1.0
+        } else {
+            self.scrollbar_opacity
+        };
+
+        if !is_alt_screen {
             let (history, offset) = {
                 let session = self.session.borrow();
                 (session.term.history_size(), session.term.renderable_content().display_offset)
             };
-            if history > 0 {
-                let display_rows = rows.len().max(1);
-                let total_lines = history + display_rows;
-                let view_height = f32::from(bounds.size.height);
-                let thumb_height = ((display_rows as f32 / total_lines as f32) * view_height)
-                    .max(24.0)
-                    .min(view_height - 8.0);
-                let scroll_ratio = (history.saturating_sub(offset)) as f32 / history.max(1) as f32;
-                let travel_space = (view_height - thumb_height - 8.0).max(0.0);
-                let thumb_top = f32::from(bounds.top()) + 4.0 + travel_space * scroll_ratio;
-                let thumb_right = f32::from(bounds.right()) - 4.0;
-                let thumb_left = thumb_right - 4.0;
+            let display_rows = rows.len().max(1);
+            let total_lines = history + display_rows;
+            let view_height = f32::from(bounds.size.height);
+            let thumb_height = ((display_rows as f32 / total_lines as f32) * view_height)
+                .max(24.0)
+                .min(view_height - 8.0);
+            let scroll_ratio = if history > 0 {
+                (history.saturating_sub(offset)) as f32 / history.max(1) as f32
+            } else {
+                1.0
+            };
+            let travel_space = (view_height - thumb_height - 8.0).max(0.0);
+            let thumb_top = f32::from(bounds.top()) + 4.0 + travel_space * scroll_ratio;
+            let thumb_right = f32::from(bounds.right()) - 3.0;
+            let thumb_left = thumb_right - 6.0;
+
+            // Record geometry for mouse drag & click hit testing
+            self.session.borrow_mut().scrollbar_geometry = Some(crate::session::ScrollbarGeometry {
+                bounds_right: f32::from(bounds.right()),
+                bounds_top: f32::from(bounds.top()),
+                bounds_bottom: f32::from(bounds.bottom()),
+                thumb_top,
+                thumb_height,
+                travel_space,
+                history,
+                offset,
+            });
+
+            if effective_opacity > 0.01 && history > 0 {
+                // Subtle track quad (Apple/macOS style) when hovered, dragging, or always-visible
+                if self.scrollbar_dragging || is_always || effective_opacity > 0.6 {
+                    let mut track_quad = fill(
+                        Bounds::from_corners(
+                            point(px(thumb_left - 1.0), px(f32::from(bounds.top()) + 4.0)),
+                            point(px(thumb_right + 1.0), px(f32::from(bounds.bottom()) - 4.0)),
+                        ),
+                        Rgba {
+                            r: theme.hairline.r,
+                            g: theme.hairline.g,
+                            b: theme.hairline.b,
+                            a: (0.15 * effective_opacity).clamp(0.0, 1.0),
+                        },
+                    );
+                    track_quad.corner_radii = Corners {
+                        top_left: px(3.0),
+                        top_right: px(3.0),
+                        bottom_left: px(3.0),
+                        bottom_right: px(3.0),
+                    };
+                    window.paint_quad(track_quad);
+                }
+
+                // Thumb quad
+                let thumb_color = if self.scrollbar_dragging {
+                    theme.accent
+                } else if theme.is_light() {
+                    Rgba {
+                        r: theme.chrome_fg.r,
+                        g: theme.chrome_fg.g,
+                        b: theme.chrome_fg.b,
+                        a: (0.65 * effective_opacity).clamp(0.0, 1.0),
+                    }
+                } else {
+                    Rgba {
+                        r: theme.chrome_fg.r,
+                        g: theme.chrome_fg.g,
+                        b: theme.chrome_fg.b,
+                        a: (0.50 * effective_opacity).clamp(0.0, 1.0),
+                    }
+                };
 
                 let mut thumb_quad = fill(
                     Bounds::from_corners(
                         point(px(thumb_left), px(thumb_top)),
                         point(px(thumb_right), px(thumb_top + thumb_height)),
                     ),
-                    Rgba {
-                        r: theme.chrome_fg.r,
-                        g: theme.chrome_fg.g,
-                        b: theme.chrome_fg.b,
-                        a: (theme.chrome_fg.a * 0.45 * self.scrollbar_opacity).clamp(0.0, 1.0),
-                    },
+                    thumb_color,
                 );
                 thumb_quad.corner_radii = Corners {
-                    top_left: px(2.0),
-                    top_right: px(2.0),
-                    bottom_left: px(2.0),
-                    bottom_right: px(2.0),
+                    top_left: px(3.0),
+                    top_right: px(3.0),
+                    bottom_left: px(3.0),
+                    bottom_right: px(3.0),
                 };
                 window.paint_quad(thumb_quad);
             }

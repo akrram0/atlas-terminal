@@ -43,6 +43,8 @@ pub const ACTION_FOCUS_NEXT_PANE: &str = "focus_next_pane";
 pub const ACTION_FOCUS_PREV_PANE: &str = "focus_prev_pane";
 pub const ACTION_ZOOM_RESET: &str = "zoom_reset";
 pub const ACTION_SELECT_ALL: &str = "select_all";
+pub const ACTION_SCROLL_LINE_UP: &str = "scroll_line_up";
+pub const ACTION_SCROLL_LINE_DOWN: &str = "scroll_line_down";
 pub const ACTION_SCROLL_PAGE_UP: &str = "scroll_page_up";
 pub const ACTION_SCROLL_PAGE_DOWN: &str = "scroll_page_down";
 pub const ACTION_SCROLL_TO_TOP: &str = "scroll_to_top";
@@ -80,6 +82,8 @@ pub fn action_display_name(action: &str) -> &'static str {
         ACTION_ZOOM_OUT => "Zoom Out (Font Size)",
         ACTION_ZOOM_RESET => "Reset Zoom (Font Size)",
         ACTION_SELECT_ALL => "Select All in Viewport",
+        ACTION_SCROLL_LINE_UP => "Scroll Line Up",
+        ACTION_SCROLL_LINE_DOWN => "Scroll Line Down",
         ACTION_SCROLL_PAGE_UP => "Scroll Page Up",
         ACTION_SCROLL_PAGE_DOWN => "Scroll Page Down",
         ACTION_SCROLL_TO_TOP => "Scroll to Top of Buffer",
@@ -123,6 +127,8 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_ZOOM_OUT.to_string(), "ctrl+-".to_string());
     m.insert(ACTION_ZOOM_RESET.to_string(), "ctrl+0".to_string());
     m.insert(ACTION_SELECT_ALL.to_string(), "ctrl+shift+a".to_string());
+    m.insert(ACTION_SCROLL_LINE_UP.to_string(), "ctrl+shift+up".to_string());
+    m.insert(ACTION_SCROLL_LINE_DOWN.to_string(), "ctrl+shift+down".to_string());
     m.insert(ACTION_SCROLL_PAGE_UP.to_string(), "shift+pageup".to_string());
     m.insert(ACTION_SCROLL_PAGE_DOWN.to_string(), "shift+pagedown".to_string());
     m.insert(ACTION_SCROLL_TO_TOP.to_string(), "shift+home".to_string());
@@ -338,6 +344,8 @@ pub struct AppSettingsFile {
     pub scroll_speed: f32,
     #[serde(default = "default_scroll_to_bottom_on_input")]
     pub scroll_to_bottom_on_input: bool,
+    #[serde(default = "default_scrollbar_mode")]
+    pub scrollbar_mode: String,
     #[serde(default = "default_show_startup_banner")]
     pub show_startup_banner: bool,
     #[serde(default = "default_last_settings_tab")]
@@ -454,6 +462,9 @@ fn default_scroll_speed() -> f32 {
 fn default_scroll_to_bottom_on_input() -> bool {
     true
 }
+fn default_scrollbar_mode() -> String {
+    "always".to_string()
+}
 fn default_show_startup_banner() -> bool {
     true
 }
@@ -496,6 +507,7 @@ impl Default for AppSettingsFile {
             window_height: default_window_height(),
             scroll_speed: default_scroll_speed(),
             scroll_to_bottom_on_input: default_scroll_to_bottom_on_input(),
+            scrollbar_mode: default_scrollbar_mode(),
             show_startup_banner: default_show_startup_banner(),
             last_settings_tab: default_last_settings_tab(),
             last_check_time: None,
@@ -579,6 +591,10 @@ mod tests {
         assert_eq!(defaults.get(ACTION_NEXT_THEME).map(|s| s.as_str()), Some("alt+t"));
         assert_eq!(defaults.get(ACTION_PREV_THEME).map(|s| s.as_str()), Some("alt+shift+t"));
         assert_eq!(defaults.get(ACTION_TOGGLE_DARK_LIGHT).map(|s| s.as_str()), Some("ctrl+shift+l"));
+        assert_eq!(defaults.get(ACTION_SCROLL_LINE_UP).map(|s| s.as_str()), Some("ctrl+shift+up"));
+        assert_eq!(defaults.get(ACTION_SCROLL_LINE_DOWN).map(|s| s.as_str()), Some("ctrl+shift+down"));
+        assert!(!action_display_name(ACTION_SCROLL_LINE_UP).is_empty());
+        assert!(!action_display_name(ACTION_SCROLL_LINE_DOWN).is_empty());
         assert!(!action_display_name(ACTION_NEXT_THEME).is_empty());
         assert!(!action_display_name(ACTION_PREV_THEME).is_empty());
         assert!(!action_display_name(ACTION_TOGGLE_DARK_LIGHT).is_empty());
@@ -592,6 +608,7 @@ mod tests {
         assert_eq!(loaded.theme_dark, "tokyo_night");
         assert_eq!(loaded.theme_light, "solarized");
         assert_eq!(loaded.theme, "atlas");
+        assert_eq!(loaded.scrollbar_mode, "always");
     }
 
     #[test]
@@ -620,6 +637,7 @@ mod tests {
         settings.last_settings_tab = "scrolling".to_string();
         settings.scroll_speed = 0.6;
         settings.scroll_to_bottom_on_input = false;
+        settings.scrollbar_mode = "auto".to_string();
         settings.show_startup_banner = false;
         settings.blur_enabled = false;
         settings.opacity = 0.45;
@@ -631,6 +649,7 @@ mod tests {
         assert_eq!(loaded.last_settings_tab, "scrolling");
         assert_eq!(loaded.scroll_speed, 0.6);
         assert_eq!(loaded.scroll_to_bottom_on_input, false);
+        assert_eq!(loaded.scrollbar_mode, "auto");
         assert_eq!(loaded.show_startup_banner, false);
         assert_eq!(loaded.blur_enabled, false);
         assert_eq!(loaded.opacity, 0.45);

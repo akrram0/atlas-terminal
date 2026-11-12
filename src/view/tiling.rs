@@ -407,6 +407,45 @@ impl AtlasView {
                     }
                     window.focus(&view.focus);
 
+                    // Scrollbar hit testing: track click (page up/down) or thumb drag
+                    let scrollbar_geom = view
+                        .tabs
+                        .get(view.active)
+                        .and_then(|tab| tab.panes.get(pane_down))
+                        .and_then(|pane| pane.session.borrow().scrollbar_geometry);
+
+                    if let Some(geom) = scrollbar_geom {
+                        let mx = f32::from(event.position.x);
+                        let my = f32::from(event.position.y);
+                        if mx >= geom.bounds_right - 16.0
+                            && mx <= geom.bounds_right + 4.0
+                            && my >= geom.bounds_top
+                            && my <= geom.bounds_bottom
+                        {
+                            if geom.history > 0 {
+                                if my < geom.thumb_top {
+                                    view.scroll(15);
+                                } else if my > geom.thumb_top + geom.thumb_height {
+                                    view.scroll(-15);
+                                } else {
+                                    let scroll_ratio = (geom.history.saturating_sub(geom.offset)) as f32 / geom.history.max(1) as f32;
+                                    view.scrollbar_drag = Some(crate::view::ScrollbarDragState {
+                                        pane_ix: pane_down,
+                                        start_mouse_y: my,
+                                        start_scroll_ratio: scroll_ratio,
+                                        travel_space: geom.travel_space,
+                                        history: geom.history,
+                                    });
+                                }
+                                view.scrollbar_opacity = 1.0;
+                                view.last_scroll_time = std::time::Instant::now();
+                                cx.notify();
+                            }
+                            view.mouse_down_pane = None;
+                            return;
+                        }
+                    }
+
                     // Ctrl+Click opens URL at clicked grid point
                     if event.modifiers.control {
                         if let Some((pt, _)) = view.point_from_mouse(event.position, pane_down) {
@@ -581,6 +620,11 @@ impl AtlasView {
                     view.last_mouse_cell = None;
                     view.mouse_down_pane = None;
                     view.mouse_down_point = None;
+                    if view.scrollbar_drag.is_some() {
+                        view.scrollbar_drag = None;
+                        cx.notify();
+                        return;
+                    }
                     if !event.modifiers.shift {
                         if let Some(tab) = view.tabs.get(view.active) {
                             if let Some(pane) = tab.panes.get(pane_up) {
@@ -660,6 +704,57 @@ impl AtlasView {
                 }),
             )
             .on_mouse_move(cx.listener(move |view, event: &MouseMoveEvent, _window, cx| {
+                // Scrollbar dragging active
+                if let Some(ref drag) = view.scrollbar_drag {
+                    let my = f32::from(event.position.y);
+                    let delta_y = my - drag.start_mouse_y;
+                    let delta_ratio = if drag.travel_space > 0.0 {
+                        delta_y / drag.travel_space
+                    } else {
+                        0.0
+                    };
+                    let new_ratio = (drag.start_scroll_ratio + delta_ratio).clamp(0.0, 1.0);
+                    let new_offset = (drag.history as f32 * (1.0 - new_ratio)).round() as usize;
+                    let new_offset = new_offset.min(drag.history);
+
+                    if let Some(tab) = view.tabs.get(view.active) {
+                        if let Some(p) = tab.panes.get(drag.pane_ix) {
+                            let current_offset = p.session.borrow().term.renderable_content().display_offset;
+                            let diff = new_offset as i32 - current_offset as i32;
+                            if diff != 0 {
+                                p.session.borrow_mut().term.scroll_display(alacritty_terminal::grid::Scroll::Delta(diff));
+                                view.scrollbar_opacity = 1.0;
+                                view.last_scroll_time = std::time::Instant::now();
+                                cx.notify();
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // Scrollbar hover detection (wakes up indicator)
+                let hover_geom = view
+                    .tabs
+                    .get(view.active)
+                    .and_then(|tab| tab.panes.get(pane_move))
+                    .and_then(|pane| pane.session.borrow().scrollbar_geometry);
+
+                if let Some(geom) = hover_geom {
+                    let mx = f32::from(event.position.x);
+                    let my = f32::from(event.position.y);
+                    if mx >= geom.bounds_right - 16.0
+                        && mx <= geom.bounds_right + 4.0
+                        && my >= geom.bounds_top
+                        && my <= geom.bounds_bottom
+                    {
+                        if view.scrollbar_opacity < 0.99 {
+                            view.scrollbar_opacity = 1.0;
+                            view.last_scroll_time = std::time::Instant::now();
+                            cx.notify();
+                        }
+                    }
+                }
+
                 if !event.modifiers.shift {
                     if let Some(tab) = view.tabs.get(view.active) {
                         if let Some(pane) = tab.panes.get(pane_move) {
@@ -897,6 +992,8 @@ impl AtlasView {
                 cursor_alpha,
                 subpixel_y,
                 scrollbar_opacity: self.scrollbar_opacity,
+                scrollbar_dragging: self.scrollbar_drag.as_ref().map_or(false, |d| d.pane_ix == pane_ix),
+                scrollbar_mode: self.app_settings.scrollbar_mode.clone(),
                 hovered_link: self.hovered_link.as_ref().and_then(|(p, hl)| {
                     if *p == pane_ix {
                         Some(hl.clone())

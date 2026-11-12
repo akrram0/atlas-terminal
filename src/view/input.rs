@@ -10,7 +10,8 @@ use crate::config::{
     default_shortcuts, format_keystroke_chord, ACTION_CLEAR_SCROLLBACK,
     ACTION_CLOSE_TAB, ACTION_COPY, ACTION_FIND, ACTION_FOCUS_NEXT_PANE, ACTION_FOCUS_PREV_PANE,
     ACTION_FULLSCREEN, ACTION_NEW_TAB, ACTION_NEW_WINDOW, ACTION_NEXT_TAB, ACTION_OPEN_SETTINGS, ACTION_OPEN_URL_PICKER,
-    ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
+    ACTION_PALETTE, ACTION_PASTE, ACTION_PREV_TAB, ACTION_SCROLL_LINE_DOWN, ACTION_SCROLL_LINE_UP,
+    ACTION_SCROLL_PAGE_DOWN, ACTION_SCROLL_PAGE_UP,
     ACTION_SCROLL_TO_BOTTOM, ACTION_SCROLL_TO_TOP, ACTION_SELECT_ALL, ACTION_SPLIT_HORIZONTAL,
     ACTION_SPLIT_VERTICAL, ACTION_TOGGLE_MAXIMIZE, ACTION_TOGGLE_SIDEBAR, ACTION_TOGGLE_THEME,
     ACTION_NEXT_THEME, ACTION_PREV_THEME, ACTION_TOGGLE_DARK_LIGHT, ACTION_ZOOM_IN,
@@ -963,6 +964,22 @@ impl AtlasView {
                 }
                 if chord == self.get_shortcut(ACTION_SELECT_ALL) {
                     self.select_all_viewport(cx);
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_SCROLL_LINE_UP)
+                    || chord == "ctrl+shift+up"
+                    || chord == "shift+up"
+                {
+                    self.scroll(1);
+                    cx.notify();
+                    return;
+                }
+                if chord == self.get_shortcut(ACTION_SCROLL_LINE_DOWN)
+                    || chord == "ctrl+shift+down"
+                    || chord == "shift+down"
+                {
+                    self.scroll(-1);
+                    cx.notify();
                     return;
                 }
                 if chord == self.get_shortcut(ACTION_SCROLL_PAGE_UP) {

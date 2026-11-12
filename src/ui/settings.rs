@@ -1386,6 +1386,29 @@ impl AtlasView {
             cx,
         );
 
+        let scrollbar_options = vec![
+            ("always".to_string(), "Always Visible".to_string()),
+            ("auto".to_string(), "Auto-Hide".to_string()),
+            ("hidden".to_string(), "Hidden".to_string()),
+        ];
+        let scrollbar_mode_ctrl = segmented_control(
+            "scrollbar-mode-ctrl",
+            scrollbar_options,
+            &self.app_settings.scrollbar_mode,
+            theme,
+            |mode, view, cx| {
+                view.app_settings.scrollbar_mode = mode;
+                if view.app_settings.scrollbar_mode == "always" {
+                    view.scrollbar_opacity = 1.0;
+                } else if view.app_settings.scrollbar_mode == "hidden" {
+                    view.scrollbar_opacity = 0.0;
+                }
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         let copy_on_select_ctrl = toggle_pill(
             341,
             self.app_settings.copy_on_select,
@@ -1436,6 +1459,7 @@ impl AtlasView {
             .child(
                 card()
                     .child(section_header("SCROLL SENSITIVITY & PHYSICS"))
+                    .child(setting_row("Scrollbar Visibility", Some("Choose whether the scrollbar is always visible, fades out automatically when idle, or hidden"), scrollbar_mode_ctrl, false))
                     .child(setting_row("Scroll Speed Multiplier", Some("Controls lines scrolled per mouse wheel notch. Balanced (1.0x) eliminates runaway speed"), scroll_speed_ctrl, false))
                     .child(setting_row("Scrollback History", Some("Maximum stored buffer lines per pane"), scroll_ctrl, true)),
             )
@@ -3322,6 +3346,7 @@ impl AtlasView {
                 ("Active Typeface", "Font & Caret", SettingsTab::Typography, "Hardware-accelerated monospace font"),
                 ("Font Size & Line Height", "Font & Caret", SettingsTab::Typography, "Glyph dimension and vertical spacing proportions"),
                 ("Caret Shape & Cursor Breathing", "Font & Caret", SettingsTab::Typography, "Beam, block, underline cursor styles and sine pulse"),
+                ("Scrollbar Visibility", "Scrolling & Mouse", SettingsTab::Scrolling, "Always visible, auto-hide, or hidden interactive scrollbar"),
                 ("Scroll Speed Multiplier", "Scrolling & Mouse", SettingsTab::Scrolling, "Tame scroll velocity: Precision 0.6x, Balanced 1.0x, Fast 1.5x"),
                 ("Scrollback History", "Scrolling & Mouse", SettingsTab::Scrolling, "Max lines preserved in RAM per tab"),
                 ("Copy on Select", "Scrolling & Mouse", SettingsTab::Scrolling, "Automatically copy highlighted terminal text to clipboard"),

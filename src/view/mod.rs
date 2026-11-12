@@ -65,6 +65,15 @@ pub enum UpdateDownloadState {
     },
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScrollbarDragState {
+    pub pane_ix: usize,
+    pub start_mouse_y: f32,
+    pub start_scroll_ratio: f32,
+    pub travel_space: f32,
+    pub history: usize,
+}
+
 pub struct AtlasView {
     pub(crate) tabs: Vec<Tab>,
     pub(crate) active: usize,
@@ -140,6 +149,7 @@ pub struct AtlasView {
     pub(crate) scroll_anim: Option<(Rc<RefCell<Session>>, f32, f32)>,
     /// Floating auto-hiding scrollbar opacity and activity timer.
     pub(crate) scrollbar_opacity: f32,
+    pub(crate) scrollbar_drag: Option<ScrollbarDragState>,
     pub(crate) last_scroll_time: std::time::Instant,
     /// Dynamic Island HUD opacity (0.0 to 1.0) and hover state
     pub(crate) island_hud_opacity: f32,
@@ -345,6 +355,7 @@ impl AtlasView {
             profile_closing: false,
             scroll_anim: None,
             scrollbar_opacity: 0.0,
+            scrollbar_drag: None,
             last_scroll_time: std::time::Instant::now(),
             island_hud_opacity: 0.0,
             island_hud_hovered: false,
@@ -581,18 +592,30 @@ impl AtlasView {
                         }
                     }
 
-                    // 4. Floating auto-hiding scrollbar fade
-                    let scroll_idle = view.last_scroll_time.elapsed().as_millis();
-                    if scroll_idle < 650 {
-                        active_motion = true;
+                    // 4. Floating scrollbar fade / visibility
+                    if view.app_settings.scrollbar_mode == "always" || view.scrollbar_drag.is_some() {
                         if view.scrollbar_opacity < 1.0 {
-                            view.scrollbar_opacity = (view.scrollbar_opacity + dt * 10.0).min(1.0);
+                            view.scrollbar_opacity = 1.0;
                             needs_paint = true;
                         }
-                    } else if view.scrollbar_opacity > 0.0 {
-                        active_motion = true;
-                        view.scrollbar_opacity = (view.scrollbar_opacity - dt * 3.5).max(0.0);
-                        needs_paint = true;
+                    } else if view.app_settings.scrollbar_mode == "hidden" {
+                        if view.scrollbar_opacity > 0.0 {
+                            view.scrollbar_opacity = 0.0;
+                            needs_paint = true;
+                        }
+                    } else {
+                        let scroll_idle = view.last_scroll_time.elapsed().as_millis();
+                        if scroll_idle < 650 {
+                            active_motion = true;
+                            if view.scrollbar_opacity < 1.0 {
+                                view.scrollbar_opacity = (view.scrollbar_opacity + dt * 10.0).min(1.0);
+                                needs_paint = true;
+                            }
+                        } else if view.scrollbar_opacity > 0.0 {
+                            active_motion = true;
+                            view.scrollbar_opacity = (view.scrollbar_opacity - dt * 3.5).max(0.0);
+                            needs_paint = true;
+                        }
                     }
 
                     // 4b. Dynamic Island HUD smooth fade: stays awake when hovered while already visible
@@ -1467,14 +1490,40 @@ impl Render for AtlasView {
                         cx.notify();
                     }
                 }
+                if let Some(ref drag) = view.scrollbar_drag {
+                    let my = f32::from(event.position.y);
+                    let delta_y = my - drag.start_mouse_y;
+                    let delta_ratio = if drag.travel_space > 0.0 {
+                        delta_y / drag.travel_space
+                    } else {
+                        0.0
+                    };
+                    let new_ratio = (drag.start_scroll_ratio + delta_ratio).clamp(0.0, 1.0);
+                    let new_offset = (drag.history as f32 * (1.0 - new_ratio)).round() as usize;
+                    let new_offset = new_offset.min(drag.history);
+
+                    if let Some(tab) = view.tabs.get(view.active) {
+                        if let Some(p) = tab.panes.get(drag.pane_ix) {
+                            let current_offset = p.session.borrow().term.renderable_content().display_offset;
+                            let diff = new_offset as i32 - current_offset as i32;
+                            if diff != 0 {
+                                p.session.borrow_mut().term.scroll_display(alacritty_terminal::grid::Scroll::Delta(diff));
+                                view.scrollbar_opacity = 1.0;
+                                view.last_scroll_time = std::time::Instant::now();
+                                cx.notify();
+                            }
+                        }
+                    }
+                }
             }))
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|view, _: &MouseUpEvent, _window, cx| {
-                    let had_drag = view.tab_drag_candidate.is_some() || view.tab_is_dragging || view.tab_drag_origin.is_some();
+                    let had_drag = view.tab_drag_candidate.is_some() || view.tab_is_dragging || view.tab_drag_origin.is_some() || view.scrollbar_drag.is_some();
                     view.tab_drag_candidate = None;
                     view.tab_is_dragging = false;
                     view.tab_drag_origin = None;
+                    view.scrollbar_drag = None;
                     if view.active_split_resize.is_some() {
                         view.active_split_resize = None;
                     }

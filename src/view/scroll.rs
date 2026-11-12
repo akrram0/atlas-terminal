@@ -11,6 +11,8 @@ impl AtlasView {
     /// Keyboard paging: instant, and it wins over any in-flight wheel easing.
     pub(crate) fn scroll(&mut self, lines: i32) {
         self.scroll_anim = None;
+        self.scrollbar_opacity = 1.0;
+        self.last_scroll_time = std::time::Instant::now();
         if let Some(pane) = self.active_pane_mut() {
             pane.cursor_pos = Some(pane.cursor_target);
             pane.session

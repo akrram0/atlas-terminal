@@ -30,6 +30,19 @@ pub struct PlacedImage {
     pub is_alt_screen: bool,
 }
 
+/// Screen layout metrics for the floating scrollbar indicator.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ScrollbarGeometry {
+    pub bounds_right: f32,
+    pub bounds_top: f32,
+    pub bounds_bottom: f32,
+    pub thumb_top: f32,
+    pub thumb_height: f32,
+    pub travel_space: f32,
+    pub history: usize,
+    pub offset: usize,
+}
+
 
 /// Minimal grid dimensions for `Term`.
 pub struct TermSize {
@@ -349,6 +362,8 @@ pub struct Session {
     scrollback_limit: usize,
     /// Last painted grid layout: (left, top, cell_width, cell_height).
     pub grid_bounds: Option<(f32, f32, f32, f32)>,
+    /// Last painted scrollbar geometry for mouse drag & click hit testing.
+    pub scrollbar_geometry: Option<ScrollbarGeometry>,
     /// Highest row on the visible screen containing active text or the prompt cursor.
     pub max_active_row: usize,
     /// Active inline images anchored to the terminal scrollback grid.
@@ -722,6 +737,7 @@ impl Session {
                 pid,
                 scrollback_limit: scrollback_lines,
                 grid_bounds: None,
+                scrollbar_geometry: None,
                 max_active_row: 0,
                 placed_images: Vec::new(),
                 hud_notifications: Vec::new(),
