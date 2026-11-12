@@ -193,6 +193,7 @@ impl AtlasView {
 
                 // --- Horizontal Category Strip (Apple-Style Full-Width 2-Tier Header) ---
         let nav_items = [
+            (SettingsTab::WhatsNew, "What's New", icons::SPARKLE),
             (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance", icons::SUN),
             (SettingsTab::Typography, "Typography", icons::PEN),
@@ -205,6 +206,7 @@ impl AtlasView {
         ];
 
         let active_tab_title = match self.settings_tab {
+            SettingsTab::WhatsNew => "What's New & Release Highlights",
             SettingsTab::General => "General Preferences",
             SettingsTab::Appearance => "Appearance & Themes",
             SettingsTab::Typography => "Typography & Font Scale",
@@ -272,7 +274,19 @@ impl AtlasView {
                             })
                             .child(label),
                     )
-                    .children(if tab == SettingsTab::PixelArt {
+                    .children(if tab == SettingsTab::WhatsNew {
+                        Some(
+                            div()
+                                .px(px(4.0))
+                                .py(px(0.5))
+                                .rounded(px(3.0))
+                                .bg(if is_active { theme.accent } else { Rgba { a: 0.15, ..theme.accent } })
+                                .text_size(px(8.5))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(if is_active { rgb(0xFFFFFF) } else { theme.accent })
+                                .child("NEW"),
+                        )
+                    } else if tab == SettingsTab::PixelArt {
                         Some(
                             div()
                                 .px(px(4.0))
@@ -388,25 +402,35 @@ impl AtlasView {
         let back_btn = div()
             .id(ElementId::named_usize("settings-top-back-btn", 0))
             .h(px(28.0))
-            .px(px(9.0))
+            .px(px(8.0))
             .flex_shrink_0()
             .flex()
             .flex_row()
             .items_center()
-            .gap(px(5.0))
+            .gap(px(6.0))
             .rounded(px(6.0))
             .border_1()
             .border_color(sc_back_border)
             .bg(sc_back_bg)
             .cursor_pointer()
-            .hover(move |s| s.bg(theme.card_hover))
+            .hover(move |s| s.bg(theme.card_hover).border_color(theme.accent))
             .active(move |s| s.opacity(0.80))
-            .text_color(sc_back_fg)
-            .child(icons::icon(icons::CLOSE).size(px(11.0)))
+            .child(
+                icons::icon(icons::CLOSE)
+                    .size(px(12.0))
+                    .text_color(sc_back_fg),
+            )
             .child(
                 div()
-                    .text_size(px(11.5))
-                    .font_weight(FontWeight::MEDIUM)
+                    .px(px(4.0))
+                    .py(px(1.0))
+                    .rounded(px(3.5))
+                    .bg(if is_dark { rgba(0xFFFFFF14) } else { rgba(0x0000000C) })
+                    .border_1()
+                    .border_color(theme.hairline)
+                    .text_size(px(10.5))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(sc_back_fg)
                     .child("Esc"),
             )
             .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
@@ -3454,6 +3478,7 @@ impl AtlasView {
                 .flex()
                 .flex_col()
                 .child(match self.settings_tab {
+                    SettingsTab::WhatsNew => self.render_whats_new_settings_page(theme, is_dark, cx),
                     SettingsTab::General => general_view.into_any_element(),
                     SettingsTab::Appearance => appearance_view.into_any_element(),
                     SettingsTab::Typography => typography_view.into_any_element(),
@@ -3482,6 +3507,7 @@ impl AtlasView {
                         format!("Search Results for \"{}\"", self.settings_search_query)
                     } else {
                         match self.settings_tab {
+                            SettingsTab::WhatsNew => "Release Highlights".to_string(),
                             SettingsTab::General => "General Preferences".to_string(),
                             SettingsTab::Appearance => "Appearance & Blur".to_string(),
                             SettingsTab::Typography => "Font & Caret".to_string(),
@@ -3502,6 +3528,7 @@ impl AtlasView {
                         "Click any matching item to jump directly to its category.".to_string()
                     } else {
                         match self.settings_tab {
+                            SettingsTab::WhatsNew => "Explore new capabilities, performance upgrades, and release highlights in Atlas Terminal.".to_string(),
                             SettingsTab::General => "Configure default shell, startup working directory, and execution safety.".to_string(),
                             SettingsTab::Appearance => "Fluent acrylic glass translucency, color mode, and curated terminal themes.".to_string(),
                             SettingsTab::Typography => "Monospace typeface rendering, vertical cell line height, and cursor dynamics.".to_string(),

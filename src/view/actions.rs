@@ -747,6 +747,7 @@ impl AtlasView {
         if self.settings_open {
             self.settings_tab_open = true;
             self.settings_nav_scroll = match self.settings_tab {
+                crate::config::SettingsTab::WhatsNew => 0.0,
                 crate::config::SettingsTab::General | crate::config::SettingsTab::Appearance => 0.0,
                 crate::config::SettingsTab::Typography => 0.0,
                 crate::config::SettingsTab::Scrolling => 70.0,

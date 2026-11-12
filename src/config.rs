@@ -224,6 +224,7 @@ pub fn pretty_shortcut(chord: &str) -> String {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SettingsTab {
+    WhatsNew,
     General,
     Appearance,
     Typography,
@@ -238,6 +239,7 @@ pub enum SettingsTab {
 impl SettingsTab {
     pub fn as_str(&self) -> &'static str {
         match self {
+            Self::WhatsNew => "whats_new",
             Self::General => "general",
             Self::Appearance => "appearance",
             Self::Typography => "typography",
@@ -252,6 +254,7 @@ impl SettingsTab {
 
     pub fn from_str_name(s: &str) -> Self {
         match s.to_lowercase().as_str() {
+            "whats_new" | "whatsnew" | "whatnew" | "whats-new" | "changelog" | "added" | "new" => Self::WhatsNew,
             "appearance" | "themes" => Self::Appearance,
             "typography" | "font" | "caret" => Self::Typography,
             "scrolling" | "scroll" | "mouse" => Self::Scrolling,
@@ -594,12 +597,14 @@ mod tests {
     #[test]
     fn test_settings_tab_string_conversion() {
         let tabs = [
+            SettingsTab::WhatsNew,
             SettingsTab::General,
             SettingsTab::Appearance,
             SettingsTab::Typography,
             SettingsTab::Scrolling,
             SettingsTab::Window,
             SettingsTab::Tools,
+            SettingsTab::PixelArt,
             SettingsTab::Shortcuts,
             SettingsTab::Updates,
         ];
