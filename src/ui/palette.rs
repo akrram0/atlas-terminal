@@ -123,6 +123,7 @@ pub enum Command {
     FindInTerminal,
     ToggleSidebar,
     Fullscreen,
+    WhatsNew,
 }
 
 /// Action to execute from the palette (a built-in command, shell, recent dir, or opening a detected URL).
@@ -192,6 +193,7 @@ pub fn command_subtitle(cmd: Command) -> &'static str {
         Command::FontDec => "Display · Decrease terminal font size",
         Command::FontReset => "Display · Reset terminal font size to default",
         Command::CheckUpdates => "System · Check GitHub for Atlas updates",
+        Command::WhatsNew => "Help · What's new in Atlas Terminal (release highlights)",
     }
 }
 
@@ -238,7 +240,7 @@ mod tests {
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
-pub const COMMANDS: [(Command, &str, &str, &str); 39] = [
+pub const COMMANDS: [(Command, &str, &str, &str); 40] = [
     (Command::NewWindow, icons::ATLAS_MARK, "New window", "Ctrl Shift N"),
     (Command::ToggleSidebar, icons::SIDEBAR_LEFT, "Toggle Sidebar / Tab Bar", "Ctrl B"),
     (Command::FindInTerminal, icons::SEARCH, "Find in terminal...", "Ctrl F"),
@@ -303,6 +305,7 @@ pub const COMMANDS: [(Command, &str, &str, &str); 39] = [
     (Command::FontDec, icons::SETTINGS, "Decrease font size", "Ctrl -"),
     (Command::FontReset, icons::SETTINGS, "Reset font size (default)", "Ctrl 0"),
     (Command::CheckUpdates, icons::REFRESH, "Check for updates", ""),
+    (Command::WhatsNew, icons::SPARKLE, "What's New in Atlas Terminal", ""),
 ];
 
 impl AtlasView {
@@ -952,6 +955,9 @@ impl AtlasView {
             Command::Fullscreen => {
                 crate::rounded_corners::window_button(1);
                 cx.notify();
+            }
+            Command::WhatsNew => {
+                self.open_whats_new(cx);
             }
         }
     }

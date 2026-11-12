@@ -542,6 +542,15 @@ impl AtlasView {
             return;
         }
 
+        // When What's New modal is open, route keystrokes to dismiss or block leaking into shell.
+        if self.whats_new_open {
+            if key == "escape" || key == "enter" || key == "space" {
+                self.close_whats_new(window, cx);
+                return;
+            }
+            return;
+        }
+
         // When search is active, route all keystrokes exclusively to the search handler.
         // Prevent any typed characters from leaking into the underlying shell PTY.
         if self.search_open {

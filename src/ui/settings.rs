@@ -1687,6 +1687,29 @@ impl AtlasView {
             cx,
         );
 
+        let whats_new_toggle_ctrl = toggle_pill(
+            351,
+            self.app_settings.show_whats_new_on_update,
+            theme,
+            |view, cx| {
+                view.app_settings.show_whats_new_on_update = !view.app_settings.show_whats_new_on_update;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let view_whats_new_btn = pill_button(
+            format!("View What's New (v{})", env!("CARGO_PKG_VERSION")),
+            371,
+            false,
+            theme,
+            |view, cx| {
+                view.open_whats_new(cx);
+            },
+            cx,
+        );
+
         let reset_defaults_btn = pill_button(
             "Reset All to Defaults".to_string(),
             380,
@@ -1853,7 +1876,9 @@ impl AtlasView {
                     .child(setting_row("Update Channel", Some("Official milestone releases or early rolling cloud builds"), channel_ctrl, false))
                     .child(setting_row("Automatic Checks", Some("Background release inspection on focus"), auto_check_ctrl, false))
                     .child(setting_row("Check Frequency", Some("Interval between update scans"), interval_ctrl, false))
-                    .child(setting_row("Manual Check", Some("Poll GitHub release channels immediately"), check_updates_btn, true)),
+                    .child(setting_row("Manual Check", Some("Poll GitHub release channels immediately"), check_updates_btn, false))
+                    .child(setting_row("Show What's New after Updates", Some("Automatically present feature highlights on first launch after a version upgrade"), whats_new_toggle_ctrl, false))
+                    .child(setting_row("Release Highlights", Some("Review visual onboarding and changelog for the current release"), view_whats_new_btn, true)),
             )
             .child({
                 let mut config_card = card()
@@ -3316,6 +3341,7 @@ impl AtlasView {
                 ("Atlas Config Editor", "Tools & Satellites", SettingsTab::Tools, "Inspect, query, modify, or edit settings.json from terminal"),
                 ("Keyboard Shortcuts Map", "Shortcuts", SettingsTab::Shortcuts, "Customize keystroke chords or review navigation bindings"),
                 ("Software Updates", "Updates & Config", SettingsTab::Updates, "Release channels, automated checks, and manual update poll"),
+                ("What's New & Release Highlights", "Updates & Config", SettingsTab::Updates, "Changelog, update onboarding modal, and new release features"),
                 ("Configuration Files", "Updates & Config", SettingsTab::Updates, "settings.json, profile.json, PowerShell $PROFILE"),
             ];
 

@@ -9,6 +9,7 @@ pub mod rename;
 pub mod settings;
 pub mod updater;
 pub mod pixel_art;
+pub mod whats_new;
 
 #[allow(unused_imports)]
 pub use animation::{

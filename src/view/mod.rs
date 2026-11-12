@@ -89,6 +89,8 @@ pub struct AtlasView {
     pub(crate) registry: ThemeRegistry,
     /// Settings page visibility (replaces the terminal sheet).
     pub(crate) settings_open: bool,
+    /// What's New release highlights modal visibility.
+    pub(crate) whats_new_open: bool,
     /// Settings tab mounted on top bar (stays until closed).
     pub(crate) settings_tab_open: bool,
     /// Workspace (new-tab profile) menu visibility.
@@ -237,7 +239,18 @@ impl AtlasView {
         let focus = cx.focus_handle();
         window.focus(&focus);
         let registry = ThemeRegistry::standard();
-        let app_settings = load_app_settings();
+        let mut app_settings = load_app_settings();
+
+        let current_pkg_version = env!("CARGO_PKG_VERSION");
+        let is_upgrade = match &app_settings.last_version_run {
+            Some(last) => last != current_pkg_version,
+            None => false,
+        };
+        let whats_new_open = is_upgrade && app_settings.show_whats_new_on_update;
+        if app_settings.last_version_run.as_deref() != Some(current_pkg_version) {
+            app_settings.last_version_run = Some(current_pkg_version.to_string());
+            crate::config::save_app_settings(&app_settings);
+        }
         let mut user_profile = crate::discovery::UserProfile::load_or_init();
         if !app_settings.default_shell.is_empty() && app_settings.default_shell != "PowerShell" {
             user_profile.default_shell = app_settings.default_shell.clone();
@@ -301,6 +314,7 @@ impl AtlasView {
             last_theme_check: std::time::Instant::now(),
             registry,
             settings_open: false,
+            whats_new_open,
             settings_tab_open: false,
             profile_menu: false,
             palette_open: false,
@@ -898,6 +912,19 @@ impl AtlasView {
         update_scheduler.detach();
 
         view
+    }
+
+    pub(crate) fn close_whats_new(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.whats_new_open = false;
+        window.focus(&self.focus);
+        cx.notify();
+    }
+
+    pub(crate) fn open_whats_new(&mut self, cx: &mut Context<Self>) {
+        self.whats_new_open = true;
+        self.settings_open = false;
+        self.palette_open = false;
+        cx.notify();
     }
 
     pub(crate) fn active_font_size(&self) -> f32 {
@@ -1499,6 +1526,19 @@ impl Render for AtlasView {
                 cx,
             ));
             root = root.child(self.rename_dialog(&theme, cx));
+        }
+        if self.whats_new_open {
+            let is_dark_mode = !theme.is_light();
+            root = root.child(crate::ui::overlay::overlay_backdrop_with_scrim(
+                4,
+                false,
+                rgba(0x00000080),
+                |view, window, cx| {
+                    view.close_whats_new(window, cx);
+                },
+                cx,
+            ));
+            root = root.child(self.render_whats_new_modal(&theme, is_dark_mode, cx));
         }
 
         // Close confirmation is topmost: it must win over every other overlay.

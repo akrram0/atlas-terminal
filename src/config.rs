@@ -347,6 +347,14 @@ pub struct AppSettingsFile {
     pub last_seen_version: Option<String>,
     #[serde(default)]
     pub skipped_version: Option<String>,
+    #[serde(default)]
+    pub last_version_run: Option<String>,
+    #[serde(default = "default_show_whats_new")]
+    pub show_whats_new_on_update: bool,
+}
+
+fn default_show_whats_new() -> bool {
+    true
 }
 
 fn default_theme_mode() -> String {
@@ -491,6 +499,8 @@ impl Default for AppSettingsFile {
             etag: None,
             last_seen_version: None,
             skipped_version: None,
+            last_version_run: None,
+            show_whats_new_on_update: true,
         }
     }
 }
@@ -608,6 +618,8 @@ mod tests {
         settings.show_startup_banner = false;
         settings.blur_enabled = false;
         settings.opacity = 0.45;
+        settings.last_version_run = Some("0.2.39".to_string());
+        settings.show_whats_new_on_update = false;
 
         let json = serde_json::to_string(&settings).unwrap();
         let loaded: AppSettingsFile = serde_json::from_str(&json).unwrap();
@@ -617,5 +629,7 @@ mod tests {
         assert_eq!(loaded.show_startup_banner, false);
         assert_eq!(loaded.blur_enabled, false);
         assert_eq!(loaded.opacity, 0.45);
+        assert_eq!(loaded.last_version_run.as_deref(), Some("0.2.39"));
+        assert_eq!(loaded.show_whats_new_on_update, false);
     }
 }
