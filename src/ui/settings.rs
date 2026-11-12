@@ -289,6 +289,9 @@ impl AtlasView {
                     })
                     .on_click(cx.listener(move |view, _: &ClickEvent, _window, cx| {
                         view.settings_tab = tab;
+                        if tab == SettingsTab::PixelArt {
+                            crate::ui::pixel_art::sync_sprites_cache(true);
+                        }
                         view.settings_scroll_pos = 0.0;
                         view.settings_scroll_target = 0.0;
                         view.settings_scroll_handle.set_offset(gpui::Point::default());
@@ -327,6 +330,7 @@ impl AtlasView {
             .child(top_nav_pills);
 
         let is_searching = !self.settings_search_query.trim().is_empty();
+        let search_query_lower = self.settings_search_query.trim().to_ascii_lowercase();
         let sc_search_bg = if is_dark { rgba(0xFFFFFF0D) } else { rgba(0x00000008) };
         let sc_search_border = if is_dark { rgba(0xFFFFFF18) } else { rgba(0x00000014) };
 
@@ -515,6 +519,14 @@ impl AtlasView {
             let preset = self.registry.preset(idx);
             if !preset.supports_dark() {
                 continue;
+            }
+            if is_searching {
+                let name = preset.dark_name().to_ascii_lowercase();
+                let desc = preset.description.to_ascii_lowercase();
+                let id = preset.id.to_ascii_lowercase();
+                if !name.contains(&search_query_lower) && !desc.contains(&search_query_lower) && !id.contains(&search_query_lower) {
+                    continue;
+                }
             }
             let is_sel = self.theme_dark_id == idx;
             let preview_theme = &preset.dark;
@@ -741,6 +753,14 @@ impl AtlasView {
             let preset = self.registry.preset(idx);
             if !preset.supports_light() {
                 continue;
+            }
+            if is_searching {
+                let name = preset.light_name().to_ascii_lowercase();
+                let desc = preset.description.to_ascii_lowercase();
+                let id = preset.id.to_ascii_lowercase();
+                if !name.contains(&search_query_lower) && !desc.contains(&search_query_lower) && !id.contains(&search_query_lower) {
+                    continue;
+                }
             }
             let is_sel = self.theme_light_id == idx;
             let preview_theme = &preset.light;
@@ -3240,8 +3260,8 @@ impl AtlasView {
         // --- Body / Content Framing ---
         // ==========================================
 
-                let is_searching = !self.settings_search_query.trim().is_empty();
-        let search_query_lower = self.settings_search_query.trim().to_lowercase();
+        let is_searching = !self.settings_search_query.trim().is_empty();
+        let search_query_lower = self.settings_search_query.trim().to_ascii_lowercase();
 
         let content_body: AnyElement = if is_searching {
             let searchable_items: &[(&'static str, &'static str, SettingsTab, &'static str)] = &[

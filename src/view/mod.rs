@@ -101,6 +101,7 @@ pub struct AtlasView {
     pub(crate) palette_index: usize,
     /// Smoothly gliding floating pill index in the command palette.
     pub(crate) palette_anim_index: f32,
+    pub(crate) palette_orig_theme: Option<(usize, usize)>,
     /// Rename-tab dialog (palette).
     pub(crate) rename_open: bool,
     pub(crate) rename_value: String,
@@ -196,7 +197,7 @@ pub struct AtlasView {
     pub(crate) sidebar_width: f32,
     pub(crate) sidebar_current_width: f32,
     pub(crate) sidebar_is_resizing: bool,
-    pub(crate) active_split_resize: Option<(u64, crate::tiling::SplitAxis, f32, f32)>,
+    pub(crate) active_split_resize: Option<(u64, crate::tiling::SplitAxis, f32, f32, f32)>,
     pub(crate) last_settings_mtime: Option<std::time::SystemTime>,
     pub(crate) user_profile: crate::discovery::UserProfile,
     pub(crate) pixel_art: crate::ui::pixel_art::PixelArtConfig,
@@ -308,6 +309,7 @@ impl AtlasView {
             palette_query: String::new(),
             palette_index: 0,
             palette_anim_index: 0.0,
+            palette_orig_theme: None,
             rename_open: false,
             rename_value: String::new(),
             pending_close_tab: None,
@@ -1421,16 +1423,17 @@ impl Render for AtlasView {
                         cx.notify();
                     }
                 }
-                if let Some((split_id, axis, start_coord, start_ratio)) = view.active_split_resize {
+                if let Some((split_id, axis, start_coord, start_ratio, container_scale)) = view.active_split_resize {
                     let current_coord = match axis {
                         crate::tiling::SplitAxis::Columns => f32::from(event.position.x),
                         crate::tiling::SplitAxis::Rows => f32::from(event.position.y),
                     };
-                    let total_span = match axis {
-                        crate::tiling::SplitAxis::Columns => 1000.0,
-                        crate::tiling::SplitAxis::Rows => 650.0,
+                    let window_span = match axis {
+                        crate::tiling::SplitAxis::Columns => f32::from(_window.viewport_size().width),
+                        crate::tiling::SplitAxis::Rows => f32::from(_window.viewport_size().height),
                     };
-                    let delta = (current_coord - start_coord) / total_span;
+                    let container_pixel_span = (window_span * container_scale.clamp(0.05, 1.0)).max(50.0);
+                    let delta = (current_coord - start_coord) / container_pixel_span;
                     let new_ratio = (start_ratio + delta).clamp(0.15, 0.85);
                     if let Some(tab) = view.tabs.get_mut(view.active) {
                         tab.tile_tree.set_split_ratio(split_id, new_ratio);

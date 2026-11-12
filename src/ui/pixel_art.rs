@@ -246,7 +246,6 @@ struct CachedSprite {
 }
 
 static SPRITES_CACHE: RwLock<Option<HashMap<String, CachedSprite>>> = RwLock::new(None);
-static LAST_DISK_CHECK: RwLock<Option<std::time::Instant>> = RwLock::new(None);
 
 fn decode_gif(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<DecodedSpriteAnimation> {
     use image::codecs::gif::GifDecoder;
@@ -408,20 +407,14 @@ fn decode_png(id: String, name: String, path: PathBuf, bytes: &[u8]) -> Option<D
 }
 
 /// Ensures sprites from `~/.config/atlas/pixel_art/` are synced into memory.
-/// Only reads and decodes files that are new or whose file size / mtime changed on disk.
+/// ZERO disk I/O on UI thread: only scans when uninitialized (`None`) or when explicitly forced (`force == true`).
 pub fn sync_sprites_cache(force: bool) {
     if !force {
-        if let Ok(guard) = LAST_DISK_CHECK.read() {
-            if let Some(instant) = *guard {
-                if instant.elapsed().as_secs() < 4 {
-                    return;
-                }
+        if let Ok(guard) = SPRITES_CACHE.read() {
+            if guard.is_some() {
+                return; // Already initialized; zero disk I/O in UI render frames!
             }
         }
-    }
-
-    if let Ok(mut guard) = LAST_DISK_CHECK.write() {
-        *guard = Some(std::time::Instant::now());
     }
 
     let dir = custom_sprites_dir();

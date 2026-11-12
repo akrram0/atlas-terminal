@@ -80,7 +80,7 @@ impl PaletteCategory {
 }
 
 /// Commands offered by the palette.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum Command {
     NewWindow,
@@ -126,7 +126,7 @@ pub enum Command {
 }
 
 /// Action to execute from the palette (a built-in command, shell, recent dir, or opening a detected URL).
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaletteAction {
     Command(Command),
     #[allow(dead_code)]
@@ -136,10 +136,11 @@ pub enum PaletteAction {
     #[allow(dead_code)]
     OpenRecentDirectory(PathBuf),
     RescanEnvironment,
+    SelectTheme(usize),
 }
 
 /// A structured palette item displayed in the Antigravity-style categorized list.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaletteItem {
     pub action: PaletteAction,
     pub category: PaletteCategory,
@@ -227,6 +228,13 @@ mod tests {
             assert!(!sub.is_empty(), "command subtitle must not be empty");
         }
     }
+
+    #[test]
+    fn test_palette_action_theme_equality() {
+        let action = PaletteAction::SelectTheme(3);
+        assert_eq!(action, PaletteAction::SelectTheme(3));
+        assert_ne!(action, PaletteAction::SelectTheme(4));
+    }
 }
 
 /// Palette entries: command, vector icon path, label, shortcut hint.
@@ -302,6 +310,7 @@ impl AtlasView {
         self.user_profile.verify_installed();
         self.palette_open = true;
         self.palette_closing = false;
+        self.palette_orig_theme = Some((self.theme_dark_id, self.theme_light_id));
         self.palette_category = PaletteCategory::All;
         self.palette_category_menu_open = false;
         self.palette_query.clear();
@@ -321,6 +330,23 @@ impl AtlasView {
         }
         self.palette_closing = true;
         self.palette_category_menu_open = false;
+
+        // If a theme was previewed but never confirmed with Enter, revert to original theme
+        if let Some((orig_dark, orig_light)) = self.palette_orig_theme.take() {
+            let is_light = match self.theme_mode.as_str() {
+                "light" => true,
+                "dark" => false,
+                _ => crate::theme::is_system_light_mode(),
+            };
+            if is_light {
+                if self.theme_light_id != orig_light {
+                    self.set_light_theme(orig_light, cx);
+                }
+            } else if self.theme_dark_id != orig_dark {
+                self.set_dark_theme(orig_dark, cx);
+            }
+        }
+
         self.focus_main(window);
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -499,6 +525,30 @@ impl AtlasView {
             });
         }
 
+        // 4. Themes (Direct theme selection & live preview)
+        let is_light = match self.theme_mode.as_str() {
+            "light" => true,
+            "dark" => false,
+            _ => crate::theme::is_system_light_mode(),
+        };
+        for (idx, preset) in self.registry.presets().iter().enumerate() {
+            if is_light && !preset.supports_light() {
+                continue;
+            }
+            if !is_light && !preset.supports_dark() {
+                continue;
+            }
+            let name = if is_light { preset.light_name() } else { preset.dark_name() };
+            all_items.push(PaletteItem {
+                action: PaletteAction::SelectTheme(idx),
+                category: PaletteCategory::Commands,
+                icon: icons::SLIDERS,
+                title: format!("Theme: {}", name),
+                subtitle: format!("Appearance · {}", preset.description),
+                shortcut_or_badge: if is_light { "Light Theme".to_string() } else { "Dark Theme".to_string() },
+            });
+        }
+
         // Filter by category
         let filtered_by_category: Vec<PaletteItem> = if self.palette_category == PaletteCategory::All {
             all_items
@@ -587,12 +637,14 @@ impl AtlasView {
             "up" => {
                 self.palette_index = self.palette_index.saturating_sub(1);
                 self.scroll_palette_to_active();
+                self.preview_palette_theme_if_selected(cx);
                 cx.notify();
             }
             "down" => {
                 let last = self.palette_matches().len().saturating_sub(1);
                 self.palette_index = (self.palette_index + 1).min(last);
                 self.scroll_palette_to_active();
+                self.preview_palette_theme_if_selected(cx);
                 cx.notify();
             }
             "backspace" => {
@@ -600,6 +652,7 @@ impl AtlasView {
                     self.palette_index = 0;
                     self.palette_anim_index = 0.0;
                     self.palette_scroll_handle.set_offset(gpui::Point::default());
+                    self.preview_palette_theme_if_selected(cx);
                 }
                 cx.notify();
             }
@@ -629,8 +682,30 @@ impl AtlasView {
                         self.palette_index = 0;
                         self.palette_anim_index = 0.0;
                         self.palette_scroll_handle.set_offset(gpui::Point::default());
+                        self.preview_palette_theme_if_selected(cx);
                         cx.notify();
                     }
+                }
+            }
+        }
+    }
+
+    /// Previews the currently selected palette theme live in the background without committing.
+    fn preview_palette_theme_if_selected(&mut self, cx: &mut Context<Self>) {
+        let matches = self.palette_matches();
+        if let Some(item) = matches.get(self.palette_index) {
+            if let PaletteAction::SelectTheme(theme_idx) = item.action {
+                let is_light = match self.theme_mode.as_str() {
+                    "light" => true,
+                    "dark" => false,
+                    _ => crate::theme::is_system_light_mode(),
+                };
+                if is_light {
+                    if self.theme_light_id != theme_idx {
+                        self.set_light_theme(theme_idx, cx);
+                    }
+                } else if self.theme_dark_id != theme_idx {
+                    self.set_dark_theme(theme_idx, cx);
                 }
             }
         }
@@ -643,6 +718,25 @@ impl AtlasView {
         }
         match action {
             PaletteAction::Command(command) => self.run_command(command, window, cx),
+            PaletteAction::SelectTheme(theme_idx) => {
+                let is_light = match self.theme_mode.as_str() {
+                    "light" => true,
+                    "dark" => false,
+                    _ => crate::theme::is_system_light_mode(),
+                };
+                if is_light {
+                    self.set_light_theme(theme_idx, cx);
+                } else {
+                    self.set_dark_theme(theme_idx, cx);
+                }
+                // Confirmed! Clear backup so it is kept permanently
+                self.palette_orig_theme = None;
+                self.sync_and_save_settings();
+                let preset = self.registry.preset(theme_idx);
+                let name = if is_light { preset.light_name() } else { preset.dark_name() };
+                self.show_update_toast(format!("Applied theme '{}'", name), true, cx);
+                self.focus_main(window);
+            }
             PaletteAction::OpenUrl(url) => {
                 crate::url::open_url(&url);
                 self.focus_main(window);

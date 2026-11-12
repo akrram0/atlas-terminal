@@ -80,6 +80,8 @@ impl AtlasView {
                     theme,
                     is_translucent,
                     active_bg,
+                    1.0,
+                    1.0,
                     cx,
                 ))
                 .into_any_element()
@@ -95,6 +97,8 @@ impl AtlasView {
         theme: &Theme,
         is_translucent: bool,
         active_bg: Rgba,
+        scale_w: f32,
+        scale_h: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match node {
@@ -133,15 +137,21 @@ impl AtlasView {
                     SplitAxis::Columns => {
                         let divider = div()
                             .id(ElementId::named_usize("split-divider-v", split_id as usize))
-                            .w(px(div_size))
+                            .w(px(8.0_f32.max(div_size)))
                             .h(relative(1.0))
                             .flex_none()
                             .cursor_col_resize()
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(div_size * 0.5))
-                            .hover(move |s| s.bg(Rgba { a: 0.60, ..tb_divider.accent }))
+                            .hover(move |s| s.bg(Rgba { a: 0.15, ..tb_divider.accent }))
+                            .child(
+                                div()
+                                    .w(px(div_size))
+                                    .h(relative(1.0))
+                                    .rounded(px(div_size * 0.5))
+                                    .bg(theme.hairline)
+                            )
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
@@ -150,6 +160,7 @@ impl AtlasView {
                                         SplitAxis::Columns,
                                         f32::from(event.position.x),
                                         split_ratio,
+                                        scale_w,
                                     ));
                                     cx.notify();
                                 }),
@@ -177,6 +188,8 @@ impl AtlasView {
                                         theme,
                                         is_translucent,
                                         active_bg,
+                                        scale_w * split_ratio,
+                                        scale_h,
                                         cx,
                                     )),
                             )
@@ -195,6 +208,8 @@ impl AtlasView {
                                         theme,
                                         is_translucent,
                                         active_bg,
+                                        scale_w * (1.0 - split_ratio),
+                                        scale_h,
                                         cx,
                                     )),
                             )
@@ -203,15 +218,21 @@ impl AtlasView {
                     SplitAxis::Rows => {
                         let divider = div()
                             .id(ElementId::named_usize("split-divider-h", split_id as usize))
-                            .h(px(div_size))
+                            .h(px(8.0_f32.max(div_size)))
                             .w(relative(1.0))
                             .flex_none()
                             .cursor_row_resize()
                             .flex()
                             .items_center()
                             .justify_center()
-                            .rounded(px(div_size * 0.5))
-                            .hover(move |s| s.bg(Rgba { a: 0.60, ..tb_divider.accent }))
+                            .hover(move |s| s.bg(Rgba { a: 0.15, ..tb_divider.accent }))
+                            .child(
+                                div()
+                                    .h(px(div_size))
+                                    .w(relative(1.0))
+                                    .rounded(px(div_size * 0.5))
+                                    .bg(theme.hairline)
+                            )
                             .on_mouse_down(
                                 MouseButton::Left,
                                 cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
@@ -220,6 +241,7 @@ impl AtlasView {
                                         SplitAxis::Rows,
                                         f32::from(event.position.y),
                                         split_ratio,
+                                        scale_h,
                                     ));
                                     cx.notify();
                                 }),
@@ -247,6 +269,8 @@ impl AtlasView {
                                         theme,
                                         is_translucent,
                                         active_bg,
+                                        scale_w,
+                                        scale_h * split_ratio,
                                         cx,
                                     )),
                             )
@@ -265,6 +289,8 @@ impl AtlasView {
                                         theme,
                                         is_translucent,
                                         active_bg,
+                                        scale_w,
+                                        scale_h * (1.0 - split_ratio),
                                         cx,
                                     )),
                             )

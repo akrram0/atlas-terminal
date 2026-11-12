@@ -47,6 +47,9 @@ struct CellStyle {
     bold: bool,
     italic: bool,
     underline: bool,
+    undercurl: bool,
+    is_link: bool,
+    underline_color: Option<Rgba>,
     strike: bool,
     class: CharClass,
 }
@@ -323,12 +326,20 @@ impl Element for TerminalElement {
                 let is_icon = char_class(ch) == CharClass::Icon;
                 // High-contrast, fully opaque foreground ink prevents subpixel glyph edge erosion on transparent swapchains
                 fg.a = 1.0;
+                let is_undercurl = flags.contains(Flags::UNDERCURL);
+                let is_any_underline = flags.intersects(Flags::ALL_UNDERLINES);
+                let has_underline = is_link_hovered || is_any_underline || is_undercurl;
+                let underline_color = cell.underline_color().map(|c| theme.resolve(c, false, &over));
+
                 let style = CellStyle {
                     fg,
                     bg,
                     bold: flags.contains(Flags::BOLD) && !is_icon,
                     italic: flags.contains(Flags::ITALIC) && !is_icon,
-                    underline: is_link_hovered || flags.intersects(Flags::ALL_UNDERLINES),
+                    underline: has_underline,
+                    undercurl: is_undercurl && !is_link_hovered,
+                    is_link: is_link_hovered,
+                    underline_color,
                     strike: flags.contains(Flags::STRIKEOUT),
                     class: char_class(ch),
                 };
@@ -768,15 +779,17 @@ impl Element for TerminalElement {
                     }
                     continue;
                 }
+                let is_wavy = segment.style.undercurl && !segment.style.is_link;
+                let ul_color = segment.style.underline_color.unwrap_or(segment.style.fg);
                 let text_run = TextRun {
                     len: segment.text.len(),
                     font: segment.font.clone(),
                     color: segment.style.fg.into(),
                     background_color: None,
-                    underline: segment.style.underline.then(|| UnderlineStyle {
+                    underline: (segment.style.is_link || segment.style.underline || segment.style.undercurl).then(|| UnderlineStyle {
                         thickness: px(1.0),
-                        color: Some(segment.style.fg.into()),
-                        wavy: false,
+                        color: Some(ul_color.into()),
+                        wavy: is_wavy,
                     }),
                     strikethrough: segment.style.strike.then(|| StrikethroughStyle {
                         thickness: px(1.0),

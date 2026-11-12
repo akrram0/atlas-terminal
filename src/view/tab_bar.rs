@@ -658,6 +658,7 @@ impl AtlasView {
                 .cursor_pointer()
                 .child(companion_canvas)
                 .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                    crate::ui::pixel_art::sync_sprites_cache(true);
                     view.settings_tab = crate::config::SettingsTab::PixelArt;
                     view.settings_open = true;
                     view.settings_tab_open = true;
