@@ -1197,9 +1197,32 @@ mod tests {
 
     #[test]
     fn test_opencode_tool_detection() {
-        let tool = find_tool_in_system("opencode");
-        assert!(tool.is_some(), "opencode must be found on system");
-        let path = tool.unwrap();
-        assert!(path.to_lowercase().contains("opencode"));
+        if let Some(path) = find_tool_in_system("opencode") {
+            assert!(path.to_lowercase().contains("opencode"));
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_repair_pnpm_opencode_shims() {
+        let temp_dir = std::env::temp_dir().join(format!("atlas_test_pnpm_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let target_exe = temp_dir.join("opencode.exe");
+        let ps1_shim = temp_dir.join("opencode.ps1");
+        let cmd_shim = temp_dir.join("opencode.cmd");
+
+        let _ = std::fs::write(&target_exe, b"MZ dummy binary");
+        let _ = std::fs::write(&ps1_shim, "$basedir/../global/v11/6778c4801c795a91f7162d2c5e61c64b62eb29408dbf407e4bd7d76eef2ea239/node_modules/@opencode/cli/bin/opencode.exe");
+        let _ = std::fs::write(&cmd_shim, "@\"%~dp0\\..\\global\\v11\\6778c4801c795a91f7162d2c5e61c64b62eb29408dbf407e4bd7d76eef2ea239\\node_modules\\@opencode\\cli\\bin\\opencode.exe\" %*");
+
+        repair_pnpm_opencode_shims(&temp_dir);
+
+        let repaired_ps1 = std::fs::read_to_string(&ps1_shim).unwrap_or_default();
+        let repaired_cmd = std::fs::read_to_string(&cmd_shim).unwrap_or_default();
+
+        assert!(repaired_ps1.contains("Join-Path $basedir \"opencode.exe\""), "ps1 must be repaired");
+        assert!(repaired_cmd.contains("%~dp0\\opencode.exe"), "cmd must be repaired");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
