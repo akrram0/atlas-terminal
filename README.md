@@ -1,244 +1,152 @@
 <p align="center">
-  <img src="assets/app-icon.png" alt="Atlas Terminal Logo" width="120" height="120">
+  <img src="assets/app-icon.png" alt="Atlas Terminal Logo" width="100" height="100">
 </p>
 
 <h1 align="center">Atlas Terminal</h1>
 
 <p align="center">
-  <strong>The fastest, most aesthetic GPU-accelerated terminal for Windows.</strong>
+  <strong>Fast, aesthetic GPU-accelerated terminal for Windows.</strong><br>
+  DirectX-accelerated · Native Windows 11 Acrylic Blur · Seamless Tabs & Splits · Zero Webview / Electron
 </p>
 
 <p align="center">
-  <em>DirectX-accelerated via GPUI · Ultra-Smooth Native Motion · Zero Webview / Electron · Restrained Apple/macOS Aesthetic · iTerm2 Inline Graphics · Built-in Developer Satellites Suite</em>
-</p>
-
-<p align="center">
-  <a href="https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml"><img src="https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml/badge.svg" alt="CI & Release Pipeline"></a>
-  <a href="https://github.com/akrram0/atlas-terminal/releases/latest"><img src="https://img.shields.io/github/v/release/akrram0/atlas-terminal?color=FF4F7B&logo=github" alt="Latest Release"></a>
-  <img src="https://img.shields.io/badge/Windows-11%20%7C%2010-0078D6?logo=windows&logoColor=white" alt="Windows 11">
-  <img src="https://img.shields.io/badge/Rust-stable-000000?logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/Engine-GPUI%20DirectX-7C3AED" alt="GPUI">
-  <img src="https://img.shields.io/badge/Display-DirectX%20Accelerated-success" alt="DirectX Accelerated">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License: MIT"></a>
+  <a href="https://github.com/akrram0/atlas-terminal/releases/latest"><img src="https://img.shields.io/github/v/release/akrram0/atlas-terminal?color=0ea5e9&label=release" alt="Latest Release"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue?logo=windows&logoColor=white" alt="Windows 10 / 11">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
+  <a href="https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml"><img src="https://github.com/akrram0/atlas-terminal/actions/workflows/native.yml/badge.svg" alt="CI Status"></a>
 </p>
 
 ---
 
-## The Vision
+## 🚀 Download & Install
 
-Terminal emulators on Windows have historically forced developers into a compromise: either sluggish Electron wrappers with bloated memory footprints, or dated, rigid Win32 console wrappers.
+Get the latest stable release for Windows (x64):
 
-**Atlas Terminal rejects that compromise.** Built from scratch in Rust on top of Zed's GPUI framework, Atlas combines raw GPU DirectX rendering with a restrained, dark-first Apple/macOS design language. Every pixel, quad, glyph, and spring animation is calculated in Rust and rasterized directly on your GPU at your display's native refresh rate with zero frame drops.
-
----
-
-## Download & Install
-
-Get the latest release for Windows (x64):
-
-| Package | Description | Link |
+| Package | Description | Download |
 | :--- | :--- | :--- |
-| **Windows Installer** | Start Menu integration, desktop shortcuts & background auto-updates | [Download `.exe`](https://github.com/akrram0/atlas-terminal/releases/latest) |
-| **Portable Archive** | Standalone zero-install archive, extract and run | [Download `.zip`](https://github.com/akrram0/atlas-terminal/releases/latest/download/atlas-terminal-windows-x64.zip) |
-| **Official Documentation** | Complete user guide, architecture specs, and shortcuts reference | [Read Docs](https://akrram0.github.io/atlas-terminal/docs/) |
-| **All Releases** | Release history, changelogs, and SHA-256 checksums | [View Releases](https://github.com/akrram0/atlas-terminal/releases) |
+| **Windows Installer (`.exe`)** | Automatic setup with Start Menu integration, desktop shortcut, and background updates | [Download Installer](https://github.com/akrram0/atlas-terminal/releases/latest) |
+| **Portable Archive (`.zip`)** | Standalone zero-install archive — extract and run anywhere | [Download Portable `.zip`](https://github.com/akrram0/atlas-terminal/releases/latest) |
 
-
----
-
-## Atlas Satellites — Subterminal Companion Tools
-
-Atlas ships with an embedded, zero-overhead developer companion suite accessible via `atlas <command>`:
-
-```powershell
-atlas tools
-```
-
-```
-SYSTEM TOOLS:
-  atlas version, -v       Rich system, GPU & runtime specification card
-  atlas info, env         Toolchain, detected shells & PTY environment audit
-  atlas theme             Inspect, list, and switch UI themes (Dark, Solarized, Tokyo Night, Nord, Catppuccin)
-  atlas config            Configuration getter, setter & direct editor
-  atlas hud, island       Dynamic Island notification & status pulse trigger
-  atlas bench             PTY throughput & 24-bit truecolor render bench
-
-DEVELOPER PRODUCTIVITY TOOLS:
-  atlas port [number]     Active listening port inspector & 1-shot process killer (e.g. atlas port 3000 -k)
-  atlas jwt [token]       Offline, privacy-safe JSON Web Token inspector & payload decoder
-  atlas qr [text/url]     Instant terminal QR code generator for URLs, WiFi, and 2FA secrets
-  atlas json, jq [filter] Colorized JSON formatter, validator, and key query selector
-  atlas diff [file1] [2]  Fast terminal diff viewer with line numbers and syntax coloring
-
-VISUAL SATELLITES:
-  atlas img, view [path]  High-speed inline image viewer (OSC 1337 GPU texture & 24-bit halfblocks)
-  atlas pick, hints       Interactive screen token extractor (URLs, Git SHAs, paths, IPs)
-  atlas ai [ask/fix]      Terminal AI companion for shell questions and command diagnostics
-```
+> Release notes, previous versions, and SHA-256 checksums are available on the [GitHub Releases page](https://github.com/akrram0/atlas-terminal/releases).
 
 ---
 
-## Key Features
+## ✨ Features at a Glance
 
-### 🏎️ Instant Speed & Fluid Motion
-- **Precision Frame Timing**: Optimizes system timer resolution at startup, ensuring immediate keystroke feedback and smooth animation.
-- **Adaptive Frame Scheduling**: Renders with ultra-low latency during active motion (scrolling, cursor gliding, tab collapsing) and steps down to consume **0% CPU** when idle.
-- **Kinetic Smooth Scroll**: Exponential decay with momentum carryover, flick velocity boost, and subpixel row interpolation for jump-free history review.
-
-### 🎨 Apple/macOS Aesthetic on Windows
-- **Restrained Visual Hierarchy**: Strict 8pt spatial grid, SF-inspired typographic hierarchy, and zero arbitrary decorative clutter.
-- **Fluent Acrylic Blur & Pure Glass**: Full-bleed frameless client area with native Windows 11 DWM Acrylic glass blur, pure transparent glass mode (0% opacity), and native DWM corner rounding.
-- **Dynamic Island HUD**: Minimalist top-bar notification capsule for real-time update pulses, shell status changes, and background alerts.
-- **Curated Themes**: Instant zero-flash switching between **Tokyo Night**, **Solarized Light/Dark**, **Catppuccin**, **Nord**, **GitHub**, and **Atlas Default**.
-
-### 🖼️ Native Inline Graphics (iTerm2 OSC 1337)
-- Renders images directly within the terminal grid without Sixel or WebViews.
-- Fully compatible with `fastfetch`, CLI tools, and shell scripts.
-- Text reflow and scrollback keep graphics 1:1 anchored to their output lines.
-
-### 📐 Seam-Free Vector Box Drawing & Prompt Precision
-- **Procedural Prompt Geometry**: Renders all box-drawing and corner characters (`U+2500..=U+257F`, including `╭`, `╰`, `─`, `│`) procedurally with hardware-accelerated vector paths rather than delegating them to monospace fonts.
-- **Dynamic Line Scaling**: Line weights scale automatically with cell dimensions so prompts remain sharp and balanced at any font size.
-- **Seamless Vector Corners**: Eliminates jagged stair-stepping and baseline drift on zoom-out. Prompts (Starship, Oh-My-Posh, Powerlevel10k, WSL) connect flawlessly without 1px gaps.
-
-### 🖱️ Modern TUI & Mouse Reporting
-- Complete SGR mouse tracking (`?1000h` / `?1006h`): click buttons, select lists, and scroll diffs inside interactive terminal applications.
-- Hold `Shift` while dragging to bypass application mouse capture for standard text selection.
-- `Ctrl + Click` to open any visible URL directly in your default browser safely in the background.
-
-### 📑 Workspaces, Tabs & Split Panes
-- Organize complex workflows with horizontal (`Alt+D`) and vertical (`Alt+Enter`) Hyprland-style split panes.
-- Instant pane maximization (`Alt+Z`) to focus on single tasks without breaking split layouts.
-- Auto-detected WSL Linux distributions (`Ubuntu`, `Debian`, `Arch`, `Fedora`, etc.) with native vector marks.
-
-### 🔍 Find in Terminal (`Ctrl+F`)
-- Floating macOS-style search bar with live buffer highlighting across the active screen and scrollback history.
-- Match stepping (<kbd>Enter</kbd> for next, <kbd>Shift</kbd>+<kbd>Enter</kbd> for previous) with live match counter (`3 of 18`).
-- Smooth viewport auto-scrolling directly to matching lines.
-
-### ⚡ Click-to-Code: Smart File Jumps (`Ctrl`+Click)
-- Click compiler errors, panic stack traces, and source coordinates (e.g. `src/main.rs:42:15`, `app.ts:18`) to jump directly to the exact file, line, and column.
-- Configurable default editor: **Auto-detect**, **VS Code** (`code --goto`), **Cursor**, **Zed**, or system default.
-- Seamlessly resolves relative file paths against the active pane's current working directory.
-
-### 🔔 Native Background Job Notifications
-- Native Windows Action Center toast alerts when long-running commands finish while Atlas is unfocused or minimized.
-- Configurable duration threshold (5s, 10s, 30s, 60s) and full toggle in Settings.
-
-### 🔍 Floating Command Palette (`Ctrl+K` / `Ctrl+Shift+P`)
-- Raycast-style instant palette with multi-word fuzzy search.
-- Launch shell profiles, split panes, and actions without touching the mouse.
-- Pre-filters visible terminal URLs for one-key link opening (`Ctrl+Shift+U`).
-
-### 🔄 Background Delta Auto-Updater
-- Silent update checks against GitHub Releases with conditional ETag validation.
-- Background asynchronous streaming downloads with real-time progress indicators.
-- Cryptographic SHA-256 validation before staging.
+- **⚡ GPU DirectX Acceleration**: Native DirectX rendering built in Rust on GPUI for instant startup (< 250ms), low-latency input, and 0% CPU consumption when idle.
+- **🎨 Windows 11 Acrylic Glass**: Native DWM Acrylic translucency, pure glass mode, and curated dark/light themes (Tokyo Night, Nord, Catppuccin, Solarized, Gruvbox, and more).
+- **📑 Tabs, Splits & Sidebar Layouts**:
+  - Horizontal splits (`Alt+D`) and vertical splits (`Alt+Enter`).
+  - Maximize single panes (`Alt+Z`) to focus without losing your layout.
+  - Choose between a horizontal top bar, a vertical sidebar (`Ctrl+B`), or borderless mode.
+- **📜 Interactive Scrollbars**: Draggable Apple-style glass scrollbars with track click-paging and full keyboard navigation (`PageUp`, `PageDown`, `Home`, `End`) for both terminal panes and the Settings view.
+- **🖼️ Inline Graphics (iTerm2 OSC 1337)**: Full support for inline graphics and `fastfetch` system logos directly within your terminal scrollback without external tools.
+- **📐 Vector Box Drawing**: Hardware-accelerated vector paths for box-drawing characters and powerline symbols (`╭`, `╰`, `─`, `│`), eliminating 1px gaps and jagged prompt lines.
+- **🔍 In-Buffer Search (`Ctrl+F`)**: Floating search bar with live buffer highlighting, match navigation (<kbd>Enter</kbd> / <kbd>Shift+Enter</kbd>), and viewport auto-scrolling.
+- **⚡ Click-to-Code (`Ctrl + Click`)**: Click file paths and compiler errors (e.g. `src/main.rs:42:15`) to open the exact line in VS Code, Zed, Cursor, or your default editor.
+- **🌐 Smart URL Launcher (`Ctrl + Click` / `Ctrl+Shift+U`)**: Open links directly in your default browser or browse active screen URLs with the keyboard link picker.
+- **⌨️ Command Palette (`Ctrl+K` / `Ctrl+Shift+P`)**: Instant Raycast-style palette with fuzzy search to switch themes, launch shells, and run actions.
+- **🔔 Background Job Notifications**: Windows Action Center notifications when long-running commands finish while the window is unfocused.
+- **🐱 Pixel Art Companions**: Optional animated pixel art sprites (White Cat, Penguin, Fox, Bat, Knight) for your top bar.
 
 ---
 
-## 📊 Measured Performance Benchmarks
+## ⌨️ Essential Keyboard Shortcuts
 
-All metrics below are empirical measurements taken on **Windows 11 Pro 64-bit** (AMD Ryzen 5 / Intel Core processor, NVMe SSD). You can reproduce and verify these tests directly on your own system using the included benchmark harness:
-
-```powershell
-irm https://raw.githubusercontent.com/akrram0/atlas-terminal/main/scripts/benchmark.ps1 | iex
-
-# Or run the built-in PTY throughput benchmark inside Atlas:
-atlas bench
-```
-
-| Metric | Atlas Terminal | Windows Terminal | Alacritty | WezTerm | Hyper (Electron) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Cold Startup Time** | **< 250 ms** | ~470 ms | ~210 ms | ~390 ms | ~1,950 ms |
-| **Memory Usage (Idle)** | **~60 MB** | ~90 MB | ~55 MB | ~135 MB | ~420 MB |
-| **Input Latency** | **< 5 ms** | 18 – 32 ms | 7 – 12 ms | 16 – 28 ms | 45 – 85 ms |
-| **Streaming Speed** | **~20 MB/s** | ~10 MB/s | ~22 MB/s | ~9 MB/s | ~2 MB/s |
-| **Animation & Motion** | **Ultra Smooth** | Standard | Standard | Variable | Throttled |
-| **Idle CPU Usage** | **0.0%** | < 0.2% | 0.0% | 0.1% – 0.5% | 1.2% – 3.5% |
-
----
-
-## Essential Shortcuts
-
+### Tabs & Panes
 | Shortcut | Action |
 | :--- | :--- |
-| `Ctrl+T` | New Tab (Default Shell) |
-| `Alt+W` / `Ctrl+W` | Close Active Pane / Tab |
-| `Alt+Enter` | Split Pane Vertically (Columns) |
-| `Alt+D` | Split Pane Horizontally (Rows) |
-| `Alt+Space` | Toggle Split Orientation (Columns ↔ Rows) |
-| `Alt+Arrows` / `Alt+H,J,K,L` | Spatial Directional Navigation |
-| `Alt+Shift+Arrows` | Resize Active Split (5%) |
-| `Alt+Z` | Toggle Maximize / Restore Active Pane |
-| `Alt+T` | Cycle Theme Preset |
-| `Ctrl+Shift+1` … `5` | Quick Launch PowerShell / WSL / CMD / Git Bash / OpenCode |
-| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette / Shell Switcher |
-| `Ctrl+F` | Find in Terminal (Search & Match Navigation) |
-| `Ctrl+B` | Toggle Sidebar / Tab Bar |
+| `Ctrl+T` | Open New Tab (Default Shell Profile) |
+| `Ctrl+W` / `Alt+W` | Close Active Pane / Tab |
+| `Alt+Enter` | Split Pane Vertically (Side by Side) |
+| `Alt+D` | Split Pane Horizontally (Top / Bottom) |
+| `Alt+Space` | Toggle Split Orientation (Horizontal ↔ Vertical) |
+| `Alt+Arrows` / `Alt+H/J/K/L` | Navigate Between Split Panes |
+| `Alt+Shift+Arrows` | Resize Active Split Pane |
+| `Alt+Z` | Maximize / Restore Active Split Pane |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / Previous Tab |
-| `Ctrl+1` … `Ctrl+9` | Direct Jump to Tab 1 … 9 |
-| `Ctrl + Click` | Open Hovered URL or Click-to-Code File Jump |
-| `Ctrl+Shift+U` | Keyboard Link Picker |
+| `Ctrl+1` … `Ctrl+9` | Direct Jump to Tab 1–9 |
+| `Ctrl+B` | Toggle Sidebar / Top Tab Bar |
+
+### Navigation & Actions
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl+K` / `Ctrl+Shift+P` | Open Command Palette / Shell Switcher |
+| `Ctrl+F` | Find / Search in Terminal Buffer |
 | `Ctrl+,` | Open Settings Dashboard |
+| `Esc` | Close Settings / Search / Palette |
+| `Ctrl + Click` | Open URL or Jump to Code in Editor |
+| `Ctrl+Shift+U` | Open Keyboard Link Picker |
+| `Alt+T` | Cycle Theme Preset |
+| `Ctrl+Shift+L` | Toggle Dark / Light Theme Mode |
 | `F11` | Toggle Borderless Fullscreen |
-
-> For the complete documentation, guides, and keyboard shortcut map, visit the [Atlas Terminal Documentation](https://akrram0.github.io/atlas-terminal/docs/).
-
----
-
-## Architecture & Technology
-
-```
-┌────────────────────────────────────────────────────────┐
-│                   Atlas Terminal UI                    │
-│  (Tabs · Command Palette · Settings · Custom Titlebar) │
-├────────────────────────────────────────────────────────┤
-│                      GPUI 0.2.2                        │
-│     (DirectX DirectComposition · DirectWrite · GPU Native) │
-├──────────────────────────┬─────────────────────────────┤
-│   alacritty_terminal     │        portable-pty         │
-│  (VTE parser, cell grid, │   (Windows ConPTY process   │
-│   SGR mouse, scrollback) │       reader & channels)    │
-├──────────────────────────┴─────────────────────────────┤
-│              image_osc (iTerm2 OSC 1337)               │
-│     (Stateful streaming interceptor & BGRA decoder)    │
-└────────────────────────────────────────────────────────┘
-```
-
-| Layer | Technology | Details |
-| :--- | :--- | :--- |
-| **Window & Rendering** | `gpui 0.2.2` | Zed's GPU framework running directly on DirectX on Windows |
-| **Terminal Core** | `alacritty_terminal 0.26` | High-speed VTE parser, cell grid, and scrollback history |
-| **PTY Layer** | `portable-pty 0.8` | Windows ConPTY integration with UTF-8 byte stream processing |
-| **Companion Tools** | `src/tools` & `src/bin/atlas.rs` | Embedded developer satellite suite (port, jwt, qr, diff, pick, img, hud) |
-| **Inline Graphics** | `image_osc` | Stateful OSC 1337 scanner + GPU-ready BGRA `gpui::RenderImage` textures |
-| **Vector Box Engine** | `src/terminal/procedural.rs` | Procedural cubic Bézier vector box drawing with dynamic stroke scaling |
-| **Async Engine** | `smol 2` | Channel synchronization between ConPTY reader thread & UI thread |
-| **Iconography** | Vector SVGs (`crate::icons`) | 100% native Solar Linear stroked vector SVGs |
-| **Typography** | Embedded Nerd Font | Bundled `SymbolsNerdFontMono-Regular.ttf` for icons, fastfetch & starship |
+| `Ctrl+Shift+1` … `5` | Quick Launch PowerShell / WSL / CMD / Git Bash / OpenCode |
 
 ---
 
-## Building from Source
+## ⚙️ Configuration
+
+Atlas Terminal can be customized through the graphical **Settings page (`Ctrl+,`)** or by editing the JSON configuration file directly.
+
+### Configuration File Path
+```text
+%USERPROFILE%\.config\atlas\settings.json
+```
+
+### Common Settings
+- **Default Shell**: `powershell`, `wsl`, `cmd`, `gitbash`, or a custom binary path.
+- **Typography**: Set custom monospace font family, font size, line height, and cursor shape (Beam, Block, Underline).
+- **Appearance**: Acrylic glass blur, background opacity (0.0 to 1.0), and tab bar position (`top`, `sidebar`, `borderless`).
+- **Scrollbar**: Set scrollbar visibility mode (`always`, `auto`, `hidden`).
+- **Default Editor**: Configures which editor is launched for `Ctrl+Click` file jumps (`code`, `zed`, `cursor`, etc.).
+
+---
+
+## 🛠️ Built-in Developer Tools (`atlas`)
+
+Atlas Terminal includes zero-overhead CLI helpers available via the `atlas` command:
+
+```powershell
+# Port Inspector — inspect listening ports or terminate stuck listeners:
+atlas port 3000
+atlas port 3000 -k
+
+# Offline JWT Inspector — inspect and decode JSON Web Tokens safely:
+atlas jwt <token>
+
+# Terminal QR Code Generator:
+atlas qr "https://github.com"
+
+# Terminal Throughput Benchmark:
+atlas bench
+
+# Inline Image Viewer:
+atlas img photo.png
+```
+
+Run `atlas tools` for the full list of available satellite commands.
+
+---
+
+## 🔨 Building from Source
 
 ### Prerequisites
-- **Windows 10 / 11** (x86_64)
-- **Rust stable toolchain** (MSVC target): `rustup default stable-x86_64-pc-windows-msvc`
+- **Windows 10 / 11 (64-bit)**
+- **Rust Toolchain**: [rustup.rs](https://rustup.rs/) (`x86_64-pc-windows-msvc` target)
 - **Git**
 
-### Build & Run
+### Build Steps
 ```powershell
-# Clone repository
+# 1. Clone repository
 git clone https://github.com/akrram0/atlas-terminal.git
 cd atlas-terminal
 
-# Run release build
+# 2. Compile and run release build
 cargo run --release
 ```
 
 ---
 
-## License
+## 📄 License
 
 Atlas Terminal is open-source software licensed under the [MIT License](LICENSE).
