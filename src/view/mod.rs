@@ -1768,4 +1768,25 @@ mod tests {
         assert_eq!(active, 3);
         assert_eq!(items[active], "Tab 0");
     }
+
+    #[test]
+    fn test_escape_key_passthrough_invariants() {
+        // When no modals or overlays are open, escape resolves to 0x1b for PTY/TUI applications
+        let ks_escape = gpui::Keystroke {
+            modifiers: gpui::Modifiers::default(),
+            key: "escape".to_string(),
+            key_char: None,
+        };
+        let pty_bytes = crate::keymap::to_bytes(&ks_escape, TermMode::empty());
+        assert_eq!(pty_bytes, Some(vec![0x1b]));
+
+        // Alternative key representation
+        let ks_esc = gpui::Keystroke {
+            modifiers: gpui::Modifiers::default(),
+            key: "esc".to_string(),
+            key_char: None,
+        };
+        let pty_bytes_esc = crate::keymap::to_bytes(&ks_esc, TermMode::empty());
+        assert_eq!(pty_bytes_esc, Some(vec![0x1b]));
+    }
 }

@@ -536,8 +536,8 @@ impl AtlasView {
         // and every other keystroke is swallowed instead of reaching the shell.
         if self.pending_close_tab.is_some() || self.pending_close_window {
             match key {
-                "escape" => self.cancel_pending_close(window, cx),
-                "enter" => self.confirm_pending_close(window, cx),
+                "escape" | "esc" => self.cancel_pending_close(window, cx),
+                "enter" | "return" => self.confirm_pending_close(window, cx),
                 _ => {}
             }
             return;
@@ -545,7 +545,7 @@ impl AtlasView {
 
         // When What's New modal is open, route keystrokes to dismiss or block leaking into shell.
         if self.whats_new_open {
-            if key == "escape" || key == "enter" || key == "space" {
+            if key == "escape" || key == "esc" || key == "enter" || key == "return" || key == "space" {
                 self.close_whats_new(window, cx);
                 return;
             }
@@ -582,7 +582,7 @@ impl AtlasView {
             cx.notify();
         }
 
-        if key == "escape" {
+        if key == "escape" || key == "esc" {
             if self.search_open {
                 self.close_search(window, cx);
                 return;
@@ -606,12 +606,15 @@ impl AtlasView {
             }
             if self.profile_menu {
                 self.dismiss_profile(cx);
+                cx.notify();
+                return;
             }
             if self.update_panel_open {
                 self.dismiss_update_panel(cx);
+                cx.notify();
+                return;
             }
-            cx.notify();
-            return;
+            // Overlays checked: if none were active, fall through to terminal/shell!
         }
 
                 // Handle Settings Live Search typing
@@ -1125,7 +1128,7 @@ impl AtlasView {
         }
 
         // Escape: deselect text if active
-        if key == "escape" && !modifiers.control && !modifiers.alt && !modifiers.shift {
+        if (key == "escape" || key == "esc") && !modifiers.control && !modifiers.alt && !modifiers.shift {
             if let Some(pane) = self.active_pane() {
                 if pane.session.borrow().term.selection.is_some() {
                     pane.session.borrow_mut().clear_selection();
@@ -1219,7 +1222,7 @@ impl AtlasView {
         }
 
         // Escape: clear ghost suggestion
-        if key == "escape" && !modifiers.control && !modifiers.alt && !modifiers.shift {
+        if (key == "escape" || key == "esc") && !modifiers.control && !modifiers.alt && !modifiers.shift {
             if self.active_ghost_suggestion.borrow().is_some() {
                 *self.active_ghost_suggestion.borrow_mut() = None;
                 cx.notify();

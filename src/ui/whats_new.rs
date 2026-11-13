@@ -32,10 +32,24 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.42",
-    codename: "Interactive Settings Scrollbar & Navigation Polish",
+    version: "0.2.43",
+    codename: "Full Escape Key Passthrough & OpenCode TUI Fix",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "OpenCode & TUI",
+            icon: icons::OPENCODE_MARK,
+            title: "Full Escape Key Passthrough to OpenCode & PTY",
+            description: "Fixed unconditional escape interception in handle_key: pressing Esc now cleanly forwards 0x1b to active shell PTY and interactive TUI sessions (OpenCode, Vim, Nano) while seamlessly preserving overlay dismissal.",
+            badge: Some("Fixed"),
+        },
+        FeatureHighlight {
+            category: "Input & Keystrokes",
+            icon: icons::KEYBOARD,
+            title: "Robust Key Code Normalization",
+            description: "Added dual matching for Esc/Escape, Enter/Return/NumpadEnter, Arrow keys, and case-insensitive control chords across both input router and keymap translator.",
+            badge: Some("Core Input"),
+        },
         FeatureHighlight {
             category: "Settings & UX",
             icon: icons::REFRESH,
@@ -816,7 +830,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.42");
+        assert_eq!(release.version, "0.2.43");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);

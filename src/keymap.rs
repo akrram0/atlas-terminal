@@ -21,19 +21,19 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
     let key = ks.key.as_str();
 
     let bytes = match key {
-        "enter" => vec![b'\r'],
+        "enter" | "return" | "\r" | "\n" | "numpadenter" => vec![b'\r'],
         "backspace" => vec![0x7f],
-        "escape" => vec![0x1b],
+        "escape" | "esc" => vec![0x1b],
         // gpui never fills `key_char` for the space bar (VK_SPACE lives in its
         // "immutable keys" table), so forward it here — Ctrl+Space stays in
         // the control-chord arm below (0x00).
         "space" if !modifiers.control => vec![b' '],
         "tab" if modifiers.shift => vec![0x1b, b'[', b'Z'], // CBT
         "tab" => vec![b'\t'],
-        "up" => cursor_key(b'A', app_cursor),
-        "down" => cursor_key(b'B', app_cursor),
-        "right" => cursor_key(b'C', app_cursor),
-        "left" => cursor_key(b'D', app_cursor),
+        "up" | "arrowup" => cursor_key(b'A', app_cursor),
+        "down" | "arrowdown" => cursor_key(b'B', app_cursor),
+        "right" | "arrowright" => cursor_key(b'C', app_cursor),
+        "left" | "arrowleft" => cursor_key(b'D', app_cursor),
         "home" => cursor_key(b'H', app_cursor),
         "end" => cursor_key(b'F', app_cursor),
         "pageup" => vec![0x1b, b'[', b'5', b'~'],
@@ -61,7 +61,7 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
                 if key.chars().count() == 1 {
                     let ch = key.chars().next().unwrap();
                     let control = match ch {
-                        'a'..='z' => Some(ch as u8 - b'a' + 1),
+                        'a'..='z' | 'A'..='Z' => Some(ch.to_ascii_lowercase() as u8 - b'a' + 1),
                         '@' | '`' => Some(0x00),
                         '[' => Some(0x1b),
                         '\\' => Some(0x1c),
@@ -148,4 +148,76 @@ pub fn adjust_for_caps_lock(text: &str, shift: bool) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::Modifiers;
+
+    #[test]
+    fn test_escape_to_bytes() {
+        let ks = Keystroke {
+            modifiers: Modifiers::default(),
+            key: "escape".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks, TermMode::empty()), Some(vec![0x1b]));
+
+        let ks_esc = Keystroke {
+            modifiers: Modifiers::default(),
+            key: "esc".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_esc, TermMode::empty()), Some(vec![0x1b]));
+    }
+
+    #[test]
+    fn test_enter_variants() {
+        for key in ["enter", "return", "\r", "\n", "numpadenter"] {
+            let ks = Keystroke {
+                modifiers: Modifiers::default(),
+                key: key.to_string(),
+                key_char: None,
+            };
+            assert_eq!(to_bytes(&ks, TermMode::empty()), Some(vec![b'\r']));
+        }
+    }
+
+    #[test]
+    fn test_cursor_keys() {
+        let ks_up = Keystroke {
+            modifiers: Modifiers::default(),
+            key: "up".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_up, TermMode::empty()), Some(vec![0x1b, b'[', b'A']));
+        assert_eq!(to_bytes(&ks_up, TermMode::APP_CURSOR), Some(vec![0x1b, b'O', b'A']));
+
+        let ks_arrow = Keystroke {
+            modifiers: Modifiers::default(),
+            key: "arrowup".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_arrow, TermMode::empty()), Some(vec![0x1b, b'[', b'A']));
+    }
+
+    #[test]
+    fn test_control_chords() {
+        let mut ctrl = Modifiers::default();
+        ctrl.control = true;
+        let ks_c = Keystroke {
+            modifiers: ctrl,
+            key: "c".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_c, TermMode::empty()), Some(vec![3])); // SIGINT
+
+        let ks_upper_c = Keystroke {
+            modifiers: ctrl,
+            key: "C".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_upper_c, TermMode::empty()), Some(vec![3]));
+    }
 }
