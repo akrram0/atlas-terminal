@@ -431,7 +431,13 @@ impl Session {
                 let mut v = Vec::new();
                 if let Some(ref path) = opencode_path {
                     if path.ends_with(".cmd") || path.ends_with(".bat") {
-                        v.push("cmd.exe".into());
+                        let p = std::path::Path::new(path);
+                        let exe_candidate = p.with_extension("exe");
+                        if exe_candidate.is_file() {
+                            v.push(exe_candidate.to_string_lossy().to_string());
+                        } else {
+                            v.push("cmd.exe".into());
+                        }
                     } else {
                         v.push(path.clone());
                     }

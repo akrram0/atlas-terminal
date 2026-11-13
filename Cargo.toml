@@ -1,6 +1,6 @@
 [package]
 name = "atlas-terminal"
-version = "0.2.43"
+version = "0.2.44"
 edition = "2024"
 publish = false
 description = "Atlas Terminal — native GPU shell (GPUI + alacritty_terminal)"

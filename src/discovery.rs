@@ -602,12 +602,13 @@ pub fn ensure_opencode_binary_link() {
     };
     let pnpm_bin = local.join("pnpm").join("bin");
     let target_exe = pnpm_bin.join("opencode.exe");
-    if target_exe.is_file() {
-        return;
-    }
     if !pnpm_bin.is_dir() {
         let _ = std::fs::create_dir_all(&pnpm_bin);
     }
+
+    let mut latest_candidate: Option<PathBuf> = None;
+    let mut latest_mtime = std::time::SystemTime::UNIX_EPOCH;
+
     // Search in pnpm/global/v11 for @opencode/cli/bin/opencode.exe
     let global_v11 = local.join("pnpm").join("global").join("v11");
     if global_v11.is_dir() {
@@ -621,15 +622,19 @@ pub fn ensure_opencode_binary_link() {
                     .join("bin")
                     .join("opencode.exe");
                 if candidate.is_file() {
-                    if std::fs::hard_link(&candidate, &target_exe).is_ok()
-                        || std::fs::copy(&candidate, &target_exe).is_ok()
-                    {
-                        return;
+                    let mtime = candidate
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    if mtime >= latest_mtime {
+                        latest_mtime = mtime;
+                        latest_candidate = Some(candidate);
                     }
                 }
             }
         }
     }
+
     // Also check pnpm/store
     let store_v11 = local.join("pnpm").join("store").join("v11");
     if store_v11.is_dir() {
@@ -641,14 +646,75 @@ pub fn ensure_opencode_binary_link() {
                         for h in hashes.flatten() {
                             let candidate = h.path().join("bin").join("opencode.exe");
                             if candidate.is_file() {
-                                if std::fs::hard_link(&candidate, &target_exe).is_ok()
-                                    || std::fs::copy(&candidate, &target_exe).is_ok()
-                                {
-                                    return;
+                                let mtime = candidate
+                                    .metadata()
+                                    .and_then(|m| m.modified())
+                                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                                if mtime >= latest_mtime {
+                                    latest_mtime = mtime;
+                                    latest_candidate = Some(candidate);
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if let Some(candidate) = latest_candidate {
+        let needs_copy = match (target_exe.metadata(), candidate.metadata()) {
+            (Ok(tm), Ok(cm)) => tm.len() != cm.len(),
+            _ => true,
+        };
+        if needs_copy {
+            let _ = std::fs::remove_file(&target_exe);
+            let _ = std::fs::copy(&candidate, &target_exe);
+        }
+    }
+
+    // Repair pnpm wrapper shims if broken or pointing to stale hashes
+    repair_pnpm_opencode_shims(&pnpm_bin);
+}
+
+#[cfg(windows)]
+fn repair_pnpm_opencode_shims(pnpm_bin: &Path) {
+    let ps1_shim = pnpm_bin.join("opencode.ps1");
+    let cmd_shim = pnpm_bin.join("opencode.cmd");
+    let target_exe = pnpm_bin.join("opencode.exe");
+
+    if target_exe.is_file() {
+        if ps1_shim.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&ps1_shim) {
+                if content.contains("/global/v11/") && !content.contains("Join-Path $basedir \"opencode.exe\"") {
+                    let fixed_ps1 = "#!/usr/bin/env pwsh\n\
+$basedir = Split-Path $MyInvocation.MyCommand.Definition -Parent\n\
+$target = Join-Path $basedir \"opencode.exe\"\n\
+if (-not (Test-Path $target)) {\n\
+    $found = Resolve-Path \"$basedir/../global/v11/*/node_modules/@opencode/cli/bin/opencode.exe\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -Last 1\n\
+    if ($found) { $target = $found }\n\
+}\n\
+if ($MyInvocation.ExpectingInput) {\n\
+    $input | & $target $args\n\
+} else {\n\
+    & $target $args\n\
+}\n\
+exit $LASTEXITCODE\n";
+                    let _ = std::fs::write(&ps1_shim, fixed_ps1);
+                }
+            }
+        }
+
+        if cmd_shim.is_file() {
+            if let Ok(content) = std::fs::read_to_string(&cmd_shim) {
+                if content.contains("\\global\\v11\\") && !content.contains("%~dp0\\opencode.exe") {
+                    let fixed_cmd = "@SETLOCAL\r\n\
+@IF EXIST \"%~dp0\\opencode.exe\" (\r\n\
+  @\"%~dp0\\opencode.exe\" %*\r\n\
+) ELSE (\r\n\
+  @\"%~dp0\\..\\global\\v11\\6778c4801c795a91f7162d2c5e61c64b62eb29408dbf407e4bd7d76eef2ea239\\node_modules\\@opencode\\cli\\bin\\opencode.exe\" %*\r\n\
+)\r\n";
+                    let _ = std::fs::write(&cmd_shim, fixed_cmd);
                 }
             }
         }
@@ -1127,5 +1193,13 @@ mod tests {
         for p in &paths {
             assert!(!p.as_os_str().is_empty(), "PATH segments must not be empty");
         }
+    }
+
+    #[test]
+    fn test_opencode_tool_detection() {
+        let tool = find_tool_in_system("opencode");
+        assert!(tool.is_some(), "opencode must be found on system");
+        let path = tool.unwrap();
+        assert!(path.to_lowercase().contains("opencode"));
     }
 }

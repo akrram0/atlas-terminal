@@ -32,16 +32,23 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.43",
-    codename: "Full Escape Key Passthrough & OpenCode TUI Fix",
+    version: "0.2.44",
+    codename: "OpenCode Binary Launcher & Self-Healing Shim Repair",
     date: "November 2026",
     highlights: &[
         FeatureHighlight {
-            category: "OpenCode & TUI",
+            category: "OpenCode & CLI",
+            icon: icons::OPENCODE_MARK,
+            title: "OpenCode Auto-Sync & Shim Self-Healing",
+            description: "Repaired fragile pnpm global hash path shims: Atlas now automatically resolves, syncs, and launches the direct native opencode.exe binary and auto-heals broken opencode.ps1 and opencode.cmd wrapper scripts.",
+            badge: Some("Fixed"),
+        },
+        FeatureHighlight {
+            category: "Input & TUI",
             icon: icons::OPENCODE_MARK,
             title: "Full Escape Key Passthrough to OpenCode & PTY",
             description: "Fixed unconditional escape interception in handle_key: pressing Esc now cleanly forwards 0x1b to active shell PTY and interactive TUI sessions (OpenCode, Vim, Nano) while seamlessly preserving overlay dismissal.",
-            badge: Some("Fixed"),
+            badge: Some("Input"),
         },
         FeatureHighlight {
             category: "Input & Keystrokes",
@@ -830,7 +837,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.43");
+        assert_eq!(release.version, "0.2.44");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);
