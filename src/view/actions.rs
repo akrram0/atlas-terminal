@@ -746,8 +746,9 @@ impl AtlasView {
         self.settings_open = !self.settings_open;
         if self.settings_open {
             self.settings_tab_open = true;
+            self.settings_scrollbar_opacity = 1.0;
+            self.settings_last_scroll_time = std::time::Instant::now();
             self.settings_nav_scroll = match self.settings_tab {
-                crate::config::SettingsTab::WhatsNew => 0.0,
                 crate::config::SettingsTab::General | crate::config::SettingsTab::Appearance => 0.0,
                 crate::config::SettingsTab::Typography => 0.0,
                 crate::config::SettingsTab::Scrolling => 70.0,
@@ -756,6 +757,7 @@ impl AtlasView {
                 crate::config::SettingsTab::PixelArt => 300.0,
                 crate::config::SettingsTab::Shortcuts => 370.0,
                 crate::config::SettingsTab::Updates => 440.0,
+                crate::config::SettingsTab::WhatsNew => 520.0,
             };
             window.focus(&self.settings_focus);
         } else {

@@ -5,9 +5,9 @@
 use alacritty_terminal::vte::ansi::CursorShape;
 use gpui::prelude::*;
 use gpui::{
+    div, point, px, relative, rgb, rgba, AnyElement, ClickEvent, Context, ElementId,
+    FontWeight, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, Rgba,
     ScrollDelta, ScrollWheelEvent,
-    AnyElement, ClickEvent, Context, ElementId, FontWeight,
-    IntoElement, KeyDownEvent, Rgba, div, px, relative, rgb, rgba,
 };
 
 use crate::config::{
@@ -193,7 +193,6 @@ impl AtlasView {
 
                 // --- Horizontal Category Strip (Apple-Style Full-Width 2-Tier Header) ---
         let nav_items = [
-            (SettingsTab::WhatsNew, "What's New", icons::SPARKLE),
             (SettingsTab::General, "General", icons::TERMINAL),
             (SettingsTab::Appearance, "Appearance", icons::SUN),
             (SettingsTab::Typography, "Typography", icons::PEN),
@@ -203,10 +202,10 @@ impl AtlasView {
             (SettingsTab::PixelArt, "Pixel Art", icons::SPARKLE),
             (SettingsTab::Shortcuts, "Shortcuts", icons::KEYBOARD),
             (SettingsTab::Updates, "Updates", icons::CLOUD_DOWNLOAD),
+            (SettingsTab::WhatsNew, "What's New", icons::SPARKLE),
         ];
 
         let active_tab_title = match self.settings_tab {
-            SettingsTab::WhatsNew => "What's New & Release Highlights",
             SettingsTab::General => "General Preferences",
             SettingsTab::Appearance => "Appearance & Themes",
             SettingsTab::Typography => "Typography & Font Scale",
@@ -216,6 +215,7 @@ impl AtlasView {
             SettingsTab::PixelArt => "Pixel Art Companion",
             SettingsTab::Shortcuts => "Keyboard Shortcuts",
             SettingsTab::Updates => "Updates & Release Channels",
+            SettingsTab::WhatsNew => "What's New & Release Highlights",
         };
 
         let mut top_nav_pills = div()
@@ -3390,7 +3390,7 @@ impl AtlasView {
                 ("Atlas Config Editor", "Tools & Satellites", SettingsTab::Tools, "Inspect, query, modify, or edit settings.json from terminal"),
                 ("Keyboard Shortcuts Map", "Shortcuts", SettingsTab::Shortcuts, "Customize keystroke chords or review navigation bindings"),
                 ("Software Updates", "Updates & Config", SettingsTab::Updates, "Release channels, automated checks, and manual update poll"),
-                ("What's New & Release Highlights", "Updates & Config", SettingsTab::Updates, "Changelog, update onboarding modal, and new release features"),
+                ("What's New & Release Highlights", "Release Notes", SettingsTab::WhatsNew, "Changelog, update onboarding modal, and new release features"),
                 ("Configuration Files", "Updates & Config", SettingsTab::Updates, "settings.json, profile.json, PowerShell $PROFILE"),
             ];
 
@@ -3567,15 +3567,128 @@ impl AtlasView {
                     }),
             );
 
+        // Compute settings scrollbar geometry from settings_scroll_handle
+        let bounds = self.settings_scroll_handle.bounds();
+        let max_offset = self.settings_scroll_handle.max_offset();
+        let offset = self.settings_scroll_handle.offset();
+
+        let viewport_h = f32::from(bounds.size.height);
+        let max_scroll = f32::from(max_offset.height);
+
+        let is_scrollbar_visible = self.app_settings.scrollbar_mode != "hidden"
+            && max_scroll > 1.0
+            && viewport_h > 50.0
+            && (self.app_settings.scrollbar_mode == "always"
+                || self.settings_scrollbar_drag.is_some()
+                || self.settings_scrollbar_opacity > 0.02);
+
+        let scrollbar_elem = if is_scrollbar_visible {
+            let content_h = viewport_h + max_scroll;
+            let track_padding = 6.0;
+            let track_h = (viewport_h - track_padding * 2.0).max(0.0);
+            let thumb_h = ((viewport_h / content_h) * track_h).clamp(28.0, track_h);
+            let travel_space = (track_h - thumb_h).max(0.0);
+            let current_scroll_top = (-f32::from(offset.y)).clamp(0.0, max_scroll);
+            let scroll_ratio = if max_scroll > 0.0 {
+                (current_scroll_top / max_scroll).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let thumb_top = track_padding + travel_space * scroll_ratio;
+
+            let is_dragging = self.settings_scrollbar_drag.is_some();
+            let opacity = if self.app_settings.scrollbar_mode == "always" || is_dragging {
+                1.0
+            } else {
+                self.settings_scrollbar_opacity.clamp(0.0, 1.0)
+            };
+
+            // High-contrast macOS glass thumb: clearly visible against dark and light sheets
+            let thumb_base = if is_dark {
+                rgba(0xFFFFFF80) // 0.50 white on dark sheet
+            } else {
+                rgba(0x00000066) // 0.40 black on light sheet
+            };
+
+            let track_origin_y = f32::from(bounds.origin.y);
+
+            Some(
+                div()
+                    .id(ElementId::named_usize("settings-scrollbar-track", 0))
+                    .absolute()
+                    .top(px(0.0))
+                    .bottom(px(0.0))
+                    .right(px(0.0))
+                    .w(px(14.0))
+                    .cursor_default()
+                    .opacity(opacity)
+                    .on_hover(cx.listener(|view, hovered: &bool, _window, cx| {
+                        if *hovered {
+                            view.settings_scrollbar_opacity = 1.0;
+                            view.settings_last_scroll_time = std::time::Instant::now();
+                            cx.notify();
+                        }
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |view, event: &MouseDownEvent, _window, cx| {
+                            let my = f32::from(event.position.y);
+                            let thumb_screen_top = track_origin_y + thumb_top;
+                            let thumb_screen_bottom = thumb_screen_top + thumb_h;
+
+                            if my < thumb_screen_top {
+                                let new_top = (current_scroll_top - viewport_h * 0.85).max(0.0);
+                                view.settings_scroll_handle.set_offset(point(px(0.0), px(-new_top)));
+                            } else if my > thumb_screen_bottom {
+                                let new_top = (current_scroll_top + viewport_h * 0.85).min(max_scroll);
+                                view.settings_scroll_handle.set_offset(point(px(0.0), px(-new_top)));
+                            } else {
+                                view.settings_scrollbar_drag = Some(crate::view::SettingsScrollbarDragState {
+                                    start_mouse_y: my,
+                                    start_scroll_top: current_scroll_top,
+                                    travel_space,
+                                    max_scroll,
+                                });
+                            }
+                            view.settings_scrollbar_opacity = 1.0;
+                            view.settings_last_scroll_time = std::time::Instant::now();
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .id(ElementId::named_usize("settings-scrollbar-thumb", 0))
+                            .absolute()
+                            .right(px(3.0))
+                            .top(px(thumb_top))
+                            .w(if is_dragging { px(8.0) } else { px(6.0) })
+                            .h(px(thumb_h))
+                            .rounded_full()
+                            .bg(if is_dragging {
+                                theme.accent
+                            } else {
+                                thumb_base
+                            })
+                            .hover(move |s| s.w(px(8.0)).bg(theme.accent)),
+                    ),
+            )
+        } else {
+            None
+        };
+
         let right_pane = div()
             .id(ElementId::named_usize("settings-content-scroll", 0))
-            .flex_1()
             .w(relative(1.0))
             .h(relative(1.0))
             .min_w(px(0.0))
             .min_h(px(0.0))
             .overflow_y_scroll()
             .track_scroll(&self.settings_scroll_handle)
+            .on_scroll_wheel(cx.listener(|view, _event: &ScrollWheelEvent, _window, cx| {
+                view.settings_scrollbar_opacity = 1.0;
+                view.settings_last_scroll_time = std::time::Instant::now();
+                cx.notify();
+            }))
             .p(px(28.0))
             .pb(px(88.0))
             .child(
@@ -3587,6 +3700,18 @@ impl AtlasView {
                     .child(content_header)
                     .child(content_body),
             );
+
+        let right_pane_wrapper = div()
+            .id(ElementId::named_usize("settings-scroll-wrapper", 0))
+            .relative()
+            .flex_1()
+            .w(relative(1.0))
+            .h(relative(1.0))
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .overflow_hidden()
+            .child(right_pane)
+            .children(scrollbar_elem);
 
         div()
             .id(ElementId::named_usize("settings-root", 0))
@@ -3616,6 +3741,8 @@ impl AtlasView {
                 }
                 if event.keystroke.key == "escape" {
                     view.settings_open = false;
+                    view.settings_search_query.clear();
+                    view.settings_search_active = false;
                     window.focus(&view.focus);
                     cx.notify();
                     return;
@@ -3623,14 +3750,42 @@ impl AtlasView {
                 if let Some(chord) = format_keystroke_chord(&event.keystroke) {
                     if chord == view.get_shortcut(ACTION_OPEN_SETTINGS) {
                         view.settings_open = false;
+                        view.settings_search_query.clear();
+                        view.settings_search_active = false;
                         window.focus(&view.focus);
                         cx.notify();
                         return;
                     }
                 }
+
+                // Keyboard scrolling for settings page
+                if !view.settings_search_active && view.recording_shortcut.is_none() {
+                    let key = event.keystroke.key.to_lowercase();
+                    let max_scroll = f32::from(view.settings_scroll_handle.max_offset().height);
+                    let view_h = f32::from(view.settings_scroll_handle.bounds().size.height).max(300.0);
+                    let current_top = -f32::from(view.settings_scroll_handle.offset().y);
+                    if max_scroll > 1.0 {
+                        let new_top = match key.as_str() {
+                            "pageup" | "page_up" => Some((current_top - view_h * 0.75).max(0.0)),
+                            "pagedown" | "page_down" => Some((current_top + view_h * 0.75).min(max_scroll)),
+                            "home" => Some(0.0),
+                            "end" => Some(max_scroll),
+                            "up" if !event.keystroke.modifiers.control => Some((current_top - 60.0).max(0.0)),
+                            "down" if !event.keystroke.modifiers.control => Some((current_top + 60.0).min(max_scroll)),
+                            _ => None,
+                        };
+                        if let Some(top) = new_top {
+                            view.settings_scroll_handle.set_offset(point(px(0.0), px(-top)));
+                            view.settings_scrollbar_opacity = 1.0;
+                            view.settings_last_scroll_time = std::time::Instant::now();
+                            cx.notify();
+                            return;
+                        }
+                    }
+                }
             }))
             .child(top_nav)
-            .child(right_pane)
+            .child(right_pane_wrapper)
             .fade_in("settings-root-motion")
             .into_any_element()
     }
@@ -3823,4 +3978,55 @@ pub fn fastfetch_config_path() -> Option<std::path::PathBuf> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_settings_tab_order_and_general_landing() {
+        let nav_items = [
+            (SettingsTab::General, "General"),
+            (SettingsTab::Appearance, "Appearance"),
+            (SettingsTab::Typography, "Typography"),
+            (SettingsTab::Scrolling, "Scrolling"),
+            (SettingsTab::Window, "Window"),
+            (SettingsTab::Tools, "Tools"),
+            (SettingsTab::PixelArt, "Pixel Art"),
+            (SettingsTab::Shortcuts, "Shortcuts"),
+            (SettingsTab::Updates, "Updates"),
+            (SettingsTab::WhatsNew, "What's New"),
+        ];
+
+        // Ensure General is the primary landing tab
+        assert_eq!(nav_items.first().unwrap().0, SettingsTab::General);
+        // Ensure What's New is positioned at the end
+        assert_eq!(nav_items.last().unwrap().0, SettingsTab::WhatsNew);
+    }
+
+    #[test]
+    fn test_settings_scrollbar_geometry_clamping() {
+        let viewport_h = 600.0f32;
+        let max_scroll = 1200.0f32;
+        let content_h = viewport_h + max_scroll;
+        let track_padding = 6.0f32;
+        let track_h = (viewport_h - track_padding * 2.0).max(0.0);
+        let thumb_h = ((viewport_h / content_h) * track_h).clamp(28.0, track_h);
+        let travel_space = (track_h - thumb_h).max(0.0);
+
+        assert!(thumb_h >= 28.0);
+        assert!(thumb_h <= track_h);
+        assert!(travel_space > 0.0);
+
+        // Top clamp
+        let scroll_ratio_top = (0.0f32 / max_scroll).clamp(0.0, 1.0);
+        let thumb_top = track_padding + travel_space * scroll_ratio_top;
+        assert_eq!(thumb_top, track_padding);
+
+        // Bottom clamp
+        let scroll_ratio_bottom = (max_scroll / max_scroll).clamp(0.0, 1.0);
+        let thumb_bottom_top = track_padding + travel_space * scroll_ratio_bottom;
+        assert_eq!(thumb_bottom_top, track_padding + travel_space);
+    }
 }

@@ -32,10 +32,24 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.41",
-    codename: "Interactive Canvas & Precision Scrolling",
+    version: "0.2.42",
+    codename: "Interactive Settings Scrollbar & Navigation Polish",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "Settings & UX",
+            icon: icons::REFRESH,
+            title: "Interactive Settings Scrollbar & Paging",
+            description: "Full mouse drag-to-scroll, track click paging, PageUp/PageDown/Home/End keyboard navigation, and high-contrast Apple glass styling (Issue #7).",
+            badge: Some("Issue #7 Fixed"),
+        },
+        FeatureHighlight {
+            category: "Settings Hub",
+            icon: icons::SLIDERS,
+            title: "Settings Strip Reordered & Default General Tab",
+            description: "Moved What's New to the end of the sub-nav strip so General remains the primary settings landing page, with instant Esc keycap close.",
+            badge: Some("UX Polish"),
+        },
         FeatureHighlight {
             category: "Canvas & Scrolling",
             icon: icons::REFRESH,
@@ -802,7 +816,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.41");
+        assert_eq!(release.version, "0.2.42");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);

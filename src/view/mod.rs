@@ -74,6 +74,14 @@ pub(crate) struct ScrollbarDragState {
     pub history: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SettingsScrollbarDragState {
+    pub start_mouse_y: f32,
+    pub start_scroll_top: f32,
+    pub travel_space: f32,
+    pub max_scroll: f32,
+}
+
 pub struct AtlasView {
     pub(crate) tabs: Vec<Tab>,
     pub(crate) active: usize,
@@ -151,6 +159,9 @@ pub struct AtlasView {
     pub(crate) scrollbar_opacity: f32,
     pub(crate) scrollbar_drag: Option<ScrollbarDragState>,
     pub(crate) last_scroll_time: std::time::Instant,
+    pub(crate) settings_scrollbar_drag: Option<SettingsScrollbarDragState>,
+    pub(crate) settings_scrollbar_opacity: f32,
+    pub(crate) settings_last_scroll_time: std::time::Instant,
     /// Dynamic Island HUD opacity (0.0 to 1.0) and hover state
     pub(crate) island_hud_opacity: f32,
     pub(crate) island_hud_hovered: bool,
@@ -357,6 +368,9 @@ impl AtlasView {
             scrollbar_opacity: 0.0,
             scrollbar_drag: None,
             last_scroll_time: std::time::Instant::now(),
+            settings_scrollbar_drag: None,
+            settings_scrollbar_opacity: 0.0,
+            settings_last_scroll_time: std::time::Instant::now(),
             island_hud_opacity: 0.0,
             island_hud_hovered: false,
             last_island_hud_time: std::time::Instant::now().checked_sub(std::time::Duration::from_secs(10)).unwrap_or_else(std::time::Instant::now),
@@ -615,6 +629,34 @@ impl AtlasView {
                             active_motion = true;
                             view.scrollbar_opacity = (view.scrollbar_opacity - dt * 3.5).max(0.0);
                             needs_paint = true;
+                        }
+                    }
+
+                    // 4a. Settings scrollbar fade / visibility
+                    if view.settings_open {
+                        if view.app_settings.scrollbar_mode == "always" || view.settings_scrollbar_drag.is_some() {
+                            if view.settings_scrollbar_opacity < 1.0 {
+                                view.settings_scrollbar_opacity = 1.0;
+                                needs_paint = true;
+                            }
+                        } else if view.app_settings.scrollbar_mode == "hidden" {
+                            if view.settings_scrollbar_opacity > 0.0 {
+                                view.settings_scrollbar_opacity = 0.0;
+                                needs_paint = true;
+                            }
+                        } else {
+                            let scroll_idle = view.settings_last_scroll_time.elapsed().as_millis();
+                            if scroll_idle < 650 {
+                                active_motion = true;
+                                if view.settings_scrollbar_opacity < 1.0 {
+                                    view.settings_scrollbar_opacity = (view.settings_scrollbar_opacity + dt * 10.0).min(1.0);
+                                    needs_paint = true;
+                                }
+                            } else if view.settings_scrollbar_opacity > 0.0 {
+                                active_motion = true;
+                                view.settings_scrollbar_opacity = (view.settings_scrollbar_opacity - dt * 3.5).max(0.0);
+                                needs_paint = true;
+                            }
                         }
                     }
 
@@ -1515,15 +1557,32 @@ impl Render for AtlasView {
                         }
                     }
                 }
+                if let Some(ref drag) = view.settings_scrollbar_drag {
+                    if drag.travel_space > 0.0 && drag.max_scroll > 0.0 {
+                        let my = f32::from(event.position.y);
+                        let delta_y = my - drag.start_mouse_y;
+                        let delta_ratio = delta_y / drag.travel_space;
+                        let new_scroll_top = (drag.start_scroll_top + delta_ratio * drag.max_scroll).clamp(0.0, drag.max_scroll);
+                        view.settings_scroll_handle.set_offset(gpui::point(gpui::px(0.0), gpui::px(-new_scroll_top)));
+                        view.settings_scrollbar_opacity = 1.0;
+                        view.settings_last_scroll_time = std::time::Instant::now();
+                        cx.notify();
+                    }
+                }
             }))
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|view, _: &MouseUpEvent, _window, cx| {
-                    let had_drag = view.tab_drag_candidate.is_some() || view.tab_is_dragging || view.tab_drag_origin.is_some() || view.scrollbar_drag.is_some();
+                    let had_drag = view.tab_drag_candidate.is_some()
+                        || view.tab_is_dragging
+                        || view.tab_drag_origin.is_some()
+                        || view.scrollbar_drag.is_some()
+                        || view.settings_scrollbar_drag.is_some();
                     view.tab_drag_candidate = None;
                     view.tab_is_dragging = false;
                     view.tab_drag_origin = None;
                     view.scrollbar_drag = None;
+                    view.settings_scrollbar_drag = None;
                     if view.active_split_resize.is_some() {
                         view.active_split_resize = None;
                     }
