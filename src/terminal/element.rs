@@ -40,13 +40,6 @@ pub struct TerminalElement {
     pub search_matches: Vec<(alacritty_terminal::index::Point, alacritty_terminal::index::Point)>,
     pub active_search_match: Option<usize>,
     pub ghost_text: Option<String>,
-    pub cursor_velocity: (f32, f32),
-    pub cursor_trail_mode: String,
-    pub cursor_trail: std::collections::VecDeque<crate::workspace::CursorTrailSample>,
-    pub cursor_shape_morph: bool,
-    pub cursor_shape_progress: f32,
-    #[allow(dead_code)]
-    pub cursor_exit_glow: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -623,7 +616,7 @@ impl Element for TerminalElement {
             });
         }
 
-        // Smooth kinetic cursor with organic breathing alpha and elastic dynamics
+        // Smooth rigid cursor with clean glide and organic breathing alpha
         let avail_h = (f32::from(bounds.size.height) - pad_y * 2.0).max(cell_height);
         let max_rows = (avail_h / cell_height).floor().max(1.0) as usize;
 
@@ -639,87 +632,18 @@ impl Element for TerminalElement {
 
             let base_w = if is_target_wide { cell_width * 2.0 } else { cell_width };
 
-            // Compute elastic mass deformation (squish & stretch)
-            let (render_w, render_h, offset_x, offset_y) = if self.cursor_trail_mode == "elastic" && !is_settled {
-                let (vx, vy) = self.cursor_velocity;
-                let stretch_x = (vx * 0.030).clamp(-0.25, 0.35);
-                let stretch_y = (vy * 0.040).clamp(-0.20, 0.30);
-                let w = base_w * (1.0 + stretch_x.abs());
-                let h = cell_height * (1.0 + stretch_y.abs());
-                let ox = if vx > 0.0 { 0.0 } else { -(w - base_w) };
-                let oy = if vy > 0.0 { 0.0 } else { -(h - cell_height) };
-                (w, h, ox, oy)
-            } else {
-                (base_w, cell_height, 0.0, 0.0)
-            };
-
-            // Paint ghost comet trail if enabled
-            if self.cursor_trail_mode == "trail" {
-                for sample in &self.cursor_trail {
-                    let s_col = sample.col.clamp(0.0, cols.saturating_sub(1) as f32);
-                    let s_row = sample.row.clamp(0.0, max_rows.saturating_sub(1) as f32);
-                    let sx0 = (left + cell_width * s_col).clamp(left, left + avail_w);
-                    let sy0 = (top + cell_height * s_row + self.subpixel_y).clamp(top, top + avail_h);
-                    let sx1 = (sx0 + base_w).min(left + avail_w);
-                    let sy1 = (sy0 + cell_height).min(top + avail_h);
-                    let trail_alpha = (sample.alpha * default_cursor.a).clamp(0.0, 0.60);
-                    if trail_alpha > 0.01 {
-                        let mut t_quad = fill(
-                            Bounds::from_corners(point(px(sx0), px(sy0)), point(px(sx1), px(sy1))),
-                            Rgba {
-                                r: default_cursor.r,
-                                g: default_cursor.g,
-                                b: default_cursor.b,
-                                a: trail_alpha,
-                            },
-                        );
-                        t_quad.corner_radii = Corners {
-                            top_left: px(2.0),
-                            top_right: px(2.0),
-                            bottom_left: px(2.0),
-                            bottom_right: px(2.0),
-                        };
-                        window.paint_quad(t_quad);
-                    }
-                }
-            }
-
             let cx0 = if is_settled {
                 (left + cell_width * tgt_col_f).round().clamp(left, left + avail_w)
             } else {
-                (left + cell_width * cur_col + offset_x).clamp(left, left + avail_w)
+                (left + cell_width * cur_col).clamp(left, left + avail_w)
             };
             let cy0 = if is_settled {
                 (top + cell_height * tgt_row_f + self.subpixel_y).round().clamp(top, top + avail_h)
             } else {
-                (top + cell_height * cur_row + self.subpixel_y + offset_y).clamp(top, top + avail_h)
+                (top + cell_height * cur_row + self.subpixel_y).clamp(top, top + avail_h)
             };
-            let cx1 = (cx0 + render_w).min(left + avail_w);
-            let cy1 = (cy0 + render_h).min(top + avail_h);
-
-            // Paint ambient glow halo if enabled
-            if self.cursor_trail_mode == "glow" {
-                let glow_alpha = (0.16 * self.cursor_alpha * default_cursor.a).clamp(0.0, 0.40);
-                let mut glow_quad = fill(
-                    Bounds::from_corners(
-                        point(px((cx0 - 3.0).max(left)), px((cy0 - 3.0).max(top))),
-                        point(px((cx1 + 3.0).min(left + avail_w)), px((cy1 + 3.0).min(top + avail_h))),
-                    ),
-                    Rgba {
-                        r: default_cursor.r,
-                        g: default_cursor.g,
-                        b: default_cursor.b,
-                        a: glow_alpha,
-                    },
-                );
-                glow_quad.corner_radii = Corners {
-                    top_left: px(4.0),
-                    top_right: px(4.0),
-                    bottom_left: px(4.0),
-                    bottom_right: px(4.0),
-                };
-                window.paint_quad(glow_quad);
-            }
+            let cx1 = (cx0 + base_w).min(left + avail_w);
+            let cy1 = (cy0 + cell_height).min(top + avail_h);
 
             // Hybrid inversion alpha: translucent while in kinetic motion to avoid strobing
             let effective_alpha = if is_settled {
@@ -734,39 +658,19 @@ impl Element for TerminalElement {
                 a: effective_alpha,
             };
 
-            let quad_rounded = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, radius: f32, window: &mut Window| {
-                let mut q = fill(
+            // Pure sharp quads: exactly 0.0px radius (crisp 90-degree rectangle)
+            let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
+                window.paint_quad(fill(
                     Bounds::from_corners(
                         point(px(rx0), px(ry0)),
                         point(px(rx1), px(ry1)),
                     ),
                     cursor_color,
-                );
-                q.corner_radii = Corners {
-                    top_left: px(radius),
-                    top_right: px(radius),
-                    bottom_left: px(radius),
-                    bottom_right: px(radius),
-                };
-                window.paint_quad(q);
+                ));
             };
-
-            let quad = |rx0: f32, ry0: f32, rx1: f32, ry1: f32, window: &mut Window| {
-                quad_rounded(rx0, ry0, rx1, ry1, 0.0, window);
-            };
-
-            let morph_p = if self.cursor_shape_morph {
-                self.cursor_shape_progress.clamp(0.0, 1.0)
-            } else {
-                1.0
-            };
-            let morph_t = morph_p * morph_p * (3.0 - 2.0 * morph_p);
 
             match cursor_shape {
-                CursorShape::Block => {
-                    let w = if morph_t < 1.0 { 2.0 + (render_w - 2.0) * morph_t } else { render_w };
-                    quad_rounded(cx0, cy0, (cx0 + w).min(left + avail_w), cy1, 2.0, window);
-                }
+                CursorShape::Block => quad(cx0, cy0, cx1, cy1, window),
                 CursorShape::HollowBlock => {
                     let t = 1.0;
                     quad(cx0, cy0, cx1, cy0 + t, window);
@@ -774,14 +678,8 @@ impl Element for TerminalElement {
                     quad(cx0, cy0, cx0 + t, cy1, window);
                     quad(cx1 - t, cy0, cx1, cy1, window);
                 }
-                CursorShape::Beam => {
-                    let beam_w = if morph_t < 1.0 { render_w + (2.0 - render_w) * morph_t } else { 2.0 };
-                    quad_rounded(cx0, cy0, (cx0 + beam_w).min(left + avail_w), cy1, 1.0, window);
-                }
-                CursorShape::Underline => {
-                    let under_h = if morph_t < 1.0 { render_h + (2.0 - render_h) * morph_t } else { 2.0 };
-                    quad_rounded(cx0, (cy1 - under_h).max(top), cx1, cy1, 1.0, window);
-                }
+                CursorShape::Beam => quad(cx0, cy0, (cx0 + 2.0).min(left + avail_w), cy1, window),
+                CursorShape::Underline => quad(cx0, (cy1 - 2.0).max(top), cx1, cy1, window),
                 CursorShape::Hidden => {}
             }
         }

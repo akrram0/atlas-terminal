@@ -729,7 +729,7 @@ impl AtlasView {
                         crate::session::trim_working_set();
                     }
 
-                    // 6. Spatial kinetic cursor gliding, elastic deformation, comet trails, split pane expansion and pane collapse
+                    // 6. Spatial cursor gliding, split pane expansion and pane collapse
                     for tab in &mut view.tabs {
                         let mut panes_to_remove = Vec::new();
                         for (p_ix, pane) in tab.panes.iter_mut().enumerate() {
@@ -739,20 +739,16 @@ impl AtlasView {
                                 let d_row = tgt_row - cur_row;
                                 let is_line_wrap = d_row == 1.0 && d_col < -20.0;
                                 let is_large_leap = d_row.abs() > 2.0 || d_col.abs() > 35.0;
-                                let trail_mode = view.app_settings.cursor_trail_mode.as_str();
-                                let instant = trail_mode == "none";
 
                                 // When line-wrapping or jumping across large row/col distances,
-                                // snap immediately to prevent screen-wide whips and disorientation.
-                                if instant || is_line_wrap || is_large_leap {
+                                // snap immediately without screen-wide whips.
+                                if !view.app_settings.smooth_cursor || is_line_wrap || is_large_leap {
                                     pane.cursor_pos = Some((tgt_col, tgt_row));
-                                    pane.cursor_velocity = (0.0, 0.0);
-                                    pane.cursor_trail.clear();
                                     needs_paint = true;
                                 } else if d_col.abs() > 0.01 || d_row.abs() > 0.01 {
                                     active_motion = true;
-                                    // Snappy Apple spring deceleration (~45ms)
-                                    let factor = (1.0 - (-36.0 * dt).exp()).clamp(0.0, 1.0);
+                                    // Snappy Apple spring deceleration (~35ms)
+                                    let factor = (1.0 - (-38.0 * dt).exp()).clamp(0.0, 1.0);
                                     let next_col = if d_col.abs() < 0.03 {
                                         tgt_col
                                     } else {
@@ -763,70 +759,11 @@ impl AtlasView {
                                     } else {
                                         cur_row + d_row * factor
                                     };
-
-                                    // Compute instantaneous velocity for elastic squish/stretch
-                                    let safe_dt = dt.max(0.001);
-                                    let vx = (next_col - cur_col) / safe_dt;
-                                    let vy = (next_row - cur_row) / safe_dt;
-                                    pane.cursor_velocity = (
-                                        pane.cursor_velocity.0 * 0.35 + vx * 0.65,
-                                        pane.cursor_velocity.1 * 0.35 + vy * 0.65,
-                                    );
-
-                                    // Record comet trail sample if in "trail" mode
-                                    if trail_mode == "trail" && (d_col.abs() > 0.15 || d_row.abs() > 0.1) {
-                                        pane.cursor_trail.push_back(crate::workspace::CursorTrailSample {
-                                            col: cur_col,
-                                            row: cur_row,
-                                            created_at: std::time::Instant::now(),
-                                            alpha: 0.60,
-                                        });
-                                        if pane.cursor_trail.len() > 3 {
-                                            pane.cursor_trail.pop_front();
-                                        }
-                                    }
-
                                     pane.cursor_pos = Some((next_col, next_row));
                                     needs_paint = true;
                                 } else {
                                     pane.cursor_pos = Some((tgt_col, tgt_row));
-                                    // Decay velocity smoothly when settled
-                                    let decay = (1.0 - (-24.0 * dt).exp()).clamp(0.0, 1.0);
-                                    pane.cursor_velocity = (
-                                        pane.cursor_velocity.0 * (1.0 - decay),
-                                        pane.cursor_velocity.1 * (1.0 - decay),
-                                    );
                                 }
-                            }
-
-                            // Trail decay & TUI Hide Cursor guard
-                            let show_cursor = pane.session.borrow().term.mode().contains(alacritty_terminal::term::TermMode::SHOW_CURSOR);
-                            if !show_cursor {
-                                pane.cursor_trail.clear();
-                            } else if !pane.cursor_trail.is_empty() {
-                                let now = std::time::Instant::now();
-                                let mut has_visible_trail = false;
-                                pane.cursor_trail.retain_mut(|sample| {
-                                    let elapsed_ms = now.duration_since(sample.created_at).as_millis() as f32;
-                                    if elapsed_ms >= 120.0 {
-                                        false
-                                    } else {
-                                        sample.alpha = (1.0 - elapsed_ms / 120.0).clamp(0.0, 1.0) * 0.60;
-                                        has_visible_trail = true;
-                                        true
-                                    }
-                                });
-                                if has_visible_trail {
-                                    active_motion = true;
-                                    needs_paint = true;
-                                }
-                            }
-
-                            // Smooth shape morphing progress
-                            if view.app_settings.cursor_shape_morph && pane.cursor_shape_progress < 1.0 {
-                                active_motion = true;
-                                pane.cursor_shape_progress = (pane.cursor_shape_progress + dt * 18.0).min(1.0);
-                                needs_paint = true;
                             }
                             if pane.closing {
                                 active_motion = true;
@@ -1247,24 +1184,18 @@ impl Render for AtlasView {
         } else {
             // Snapshot cursor targets and initialize cursor position for active panes
             for pane in &mut self.tabs[index].panes {
-                let (tgt_col, tgt_row, raw_shape) = {
+                let (tgt_col, tgt_row) = {
                     let session = pane.session.borrow();
                     let content = session.term.renderable_content();
                     let offset = content.display_offset as i32;
                     (
                         content.cursor.point.column.0 as f32,
                         (content.cursor.point.line.0 + offset) as f32,
-                        self.cursor_style.unwrap_or(content.cursor.shape),
                     )
                 };
                 pane.cursor_target = (tgt_col, tgt_row);
                 if pane.cursor_pos.is_none() {
                     pane.cursor_pos = Some((tgt_col, tgt_row));
-                    pane.cursor_velocity = (0.0, 0.0);
-                }
-                if pane.cursor_current_shape != Some(raw_shape) {
-                    pane.cursor_current_shape = Some(raw_shape);
-                    pane.cursor_shape_progress = 0.0;
                 }
             }
 

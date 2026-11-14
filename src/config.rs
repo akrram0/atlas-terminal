@@ -300,12 +300,8 @@ pub struct AppSettingsFile {
     pub cursor_shape: String,
     #[serde(default = "default_cursor_blink")]
     pub cursor_blink: bool,
-    #[serde(default = "default_cursor_trail_mode")]
-    pub cursor_trail_mode: String,
     #[serde(default = "default_true")]
-    pub cursor_shape_morph: bool,
-    #[serde(default = "default_true")]
-    pub cursor_exit_glow: bool,
+    pub smooth_cursor: bool,
     #[serde(default = "default_tab_bar_position")]
     pub tab_bar_position: String,
     #[serde(default = "default_tiling_gap")]
@@ -410,9 +406,6 @@ fn default_cursor_shape() -> String {
 fn default_cursor_blink() -> bool {
     true
 }
-fn default_cursor_trail_mode() -> String {
-    "elastic".to_string()
-}
 fn default_true() -> bool {
     true
 }
@@ -499,9 +492,7 @@ impl Default for AppSettingsFile {
             blur_enabled: default_blur(),
             cursor_shape: default_cursor_shape(),
             cursor_blink: default_cursor_blink(),
-            cursor_trail_mode: default_cursor_trail_mode(),
-            cursor_shape_morph: default_true(),
-            cursor_exit_glow: default_true(),
+            smooth_cursor: default_true(),
             tab_bar_position: default_tab_bar_position(),
             tiling_gap: default_tiling_gap(),
             shortcut_schema: 2,
@@ -658,9 +649,7 @@ mod tests {
         settings.opacity = 0.45;
         settings.last_version_run = Some("0.2.39".to_string());
         settings.show_whats_new_on_update = false;
-        settings.cursor_trail_mode = "trail".to_string();
-        settings.cursor_shape_morph = false;
-        settings.cursor_exit_glow = false;
+        settings.smooth_cursor = false;
 
         let json = serde_json::to_string(&settings).unwrap();
         let loaded: AppSettingsFile = serde_json::from_str(&json).unwrap();
@@ -673,8 +662,6 @@ mod tests {
         assert_eq!(loaded.opacity, 0.45);
         assert_eq!(loaded.last_version_run.as_deref(), Some("0.2.39"));
         assert_eq!(loaded.show_whats_new_on_update, false);
-        assert_eq!(loaded.cursor_trail_mode, "trail");
-        assert_eq!(loaded.cursor_shape_morph, false);
-        assert_eq!(loaded.cursor_exit_glow, false);
+        assert_eq!(loaded.smooth_cursor, false);
     }
 }

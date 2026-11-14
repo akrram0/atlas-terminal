@@ -1165,31 +1165,12 @@ impl AtlasView {
             cx,
         );
 
-        let dynamics_options = vec![
-            ("elastic".to_string(), "Elastic".to_string()),
-            ("trail".to_string(), "Comet Trail".to_string()),
-            ("glide".to_string(), "Glide".to_string()),
-            ("none".to_string(), "Instant".to_string()),
-        ];
-        let cursor_dynamics_ctrl = segmented_control(
-            "cursor-dynamics-ctrl",
-            dynamics_options,
-            &self.app_settings.cursor_trail_mode,
-            theme,
-            |mode, view, cx| {
-                view.app_settings.cursor_trail_mode = mode;
-                view.sync_and_save_settings();
-                cx.notify();
-            },
-            cx,
-        );
-
-        let cursor_shape_morph_ctrl = toggle_pill(
+        let smooth_cursor_ctrl = toggle_pill(
             135,
-            self.app_settings.cursor_shape_morph,
+            self.app_settings.smooth_cursor,
             theme,
             |view, cx| {
-                view.app_settings.cursor_shape_morph = !view.app_settings.cursor_shape_morph;
+                view.app_settings.smooth_cursor = !view.app_settings.smooth_cursor;
                 view.sync_and_save_settings();
                 cx.notify();
             },
@@ -1368,10 +1349,9 @@ impl AtlasView {
             )
             .child(
                 card()
-                    .child(section_header("TERMINAL CARET & KINETICS"))
+                    .child(section_header("TERMINAL CARET"))
                     .child(setting_row("Caret Shape", Some("Visual style of input focus cursor"), cursor_shape_ctrl, false))
-                    .child(setting_row("Cursor Dynamics", Some("Kinetic mass squish/stretch, comet trail, or instant snap"), cursor_dynamics_ctrl, false))
-                    .child(setting_row("Smooth Shape Morphing", Some("Continuous geometric transition between Vim / editor modes"), cursor_shape_morph_ctrl, false))
+                    .child(setting_row("Smooth Cursor Glide", Some("Snappy hardware-accelerated spring glide between cells"), smooth_cursor_ctrl, false))
                     .child(setting_row("Breathing Animation", Some("Smooth cursor pulse when idle"), cursor_blink_ctrl, true)),
             );
 
@@ -3378,9 +3358,9 @@ impl AtlasView {
                 ("Window Opacity", "Appearance & Blur", SettingsTab::Appearance, "Sheet opacity percentage with saved preference memory"),
                 ("Active Typeface", "Font & Caret", SettingsTab::Typography, "Hardware-accelerated monospace font"),
                 ("Font Size & Line Height", "Font & Caret", SettingsTab::Typography, "Glyph dimension and vertical spacing proportions"),
-                ("Caret Shape & Cursor Breathing", "Font & Caret", SettingsTab::Typography, "Beam, block, underline cursor styles and sine pulse"),
-                ("Cursor Dynamics & Trails", "Font & Caret", SettingsTab::Typography, "Elastic squish and stretch, comet trail, or smooth glide kinetic physics"),
-                ("Smooth Shape Morphing", "Font & Caret", SettingsTab::Typography, "Continuous geometric morphing between block, beam, and underline in Vim/CLI"),
+                ("Caret Shape", "Font & Caret", SettingsTab::Typography, "Crisp block, bar, underline, or hollow cursor styles"),
+                ("Smooth Cursor Glide", "Font & Caret", SettingsTab::Typography, "Snappy hardware-accelerated spring glide between cells"),
+                ("Breathing Animation", "Font & Caret", SettingsTab::Typography, "Smooth cursor pulse when idle"),
                 ("Scrollbar Visibility", "Scrolling & Mouse", SettingsTab::Scrolling, "Always visible, auto-hide, or hidden interactive scrollbar"),
                 ("Scroll Speed Multiplier", "Scrolling & Mouse", SettingsTab::Scrolling, "Tame scroll velocity: Precision 0.6x, Balanced 1.0x, Fast 1.5x"),
                 ("Scrollback History", "Scrolling & Mouse", SettingsTab::Scrolling, "Max lines preserved in RAM per tab"),
@@ -3591,7 +3571,7 @@ impl AtlasView {
                             SettingsTab::WhatsNew => "Explore new capabilities, performance upgrades, and release highlights in Atlas Terminal.".to_string(),
                             SettingsTab::General => "Configure default shell, startup working directory, and execution safety.".to_string(),
                             SettingsTab::Appearance => "Fluent acrylic glass translucency, color mode, and curated terminal themes.".to_string(),
-                            SettingsTab::Typography => "Monospace typeface rendering, vertical cell line height, and cursor dynamics.".to_string(),
+                            SettingsTab::Typography => "Monospace typeface rendering, vertical cell line height, and smooth cursor glide.".to_string(),
                             SettingsTab::Scrolling => "Control scroll velocity, eliminate runaway acceleration, and manage clipboard buffers.".to_string(),
                             SettingsTab::Window => "Tab bar position, tiling split gaps, and window framing.".to_string(),
                             SettingsTab::Tools => "Zero-dependency developer companions and CLI satellites.".to_string(),
