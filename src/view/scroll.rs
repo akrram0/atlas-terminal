@@ -14,7 +14,7 @@ impl AtlasView {
         self.scrollbar_opacity = 1.0;
         self.last_scroll_time = std::time::Instant::now();
         if let Some(pane) = self.active_pane_mut() {
-            pane.cursor_pos = Some(pane.cursor_target);
+            pane.cursor_motion.snap_to(pane.cursor_motion.target_pos);
             pane.session
                 .borrow_mut()
                 .term
@@ -36,7 +36,7 @@ impl AtlasView {
         let Some(pane) = self.active_pane_mut() else {
             return;
         };
-        pane.cursor_pos = Some(pane.cursor_target);
+        pane.cursor_motion.snap_to(pane.cursor_motion.target_pos);
         let session = pane.session.clone();
         let current = session.borrow().term.renderable_content().display_offset as f32;
         let max = session.borrow().term.history_size() as f32;

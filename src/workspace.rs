@@ -12,6 +12,55 @@ use crate::wsl;
 pub use crate::tiling::{Direction, SplitAxis, TileNode, TileTree};
 
 /// One shell inside a tab (a tab is one or more panes side by side).
+/// 4-corner warp smear cursor animation state.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CursorMotionState {
+    /// Previous settled cell position (col, row) before recent movement.
+    pub prev_pos: (f32, f32),
+    /// Current target cell position (col, row) reported by terminal grid.
+    pub target_pos: (f32, f32),
+    /// Elapsed seconds since movement started.
+    pub elapsed_secs: f32,
+    /// Total duration for the trailing smear to contract into target cell (~0.16s).
+    pub duration_secs: f32,
+    /// Whether the motion has settled completely at target_pos.
+    pub is_settled: bool,
+}
+
+impl Default for CursorMotionState {
+    fn default() -> Self {
+        Self {
+            prev_pos: (0.0, 0.0),
+            target_pos: (0.0, 0.0),
+            elapsed_secs: 1.0,
+            duration_secs: 0.16,
+            is_settled: true,
+        }
+    }
+}
+
+impl CursorMotionState {
+    pub fn current_pos(&self) -> (f32, f32) {
+        if self.is_settled {
+            self.target_pos
+        } else {
+            let t = (self.elapsed_secs / self.duration_secs).clamp(0.0, 1.0);
+            let prog = (1.0 - (t - 1.0) * (t - 1.0)).sqrt(); // EaseOutCirc
+            (
+                self.prev_pos.0 + (self.target_pos.0 - self.prev_pos.0) * prog,
+                self.prev_pos.1 + (self.target_pos.1 - self.prev_pos.1) * prog,
+            )
+        }
+    }
+
+    pub fn snap_to(&mut self, pos: (f32, f32)) {
+        self.prev_pos = pos;
+        self.target_pos = pos;
+        self.elapsed_secs = self.duration_secs;
+        self.is_settled = true;
+    }
+}
+
 pub struct Pane {
     /// Bumped on every (re)spawn; stale session messages are dropped.
     pub epoch: u64,
@@ -25,10 +74,8 @@ pub struct Pane {
     /// Git branch of the working directory, polled alongside it.
     pub branch: Option<String>,
     pub exited: bool,
-    /// Smooth cursor glide: (interpolated_col, interpolated_row) in cell units.
-    pub cursor_pos: Option<(f32, f32)>,
-    /// Target cursor position reported by the terminal grid.
-    pub cursor_target: (f32, f32),
+    /// 4-corner warp smear motion state for the cursor.
+    pub cursor_motion: CursorMotionState,
     /// Smooth split expansion progress (0.0 .. 1.0).
     pub pane_expansion: f32,
     /// Smooth focus transition progress (0.0 .. 1.0).
@@ -593,5 +640,31 @@ mod tests {
         let d_row_normal = 0.0;
         let is_normal_wrap = d_row_normal == 1.0 && d_col_normal < -20.0;
         assert!(!is_normal_wrap);
+    }
+
+    #[test]
+    fn test_cursor_warp_geometry() {
+        let mut motion = CursorMotionState {
+            prev_pos: (0.0, 1.0),
+            target_pos: (0.0, 6.0),
+            elapsed_secs: 0.0,
+            duration_secs: 0.16,
+            is_settled: false,
+        };
+
+        // At t = 0, current pos is at prev_pos
+        let p0 = motion.current_pos();
+        assert_eq!(p0, (0.0, 1.0));
+
+        // Advance half-way
+        motion.elapsed_secs = 0.08;
+        let p_mid = motion.current_pos();
+        assert!(p_mid.1 > 1.0 && p_mid.1 < 6.0);
+
+        // Advance to full duration
+        motion.elapsed_secs = 0.16;
+        motion.is_settled = true;
+        let p_end = motion.current_pos();
+        assert_eq!(p_end, (0.0, 6.0));
     }
 }

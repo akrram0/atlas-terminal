@@ -19,7 +19,7 @@ use gpui::{
 use crate::session::{Profile, Session, SessionMsg};
 use crate::theme::Theme;
 use crate::ui::animation::OVERLAY_OUT_MS;
-use crate::workspace::{home_dir, profile_title, Pane, SplitAxis, Tab};
+use crate::workspace::{home_dir, profile_title, CursorMotionState, Pane, SplitAxis, Tab};
 
 use super::AtlasView;
 
@@ -123,8 +123,7 @@ impl AtlasView {
                         cwd,
                         branch: None,
                         exited: false,
-                        cursor_pos: None,
-                        cursor_target: (0.0, 0.0),
+                        cursor_motion: CursorMotionState::default(),
                         pane_expansion: 1.0,
                         focus_progress: 1.0,
                         closing: false,
@@ -369,8 +368,7 @@ impl AtlasView {
                         cwd,
                         branch: None,
                         exited: false,
-                        cursor_pos: None,
-                        cursor_target: (0.0, 0.0),
+                        cursor_motion: CursorMotionState::default(),
                         pane_expansion: 0.05,
                         focus_progress: 1.0,
                         closing: false,
@@ -1015,8 +1013,7 @@ impl AtlasView {
                             cwd: live_cwd,
                             branch: None,
                             exited: false,
-                            cursor_pos: None,
-                            cursor_target: (0.0, 0.0),
+                            cursor_motion: CursorMotionState::default(),
                             pane_expansion: 1.0,
                             focus_progress: 1.0,
                             closing: false,

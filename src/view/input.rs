@@ -239,7 +239,7 @@ impl AtlasView {
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.font_size = Some(clamped);
             for pane in &mut tab.panes {
-                pane.cursor_pos = None;
+                pane.cursor_motion.snap_to(pane.cursor_motion.target_pos);
             }
         }
         self.show_update_toast(format!("Font size: {:.0}px", clamped), true, cx);
@@ -255,7 +255,7 @@ impl AtlasView {
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.font_size = None;
             for pane in &mut tab.panes {
-                pane.cursor_pos = None;
+                pane.cursor_motion.snap_to(pane.cursor_motion.target_pos);
             }
         }
         self.show_update_toast(format!("Font size reset: {:.0}px", default_sz), true, cx);

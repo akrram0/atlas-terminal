@@ -851,7 +851,7 @@ impl AtlasView {
                             let coords = view.grid_coords_from_mouse(event.position, pane_down);
                             if let Some(tab) = view.tabs.get_mut(view.active) {
                                 if let Some(pane) = tab.panes.get_mut(pane_down) {
-                                    pane.cursor_pos = Some(pane.cursor_target);
+                                    pane.cursor_motion.snap_to(pane.cursor_motion.target_pos);
                                     let delta_y = match event.delta {
                                         gpui::ScrollDelta::Lines(delta) => delta.y,
                                         gpui::ScrollDelta::Pixels(delta) => {
@@ -988,7 +988,7 @@ impl AtlasView {
                 line_height: self.line_height,
                 cursor_on: self.cursor_on,
                 cursor_override: self.cursor_style,
-                cursor_pos: pane.cursor_pos,
+                cursor_motion: pane.cursor_motion,
                 cursor_alpha,
                 subpixel_y,
                 scrollbar_opacity: self.scrollbar_opacity,

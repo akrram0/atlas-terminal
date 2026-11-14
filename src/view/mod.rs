@@ -729,41 +729,19 @@ impl AtlasView {
                         crate::session::trim_working_set();
                     }
 
-                    // 6. Spatial cursor gliding, split pane expansion and pane collapse
+                    // 6. Spatial cursor warp smear, split pane expansion and pane collapse
                     for tab in &mut view.tabs {
                         let mut panes_to_remove = Vec::new();
                         for (p_ix, pane) in tab.panes.iter_mut().enumerate() {
-                            if let Some((cur_col, cur_row)) = pane.cursor_pos {
-                                let (tgt_col, tgt_row) = pane.cursor_target;
-                                let d_col = tgt_col - cur_col;
-                                let d_row = tgt_row - cur_row;
-                                let is_line_wrap = d_row == 1.0 && d_col < -20.0;
-                                let is_large_leap = d_row.abs() > 2.0 || d_col.abs() > 35.0;
-
-                                // When line-wrapping or jumping across large row/col distances,
-                                // snap immediately without screen-wide whips.
-                                if !view.app_settings.smooth_cursor || is_line_wrap || is_large_leap {
-                                    pane.cursor_pos = Some((tgt_col, tgt_row));
-                                    needs_paint = true;
-                                } else if d_col.abs() > 0.01 || d_row.abs() > 0.01 {
-                                    active_motion = true;
-                                    // Snappy Apple spring deceleration (~35ms)
-                                    let factor = (1.0 - (-38.0 * dt).exp()).clamp(0.0, 1.0);
-                                    let next_col = if d_col.abs() < 0.03 {
-                                        tgt_col
-                                    } else {
-                                        cur_col + d_col * factor
-                                    };
-                                    let next_row = if d_row.abs() < 0.03 {
-                                        tgt_row
-                                    } else {
-                                        cur_row + d_row * factor
-                                    };
-                                    pane.cursor_pos = Some((next_col, next_row));
-                                    needs_paint = true;
+                            if !pane.cursor_motion.is_settled {
+                                pane.cursor_motion.elapsed_secs += dt;
+                                if pane.cursor_motion.elapsed_secs >= pane.cursor_motion.duration_secs {
+                                    pane.cursor_motion.is_settled = true;
+                                    pane.cursor_motion.elapsed_secs = pane.cursor_motion.duration_secs;
                                 } else {
-                                    pane.cursor_pos = Some((tgt_col, tgt_row));
+                                    active_motion = true;
                                 }
+                                needs_paint = true;
                             }
                             if pane.closing {
                                 active_motion = true;
@@ -1182,7 +1160,7 @@ impl Render for AtlasView {
         } else if self.tabs.is_empty() {
             div().flex_1().into_any_element()
         } else {
-            // Snapshot cursor targets and initialize cursor position for active panes
+            // Snapshot cursor targets and update warp smear motion state for active panes
             for pane in &mut self.tabs[index].panes {
                 let (tgt_col, tgt_row) = {
                     let session = pane.session.borrow();
@@ -1193,9 +1171,26 @@ impl Render for AtlasView {
                         (content.cursor.point.line.0 + offset) as f32,
                     )
                 };
-                pane.cursor_target = (tgt_col, tgt_row);
-                if pane.cursor_pos.is_none() {
-                    pane.cursor_pos = Some((tgt_col, tgt_row));
+                if pane.cursor_motion.target_pos != (tgt_col, tgt_row) {
+                    let d_col = tgt_col - pane.cursor_motion.target_pos.0;
+                    let d_row = tgt_row - pane.cursor_motion.target_pos.1;
+                    let is_line_wrap = d_row == 1.0 && d_col < -20.0;
+                    let is_large_leap = d_row.abs() > 30.0 || d_col.abs() > 60.0;
+
+                    let prev = if pane.cursor_motion.is_settled {
+                        pane.cursor_motion.target_pos
+                    } else {
+                        pane.cursor_motion.current_pos()
+                    };
+
+                    pane.cursor_motion.prev_pos = if is_line_wrap || is_large_leap {
+                        (tgt_col, tgt_row)
+                    } else {
+                        prev
+                    };
+                    pane.cursor_motion.target_pos = (tgt_col, tgt_row);
+                    pane.cursor_motion.elapsed_secs = 0.0;
+                    pane.cursor_motion.is_settled = is_line_wrap || is_large_leap || !self.app_settings.smooth_cursor;
                 }
             }
 
