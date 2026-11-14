@@ -1012,7 +1012,7 @@ impl AtlasView {
                 } else {
                     None
                 },
-                ascii_ink: if self.app_settings.ascii_ink || self.app_settings.letter_animations {
+                ascii_ink: if (self.app_settings.ascii_ink || self.app_settings.letter_animations) && !pane_is_tui {
                     pane.ascii_ink.snapshot(self.app_settings.ascii_ink, self.app_settings.letter_animations)
                 } else {
                     crate::terminal::AsciiInkSnapshot::default()

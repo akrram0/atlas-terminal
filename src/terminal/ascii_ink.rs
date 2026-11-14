@@ -129,6 +129,9 @@ impl AsciiInkSnapshot {
     }
 
     pub fn letter_dy(&self, col: usize, row: usize, cell_height: f32) -> f32 {
+        if cell_height <= 0.0 || !cell_height.is_finite() {
+            return 0.0;
+        }
         let mut dy = 0.0f32;
 
         // 1. Direct letter pop (stamp drop & damped harmonic oscillation)
@@ -136,7 +139,7 @@ impl AsciiInkSnapshot {
             if p.row == row && p.col == col {
                 if p.elapsed < 0.045 {
                     // Fast drop down from above
-                    let t = p.elapsed / 0.045;
+                    let t = (p.elapsed / 0.045).clamp(0.0, 1.0);
                     dy += -cell_height * 0.40 * (1.0 - t);
                 } else {
                     // Harmonic bounce and squash
@@ -164,6 +167,10 @@ impl AsciiInkSnapshot {
                     }
                 }
             }
+        }
+
+        if !dy.is_finite() {
+            return 0.0;
         }
 
         dy.clamp(-cell_height * 0.75, cell_height * 0.75)
@@ -240,9 +247,15 @@ impl AsciiInkState {
         let cap = cols * rows;
         self.cols = cols;
         self.rows = rows;
+        self.density.clear();
         self.density.resize(cap, 0.0);
+        self.hue.clear();
         self.hue.resize(cap, 0);
         self.active_bounds = None;
+        self.pops.retain(|p| p.col < cols && p.row < rows);
+        self.waves.retain(|w| w.col < cols && w.row < rows);
+        self.ripples.retain(|r| r.col >= 0.0 && (r.col as usize) < cols && r.row >= 0.0 && (r.row as usize) < rows);
+        self.fish.retain(|f| f.col >= 0.0 && (f.col as usize) < cols && f.row >= 0.0 && (f.row as usize) < rows);
     }
 
     pub fn has_active_ink(&self) -> bool {
@@ -385,7 +398,14 @@ impl AsciiInkState {
 
     /// Trigger a kinetic jostle wave traveling along the line from a typed character.
     pub fn jostle_line(&mut self, col: usize, row: usize) {
-        if self.waves.len() >= 8 {
+        // If there is already an active wave nearby from rapid typing, throttle/merge
+        if let Some(recent) = self.waves.iter_mut().find(|w| w.row == row && (w.col as isize - col as isize).abs() <= 2) {
+            recent.col = col;
+            recent.elapsed = 0.0;
+            recent.amp = (recent.amp * 0.8 + 0.5).min(1.0);
+            return;
+        }
+        if self.waves.len() >= 6 {
             self.waves.remove(0);
         }
         self.waves.push(LineWave {
@@ -439,6 +459,7 @@ impl AsciiInkState {
 
     /// Step simulation physics forward by `dt` seconds.
     pub fn step(&mut self, dt: f32) -> bool {
+        let dt = dt.clamp(0.001, 0.1);
         // 1. Exponential field fade (snappy decay factor ~4.2/s for tight, clean dissipation)
         if let Some((c0, r0, c1, r1)) = self.active_bounds {
             let k = (-dt * 4.2).exp();
@@ -563,7 +584,7 @@ impl AsciiInkState {
         let mut cells = Vec::new();
         if ink_enabled {
             if let Some((c0, r0, c1, r1)) = self.active_bounds {
-                for r in r0..=r1.min(self.rows.saturating_sub(1)) {
+                'outer: for r in r0..=r1.min(self.rows.saturating_sub(1)) {
                     let row_offset = r * self.cols;
                     for c in c0..=c1.min(self.cols.saturating_sub(1)) {
                         let idx = row_offset + c;
@@ -581,6 +602,9 @@ impl AsciiInkState {
                                 hue,
                                 alpha,
                             });
+                            if cells.len() >= 120 {
+                                break 'outer;
+                            }
                         }
                     }
                 }
@@ -694,5 +718,41 @@ mod tests {
         let snap_idle = state.snapshot(false, true);
         assert!(!snap_idle.has_letter_motion(4));
         assert_eq!(snap_idle.letter_dy(12, 4, 20.0), 0.0);
+    }
+
+    #[test]
+    fn test_resize_clamps_particles_and_cleans_grid() {
+        let mut state = AsciiInkState::new(80, 24);
+        state.pop_letter(75, 20);
+        state.jostle_line(75, 20);
+        state.splash(75.0, 20.0, 1.0, 1);
+        assert!(state.has_active_ink());
+
+        // Shrink terminal to 40x10
+        state.resize(40, 10);
+        assert_eq!(state.cols, 40);
+        assert_eq!(state.rows, 10);
+        // All elements beyond the new bounds are safely purged
+        assert!(state.pops.iter().all(|p| p.col < 40 && p.row < 10));
+        assert!(state.waves.iter().all(|w| w.col < 40 && w.row < 10));
+        assert!(state.ripples.iter().all(|r| (r.col as usize) < 40 && (r.row as usize) < 10));
+    }
+
+    #[test]
+    fn test_nan_and_zero_height_protection() {
+        let snap = AsciiInkSnapshot::default();
+        assert_eq!(snap.letter_dy(0, 0, 0.0), 0.0);
+        assert_eq!(snap.letter_dy(0, 0, -10.0), 0.0);
+        assert_eq!(snap.letter_dy(0, 0, f32::NAN), 0.0);
+    }
+
+    #[test]
+    fn test_wave_rapid_typing_merge() {
+        let mut state = AsciiInkState::new(80, 24);
+        state.jostle_line(10, 2);
+        state.jostle_line(11, 2); // immediate adjacent key
+        // Merges into single wave instead of duplicating
+        assert_eq!(state.waves.len(), 1);
+        assert_eq!(state.waves[0].col, 11);
     }
 }

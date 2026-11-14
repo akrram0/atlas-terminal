@@ -835,18 +835,20 @@ impl Element for TerminalElement {
                 if matches!(run.style.class, CharClass::Icon | CharClass::Block) || row_has_motion {
                     let mut cell = col;
                     let mut offset = 0usize;
+                    let num_chars = run_text.chars().count();
                     for c in run_text.chars() {
                         let end = offset + c.len_utf8();
+                        let char_cells = if num_chars == 1 { run.cells } else { 1 };
                         segments.push(Segment {
                             text: &run_text[offset..end],
                             x0: x(cell),
                             col: cell,
-                            cells: 1,
+                            cells: char_cells,
                             font: font.clone(),
                             style: &run.style,
                         });
                         offset = end;
-                        cell += 1;
+                        cell += char_cells;
                     }
                 } else {
                     segments.push(Segment {
