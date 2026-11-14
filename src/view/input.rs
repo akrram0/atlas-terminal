@@ -1216,7 +1216,11 @@ impl AtlasView {
             let ghost_opt = self.active_ghost_suggestion.borrow_mut().take();
             if let Some(ghost) = ghost_opt {
                 let bytes = ghost.into_bytes();
-                if self.app_settings.ascii_ink {
+                let ink_enabled = self.app_settings.ascii_ink;
+                let letter_anim = self.app_settings.letter_animations;
+                let ink_size = self.app_settings.ascii_ink_size.clone();
+
+                if ink_enabled || letter_anim {
                     if let Some(pane) = self.active_pane_mut() {
                         let (cur_col, cur_row, cols, rows) = {
                             let sess = pane.session.borrow();
@@ -1227,7 +1231,14 @@ impl AtlasView {
                             (c, r, sess.cols, sess.rows)
                         };
                         pane.ascii_ink.resize(cols, rows);
-                        pane.ascii_ink.splash(cur_col as f32, cur_row as f32, 1.2, 1);
+                        pane.ascii_ink.set_scale_from_name(&ink_size);
+                        if ink_enabled {
+                            pane.ascii_ink.splash(cur_col as f32, cur_row as f32, 1.2, 1);
+                        }
+                        if letter_anim {
+                            pane.ascii_ink.pop_letter(cur_col, cur_row);
+                            pane.ascii_ink.jostle_line(cur_col, cur_row);
+                        }
                     }
                 }
                 self.write_to_shell(&bytes);
@@ -1247,7 +1258,11 @@ impl AtlasView {
 
         let mode = self.active_mode();
         if let Some(bytes) = keymap::to_bytes(ks, mode) {
-            if self.app_settings.ascii_ink {
+            let ink_enabled = self.app_settings.ascii_ink;
+            let letter_anim = self.app_settings.letter_animations;
+            let ink_size = self.app_settings.ascii_ink_size.clone();
+
+            if ink_enabled || letter_anim {
                 if let Some(pane) = self.active_pane_mut() {
                     let (cur_col, cur_row, cols, rows) = {
                         let sess = pane.session.borrow();
@@ -1258,17 +1273,28 @@ impl AtlasView {
                         (c, r, sess.cols, sess.rows)
                     };
                     pane.ascii_ink.resize(cols, rows);
+                    pane.ascii_ink.set_scale_from_name(&ink_size);
 
                     let is_backspace = key == "backspace" || bytes == [0x08] || bytes == [0x7f];
                     let is_enter = key == "enter" || key == "return" || bytes == [b'\r'] || bytes == [b'\n'];
 
                     if is_backspace {
-                        let target_col = cur_col.saturating_sub(1) as f32;
-                        pane.ascii_ink.dissolve(target_col, cur_row as f32);
+                        if ink_enabled {
+                            let target_col = cur_col.saturating_sub(1) as f32;
+                            pane.ascii_ink.dissolve(target_col, cur_row as f32);
+                        }
                     } else if is_enter {
-                        pane.ascii_ink.streak(cur_col as f32, cur_row as f32, 0.0, (cur_row + 1) as f32, 1);
+                        if ink_enabled {
+                            pane.ascii_ink.streak(cur_col as f32, cur_row as f32, 0.0, (cur_row + 1) as f32, 1);
+                        }
                     } else if !modifiers.control && !modifiers.alt && (key.chars().count() == 1 || bytes.iter().all(|&b| b >= 32)) {
-                        pane.ascii_ink.splash(cur_col as f32, cur_row as f32, 1.0, 2);
+                        if ink_enabled {
+                            pane.ascii_ink.splash(cur_col as f32, cur_row as f32, 1.0, 2);
+                        }
+                        if letter_anim {
+                            pane.ascii_ink.pop_letter(cur_col, cur_row);
+                            pane.ascii_ink.jostle_line(cur_col, cur_row);
+                        }
                     }
                 }
             }

@@ -32,16 +32,30 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.46",
-    codename: "ASCII Ink Field & Procedural Typing Dynamics",
+    version: "0.2.47",
+    codename: "Configurable ASCII Ink Scale & Letter Springing Dynamics",
     date: "November 2026",
     highlights: &[
         FeatureHighlight {
             category: "Typing Effects",
             icon: icons::SPARKLE,
+            title: "Tactile Letter Springing & Jostle Waves",
+            description: "Physical stamp-drop squash and harmonic bounce on newly typed characters paired with an organic kinetic jostle wave radiating along neighboring text.",
+            badge: Some("New"),
+        },
+        FeatureHighlight {
+            category: "Settings & Customization",
+            icon: icons::SETTINGS,
+            title: "Configurable ASCII Ink Scale",
+            description: "Customize the spread and intensity of procedural Bayer dither ripples and particle wakes (Compact 0.55×, Balanced 1.0×, or Expanded 1.6×).",
+            badge: Some("Settings"),
+        },
+        FeatureHighlight {
+            category: "Typing Effects",
+            icon: icons::SPARKLE,
             title: "Native ASCII Ink Field Typing Flow",
             description: "Procedural 4×4 Bayer matrix dither density ramp (.,:;t%SX8#@) with expanding ripples, swimming fish particle wakes, and backspace rose dissolve beneath the cursor.",
-            badge: Some("New"),
+            badge: Some("Visual"),
         },
         FeatureHighlight {
             category: "Cursor & Kinetics",
@@ -872,7 +886,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.46");
+        assert_eq!(release.version, "0.2.47");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);

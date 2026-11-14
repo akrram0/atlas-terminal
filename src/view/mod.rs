@@ -743,7 +743,7 @@ impl AtlasView {
                                 }
                                 needs_paint = true;
                             }
-                            if view.app_settings.ascii_ink && pane.ascii_ink.has_active_ink() {
+                            if (view.app_settings.ascii_ink || view.app_settings.letter_animations) && pane.ascii_ink.has_active_ink() {
                                 let still_active = pane.ascii_ink.step(dt);
                                 if still_active {
                                     active_motion = true;

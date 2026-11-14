@@ -304,6 +304,10 @@ pub struct AppSettingsFile {
     pub smooth_cursor: bool,
     #[serde(default = "default_true")]
     pub ascii_ink: bool,
+    #[serde(default = "default_ascii_ink_size")]
+    pub ascii_ink_size: String,
+    #[serde(default = "default_true")]
+    pub letter_animations: bool,
     #[serde(default = "default_tab_bar_position")]
     pub tab_bar_position: String,
     #[serde(default = "default_tiling_gap")]
@@ -411,6 +415,9 @@ fn default_cursor_blink() -> bool {
 fn default_true() -> bool {
     true
 }
+fn default_ascii_ink_size() -> String {
+    "medium".to_string()
+}
 fn default_tab_bar_position() -> String {
     "top".to_string()
 }
@@ -496,6 +503,8 @@ impl Default for AppSettingsFile {
             cursor_blink: default_cursor_blink(),
             smooth_cursor: default_true(),
             ascii_ink: default_true(),
+            ascii_ink_size: default_ascii_ink_size(),
+            letter_animations: default_true(),
             tab_bar_position: default_tab_bar_position(),
             tiling_gap: default_tiling_gap(),
             shortcut_schema: 2,
@@ -654,6 +663,8 @@ mod tests {
         settings.show_whats_new_on_update = false;
         settings.smooth_cursor = false;
         settings.ascii_ink = false;
+        settings.ascii_ink_size = "compact".to_string();
+        settings.letter_animations = false;
 
         let json = serde_json::to_string(&settings).unwrap();
         let loaded: AppSettingsFile = serde_json::from_str(&json).unwrap();
@@ -668,5 +679,7 @@ mod tests {
         assert_eq!(loaded.show_whats_new_on_update, false);
         assert_eq!(loaded.smooth_cursor, false);
         assert_eq!(loaded.ascii_ink, false);
+        assert_eq!(loaded.ascii_ink_size, "compact");
+        assert_eq!(loaded.letter_animations, false);
     }
 }

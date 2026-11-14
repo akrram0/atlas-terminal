@@ -1,7 +1,8 @@
 //! ASCII Ink Field typing engine.
 //!
 //! Inspired by `@stackedlol/typing-animations` and `ascii-sharks`.
-//! Translates keystrokes into fluid-like ASCII density waves beneath the cursor.
+//! Translates keystrokes into fluid-like ASCII density waves beneath the cursor,
+//! paired with tactile springing letter dynamics and kinetic jostle waves.
 //!
 //! # Mechanics
 //! - Effects deposit ink density `0.0 .. 1.0` into a discrete cell grid.
@@ -11,6 +12,8 @@
 //! - Fish particles trace curving wakes (`fish`).
 //! - Backspace dissolves deleted characters into dense Rose glyphs (`dissolve`).
 //! - Enter and jumps streak across lines (`streak`).
+//! - Springing letter stamp drop & damped harmonic oscillation (`LetterPop`).
+//! - Tactile kinetic line jostle wave radiating along the text line (`LineWave`).
 //! - Text readability is prioritized with restrained holographic alpha (0.15 .. 0.45).
 //! - Completely excludes HUD tracking brackets `[ ]`.
 
@@ -80,6 +83,24 @@ pub struct InkStreak {
     pub hue: u8,
 }
 
+/// A springing letter drop and squash animation for newly typed characters.
+#[derive(Clone, Copy, Debug)]
+pub struct LetterPop {
+    pub col: usize,
+    pub row: usize,
+    pub elapsed: f32,
+    pub duration: f32,
+}
+
+/// A kinetic jostle wave traveling along the line from a typed letter.
+#[derive(Clone, Copy, Debug)]
+pub struct LineWave {
+    pub col: usize,
+    pub row: usize,
+    pub elapsed: f32,
+    pub amp: f32,
+}
+
 /// A single active cell ready for GPUI canvas rendering.
 #[derive(Clone, Copy, Debug)]
 pub struct AsciiInkCell {
@@ -90,15 +111,62 @@ pub struct AsciiInkCell {
     pub alpha: f32,
 }
 
-/// Snapshot of active cells passed to the painter.
+/// Snapshot of active ink cells and letter dynamics passed to the painter.
 #[derive(Clone, Debug, Default)]
 pub struct AsciiInkSnapshot {
     pub cells: Vec<AsciiInkCell>,
+    pub pops: Vec<LetterPop>,
+    pub waves: Vec<LineWave>,
 }
 
 impl AsciiInkSnapshot {
     pub fn is_empty(&self) -> bool {
-        self.cells.is_empty()
+        self.cells.is_empty() && self.pops.is_empty() && self.waves.is_empty()
+    }
+
+    pub fn has_letter_motion(&self, row: usize) -> bool {
+        self.pops.iter().any(|p| p.row == row) || self.waves.iter().any(|w| w.row == row)
+    }
+
+    pub fn letter_dy(&self, col: usize, row: usize, cell_height: f32) -> f32 {
+        let mut dy = 0.0f32;
+
+        // 1. Direct letter pop (stamp drop & damped harmonic oscillation)
+        for p in &self.pops {
+            if p.row == row && p.col == col {
+                if p.elapsed < 0.045 {
+                    // Fast drop down from above
+                    let t = p.elapsed / 0.045;
+                    dy += -cell_height * 0.40 * (1.0 - t);
+                } else {
+                    // Harmonic bounce and squash
+                    let u = p.elapsed - 0.045;
+                    let decay = (-16.0 * u).exp();
+                    let osc = (34.0 * u).cos();
+                    dy += cell_height * 0.30 * decay * osc;
+                }
+            }
+        }
+
+        // 2. Kinetic jostle wave across neighboring characters
+        for w in &self.waves {
+            if w.row == row {
+                let dist = (col as f32 - w.col as f32).abs();
+                if dist > 0.0 && dist <= 12.0 {
+                    let delay = dist * 0.018;
+                    if w.elapsed > delay {
+                        let tu = w.elapsed - delay;
+                        if tu < 0.20 {
+                            let wave_decay = (-14.0 * tu).exp() * (1.0 - dist / 12.0);
+                            let wave_osc = (30.0 * tu).sin();
+                            dy += cell_height * 0.18 * w.amp * wave_decay * wave_osc;
+                        }
+                    }
+                }
+            }
+        }
+
+        dy.clamp(-cell_height * 0.75, cell_height * 0.75)
     }
 }
 
@@ -107,12 +175,15 @@ impl AsciiInkSnapshot {
 pub struct AsciiInkState {
     pub cols: usize,
     pub rows: usize,
+    pub scale: f32,
     pub density: Vec<f32>,
     pub hue: Vec<u8>,
     pub active_bounds: Option<(usize, usize, usize, usize)>,
     pub ripples: Vec<InkRipple>,
     pub fish: Vec<InkFish>,
     pub streaks: Vec<InkStreak>,
+    pub pops: Vec<LetterPop>,
+    pub waves: Vec<LineWave>,
     pub rng_seed: u32,
 }
 
@@ -130,14 +201,25 @@ impl AsciiInkState {
         Self {
             cols,
             rows,
+            scale: 1.0,
             density: vec![0.0; cap],
             hue: vec![0; cap],
             active_bounds: None,
             ripples: Vec::with_capacity(32),
             fish: Vec::with_capacity(64),
             streaks: Vec::with_capacity(16),
+            pops: Vec::with_capacity(16),
+            waves: Vec::with_capacity(8),
             rng_seed: 0x1234_5678,
         }
+    }
+
+    pub fn set_scale_from_name(&mut self, name: &str) {
+        self.scale = match name {
+            "compact" => 0.55,
+            "large" | "expanded" => 1.6,
+            _ => 1.0,
+        };
     }
 
     fn rand(&mut self) -> f32 {
@@ -164,7 +246,12 @@ impl AsciiInkState {
     }
 
     pub fn has_active_ink(&self) -> bool {
-        self.active_bounds.is_some() || !self.ripples.is_empty() || !self.fish.is_empty() || !self.streaks.is_empty()
+        self.active_bounds.is_some()
+            || !self.ripples.is_empty()
+            || !self.fish.is_empty()
+            || !self.streaks.is_empty()
+            || !self.pops.is_empty()
+            || !self.waves.is_empty()
     }
 
     pub fn deposit(&mut self, col: i32, row: i32, v: f32, hue: u8) {
@@ -244,8 +331,9 @@ impl AsciiInkState {
 
     /// Trigger a typing splash: core blob + expanding ripple + particle fish wakes.
     pub fn splash(&mut self, col: f32, row: f32, power: f32, hue: u8) {
-        // Tight, precise core strike right at the typed cell
-        self.blob(col, row, 1.6 * power, 0.95, hue);
+        let s = self.scale.clamp(0.2, 3.0);
+        // Core strike right at the typed cell scaled by user configuration
+        self.blob(col, row, 1.6 * power * s, 0.95, hue);
 
         if self.ripples.len() < 32 {
             self.ripples.push(InkRipple {
@@ -253,26 +341,26 @@ impl AsciiInkState {
                 row,
                 elapsed: 0.0,
                 life: 0.28,
-                power,
+                power: power * s,
                 hue,
             });
         }
 
-        let num_fish = (1.5 * power).round() as usize;
+        let num_fish = (1.5 * power * s).round() as usize;
         for _ in 0..num_fish {
             if self.fish.len() >= 64 {
                 break;
             }
             let a = self.rand_range(0.0, std::f32::consts::TAU);
-            let s = self.rand_range(6.0, 14.0) * power;
+            let sp = self.rand_range(6.0, 14.0) * power * s.sqrt();
             let turn = self.rand_range(-5.0, 5.0);
             let life = self.rand_range(0.18, 0.30);
             let fish_hue = if self.rand() < 0.65 { hue } else { (self.rand() * 4.0).floor() as u8 };
             self.fish.push(InkFish {
                 col,
                 row,
-                vx: a.cos() * s,
-                vy: a.sin() * s * 0.55,
+                vx: a.cos() * sp,
+                vy: a.sin() * sp * 0.55,
                 turn,
                 elapsed: 0.0,
                 life,
@@ -281,10 +369,37 @@ impl AsciiInkState {
         }
     }
 
+    /// Trigger springing letter animation for a newly typed character.
+    pub fn pop_letter(&mut self, col: usize, row: usize) {
+        self.pops.retain(|p| !(p.col == col && p.row == row));
+        if self.pops.len() >= 16 {
+            self.pops.remove(0);
+        }
+        self.pops.push(LetterPop {
+            col,
+            row,
+            elapsed: 0.0,
+            duration: 0.28,
+        });
+    }
+
+    /// Trigger a kinetic jostle wave traveling along the line from a typed character.
+    pub fn jostle_line(&mut self, col: usize, row: usize) {
+        if self.waves.len() >= 8 {
+            self.waves.remove(0);
+        }
+        self.waves.push(LineWave {
+            col,
+            row,
+            elapsed: 0.0,
+            amp: 1.0,
+        });
+    }
+
     /// Trigger backspace dissolve: character dissolves into dense Rose glyphs that melt downward.
     pub fn dissolve(&mut self, col: f32, row: f32) {
-        // Tight Rose/Coral dissolution directly centered on deleted character
-        self.blob(col, row, 1.4, 1.0, 2);
+        let s = self.scale.clamp(0.2, 3.0);
+        self.blob(col, row, 1.4 * s, 1.0, 2);
 
         for _ in 0..2 {
             if self.fish.len() >= 64 {
@@ -361,7 +476,7 @@ impl AsciiInkState {
             }
         }
 
-        // 2. Step expanding ripples (intimate, tight micro-ripple: max 5.0 cells)
+        // 2. Step expanding ripples (tight micro-ripple scaled by user effect scale)
         let mut i = 0;
         while i < self.ripples.len() {
             let r = &mut self.ripples[i];
@@ -428,39 +543,63 @@ impl AsciiInkState {
             }
         }
 
+        // 5. Step letter pops
+        self.pops.retain_mut(|p| {
+            p.elapsed += dt;
+            p.elapsed < p.duration
+        });
+
+        // 6. Step line waves
+        self.waves.retain_mut(|w| {
+            w.elapsed += dt;
+            w.elapsed < 0.35
+        });
+
         self.has_active_ink()
     }
 
-    /// Takes a snapshot of all active ink cells for the GPU canvas painter.
-    pub fn snapshot(&self) -> AsciiInkSnapshot {
+    /// Takes a snapshot of all active ink cells and letter dynamics for the GPU canvas painter.
+    pub fn snapshot(&self, ink_enabled: bool, letter_anim_enabled: bool) -> AsciiInkSnapshot {
         let mut cells = Vec::new();
-        let Some((c0, r0, c1, r1)) = self.active_bounds else {
-            return AsciiInkSnapshot { cells };
-        };
-
-        for r in r0..=r1.min(self.rows.saturating_sub(1)) {
-            let row_offset = r * self.cols;
-            for c in c0..=c1.min(self.cols.saturating_sub(1)) {
-                let idx = row_offset + c;
-                if idx >= self.density.len() {
-                    continue;
-                }
-                let v = self.density[idx];
-                if let Some(ch) = glyph_for_density(v, c, r) {
-                    let hue = self.hue[idx];
-                    let alpha = (0.15 + 0.35 * v).clamp(0.0, 0.45);
-                    cells.push(AsciiInkCell {
-                        col: c,
-                        row: r,
-                        glyph: ch,
-                        hue,
-                        alpha,
-                    });
+        if ink_enabled {
+            if let Some((c0, r0, c1, r1)) = self.active_bounds {
+                for r in r0..=r1.min(self.rows.saturating_sub(1)) {
+                    let row_offset = r * self.cols;
+                    for c in c0..=c1.min(self.cols.saturating_sub(1)) {
+                        let idx = row_offset + c;
+                        if idx >= self.density.len() {
+                            continue;
+                        }
+                        let v = self.density[idx];
+                        if let Some(ch) = glyph_for_density(v, c, r) {
+                            let hue = self.hue[idx];
+                            let alpha = (0.15 + 0.35 * v).clamp(0.0, 0.45);
+                            cells.push(AsciiInkCell {
+                                col: c,
+                                row: r,
+                                glyph: ch,
+                                hue,
+                                alpha,
+                            });
+                        }
+                    }
                 }
             }
         }
 
-        AsciiInkSnapshot { cells }
+        let pops = if letter_anim_enabled {
+            self.pops.clone()
+        } else {
+            Vec::new()
+        };
+
+        let waves = if letter_anim_enabled {
+            self.waves.clone()
+        } else {
+            Vec::new()
+        };
+
+        AsciiInkSnapshot { cells, pops, waves }
     }
 }
 
@@ -485,7 +624,7 @@ mod tests {
         state.deposit(10, 5, 0.8, 1);
         assert!(state.has_active_ink());
         assert_eq!(state.active_bounds, Some((10, 5, 10, 5)));
-        let snap = state.snapshot();
+        let snap = state.snapshot(true, true);
         assert_eq!(snap.cells.len(), 1);
         assert_eq!(snap.cells[0].col, 10);
         assert_eq!(snap.cells[0].row, 5);
@@ -503,7 +642,7 @@ mod tests {
             state.step(1.0 / 30.0);
         }
         assert!(!state.has_active_ink());
-        assert!(state.snapshot().is_empty());
+        assert!(state.snapshot(true, true).is_empty());
     }
 
     #[test]
@@ -520,8 +659,40 @@ mod tests {
         let mut state = AsciiInkState::new(60, 30);
         state.dissolve(15.0, 8.0);
         assert!(state.has_active_ink());
-        let snap = state.snapshot();
+        let snap = state.snapshot(true, true);
         assert!(!snap.is_empty());
         assert!(snap.cells.iter().any(|c| c.hue == 2));
+    }
+
+    #[test]
+    fn test_letter_pop_and_wave_dynamics() {
+        let mut state = AsciiInkState::new(80, 24);
+        state.pop_letter(12, 4);
+        state.jostle_line(12, 4);
+        assert!(state.has_active_ink());
+
+        let snap = state.snapshot(false, true);
+        assert!(snap.has_letter_motion(4));
+        assert!(!snap.has_letter_motion(5));
+
+        // Direct typed letter at t=0 has negative dy (dropping down from above)
+        let dy = snap.letter_dy(12, 4, 20.0);
+        assert!(dy < 0.0);
+
+        // Step forward slightly
+        state.step(0.045);
+        let snap_landed = state.snapshot(false, true);
+        let dy_landed = snap_landed.letter_dy(12, 4, 20.0);
+        // At landing point, letter reaches or passes baseline into squash
+        assert!(dy_landed >= 0.0);
+
+        // Advance 1 second -> all pops and waves expire
+        for _ in 0..30 {
+            state.step(0.04);
+        }
+        assert!(!state.has_active_ink());
+        let snap_idle = state.snapshot(false, true);
+        assert!(!snap_idle.has_letter_motion(4));
+        assert_eq!(snap_idle.letter_dy(12, 4, 20.0), 0.0);
     }
 }

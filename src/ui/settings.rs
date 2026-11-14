@@ -1201,6 +1201,36 @@ impl AtlasView {
             cx,
         );
 
+        let ascii_size_options = vec![
+            ("compact".to_string(), "Compact".to_string()),
+            ("medium".to_string(), "Balanced".to_string()),
+            ("large".to_string(), "Expanded".to_string()),
+        ];
+        let ascii_ink_size_ctrl = segmented_control(
+            "ascii-ink-size-ctrl",
+            ascii_size_options,
+            &self.app_settings.ascii_ink_size,
+            theme,
+            |size_val, view, cx| {
+                view.app_settings.ascii_ink_size = size_val;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
+        let letter_animations_ctrl = toggle_pill(
+            137,
+            self.app_settings.letter_animations,
+            theme,
+            |view, cx| {
+                view.app_settings.letter_animations = !view.app_settings.letter_animations;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         // Tiling Gap Stepper: 0px to 16px in 2px increments
         let gap_val = self.app_settings.tiling_gap.round() as i32;
         let tiling_gap_ctrl = stepper(
@@ -1365,7 +1395,9 @@ impl AtlasView {
                     .child(setting_row("Caret Shape", Some("Visual style of input focus cursor"), cursor_shape_ctrl, false))
                     .child(setting_row("Smooth Cursor Glide", Some("Snappy hardware-accelerated spring glide between cells"), smooth_cursor_ctrl, false))
                     .child(setting_row("Breathing Animation", Some("Smooth cursor pulse when idle"), cursor_blink_ctrl, false))
-                    .child(setting_row("ASCII Ink Flow", Some("Procedural ASCII dither ripple and particle wake while typing"), ascii_ink_ctrl, true)),
+                    .child(setting_row("ASCII Ink Flow", Some("Procedural ASCII dither ripple and particle wake while typing"), ascii_ink_ctrl, false))
+                    .child(setting_row("ASCII Ink Scale", Some("Spread and radius of the dither splash and ripples"), ascii_ink_size_ctrl, false))
+                    .child(setting_row("Letter Springing", Some("Tactile drop-in bounce and kinetic line jostle wave on keypress"), letter_animations_ctrl, true)),
             );
 
 

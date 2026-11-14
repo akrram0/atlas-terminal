@@ -801,6 +801,7 @@ impl Element for TerminalElement {
         for (row_index, row) in rows.iter().enumerate() {
             let y0 = top + cell_height * row_index as f32 + self.subpixel_y;
             let x = |col: usize| left + cell_width * col as f32;
+            let row_has_motion = self.ascii_ink.has_letter_motion(row_index);
 
             // Text: one shaped line per segment, each pinned to its starting
             // grid column, so glyph advances (emoji, CJK, Nerd icons) can
@@ -831,7 +832,7 @@ impl Element for TerminalElement {
                 if run.style.italic && run.style.class != CharClass::Icon {
                     font = font.italic();
                 }
-                if matches!(run.style.class, CharClass::Icon | CharClass::Block) {
+                if matches!(run.style.class, CharClass::Icon | CharClass::Block) || row_has_motion {
                     let mut cell = col;
                     let mut offset = 0usize;
                     for c in run_text.chars() {
@@ -889,12 +890,17 @@ impl Element for TerminalElement {
                 // Block elements and box drawing: painted as quads on exact
                 // cell boundaries, never through a font glyph, so pixel-art
                 // logos and separator runs are 100% solid.
+                let dy = if row_has_motion {
+                    self.ascii_ink.letter_dy(segment.col, row_index, cell_height)
+                } else {
+                    0.0
+                };
                 if segment.style.class == CharClass::Block {
                     if let Some(ch) = segment.text.chars().next() {
                         match render_procedural(
                             ch,
                             segment.x0,
-                            y0,
+                            y0 + dy,
                             cell_width,
                             cell_height,
                             segment.style.fg,
@@ -903,8 +909,8 @@ impl Element for TerminalElement {
                                 for (rx0, ry0, rx1, ry1) in rects {
                                     window.paint_quad(fill(
                                         Bounds::from_corners(
-                                            point(px(segment.x0 + rx0), px(y0 + ry0)),
-                                            point(px(segment.x0 + rx1), px(y0 + ry1)),
+                                            point(px(segment.x0 + rx0), px(y0 + dy + ry0)),
+                                            point(px(segment.x0 + rx1), px(y0 + dy + ry1)),
                                         ),
                                         color,
                                     ));
@@ -961,7 +967,7 @@ impl Element for TerminalElement {
                     force,
                 );
                 let _ = line.paint(
-                    point(px(segment.x0), px(y0)),
+                    point(px(segment.x0), px(y0 + dy)),
                     px(cell_height),
                     window,
                     cx,
