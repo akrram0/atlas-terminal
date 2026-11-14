@@ -302,6 +302,8 @@ pub struct AppSettingsFile {
     pub cursor_blink: bool,
     #[serde(default = "default_true")]
     pub smooth_cursor: bool,
+    #[serde(default = "default_true")]
+    pub ascii_ink: bool,
     #[serde(default = "default_tab_bar_position")]
     pub tab_bar_position: String,
     #[serde(default = "default_tiling_gap")]
@@ -493,6 +495,7 @@ impl Default for AppSettingsFile {
             cursor_shape: default_cursor_shape(),
             cursor_blink: default_cursor_blink(),
             smooth_cursor: default_true(),
+            ascii_ink: default_true(),
             tab_bar_position: default_tab_bar_position(),
             tiling_gap: default_tiling_gap(),
             shortcut_schema: 2,
@@ -650,6 +653,7 @@ mod tests {
         settings.last_version_run = Some("0.2.39".to_string());
         settings.show_whats_new_on_update = false;
         settings.smooth_cursor = false;
+        settings.ascii_ink = false;
 
         let json = serde_json::to_string(&settings).unwrap();
         let loaded: AppSettingsFile = serde_json::from_str(&json).unwrap();
@@ -663,5 +667,6 @@ mod tests {
         assert_eq!(loaded.last_version_run.as_deref(), Some("0.2.39"));
         assert_eq!(loaded.show_whats_new_on_update, false);
         assert_eq!(loaded.smooth_cursor, false);
+        assert_eq!(loaded.ascii_ink, false);
     }
 }

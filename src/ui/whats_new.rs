@@ -32,16 +32,23 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.45",
-    codename: "Kinetic Cursor Engine & Caret Dynamics",
+    version: "0.2.46",
+    codename: "ASCII Ink Field & Procedural Typing Dynamics",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "Typing Effects",
+            icon: icons::SPARKLE,
+            title: "Native ASCII Ink Field Typing Flow",
+            description: "Procedural 4×4 Bayer matrix dither density ramp (.,:;t%SX8#@) with expanding ripples, swimming fish particle wakes, and backspace rose dissolve beneath the cursor.",
+            badge: Some("New"),
+        },
         FeatureHighlight {
             category: "Cursor & Kinetics",
             icon: icons::PEN,
             title: "Elastic Mass Squish & Stretch Caret",
             description: "Organic mass-spring kinetics dynamically elongate the caret along its motion vector during transit and settle with snappy 45ms Apple spring damping.",
-            badge: Some("New"),
+            badge: Some("Kinetics"),
         },
         FeatureHighlight {
             category: "Cursor & Trails",
@@ -865,7 +872,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.45");
+        assert_eq!(release.version, "0.2.46");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);

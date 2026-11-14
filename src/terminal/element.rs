@@ -40,6 +40,7 @@ pub struct TerminalElement {
     pub search_matches: Vec<(alacritty_terminal::index::Point, alacritty_terminal::index::Point)>,
     pub active_search_match: Option<usize>,
     pub ghost_text: Option<String>,
+    pub ascii_ink: crate::terminal::AsciiInkSnapshot,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -746,6 +747,55 @@ impl Element for TerminalElement {
                     }
                 }
             }
+        }
+
+        // --------------------------------------------------------------------
+        // ASCII Ink Field (procedural dither ripples under text)
+        // --------------------------------------------------------------------
+        if !self.ascii_ink.is_empty() {
+            window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                for ink_cell in &self.ascii_ink.cells {
+                    let col = ink_cell.col;
+                    let row = ink_cell.row;
+                    if col >= cols || row >= max_rows {
+                        continue;
+                    }
+                    let x0 = left + cell_width * col as f32;
+                    let y0 = top + cell_height * row as f32 + self.subpixel_y;
+
+                    let base_color = match ink_cell.hue {
+                        0 => rgba(0x7EE787FF), // Mint
+                        1 => rgba(0x79C0FFFF), // Sky
+                        2 => Rgba {
+                            r: theme.accent.r,
+                            g: theme.accent.g,
+                            b: theme.accent.b,
+                            a: 1.0,
+                        }, // Terracotta / Brand Accent
+                        3 => rgba(0xD2A8FFFF), // Lavender
+                        _ => theme.accent,
+                    };
+                    let color = Rgba {
+                        r: base_color.r,
+                        g: base_color.g,
+                        b: base_color.b,
+                        a: (base_color.a * ink_cell.alpha).clamp(0.0, 0.40),
+                    };
+
+                    let mut glyph_buf = [0u8; 4];
+                    let s = ink_cell.glyph.encode_utf8(&mut glyph_buf);
+                    let text_run = TextRun {
+                        len: s.len(),
+                        font: self.font.clone(),
+                        color: color.into(),
+                        background_color: None,
+                        underline: None,
+                        strikethrough: None,
+                    };
+                    let line = text_system.shape_line(s.to_string().into(), font_size, &[text_run], Some(px(cell_width)));
+                    let _ = line.paint(point(px(x0), px(y0)), px(cell_height), window, cx);
+                }
+            });
         }
 
         for (row_index, row) in rows.iter().enumerate() {

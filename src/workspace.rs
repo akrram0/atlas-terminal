@@ -76,6 +76,8 @@ pub struct Pane {
     pub exited: bool,
     /// 4-corner warp smear motion state for the cursor.
     pub cursor_motion: CursorMotionState,
+    /// ASCII Ink Field fluid simulation state.
+    pub ascii_ink: crate::terminal::AsciiInkState,
     /// Smooth split expansion progress (0.0 .. 1.0).
     pub pane_expansion: f32,
     /// Smooth focus transition progress (0.0 .. 1.0).

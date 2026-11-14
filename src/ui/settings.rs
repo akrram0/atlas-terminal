@@ -1189,6 +1189,18 @@ impl AtlasView {
             cx,
         );
 
+        let ascii_ink_ctrl = toggle_pill(
+            136,
+            self.app_settings.ascii_ink,
+            theme,
+            |view, cx| {
+                view.app_settings.ascii_ink = !view.app_settings.ascii_ink;
+                view.sync_and_save_settings();
+                cx.notify();
+            },
+            cx,
+        );
+
         // Tiling Gap Stepper: 0px to 16px in 2px increments
         let gap_val = self.app_settings.tiling_gap.round() as i32;
         let tiling_gap_ctrl = stepper(
@@ -1352,7 +1364,8 @@ impl AtlasView {
                     .child(section_header("TERMINAL CARET"))
                     .child(setting_row("Caret Shape", Some("Visual style of input focus cursor"), cursor_shape_ctrl, false))
                     .child(setting_row("Smooth Cursor Glide", Some("Snappy hardware-accelerated spring glide between cells"), smooth_cursor_ctrl, false))
-                    .child(setting_row("Breathing Animation", Some("Smooth cursor pulse when idle"), cursor_blink_ctrl, true)),
+                    .child(setting_row("Breathing Animation", Some("Smooth cursor pulse when idle"), cursor_blink_ctrl, false))
+                    .child(setting_row("ASCII Ink Flow", Some("Procedural ASCII dither ripple and particle wake while typing"), ascii_ink_ctrl, true)),
             );
 
 

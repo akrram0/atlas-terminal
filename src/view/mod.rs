@@ -743,6 +743,13 @@ impl AtlasView {
                                 }
                                 needs_paint = true;
                             }
+                            if view.app_settings.ascii_ink && pane.ascii_ink.has_active_ink() {
+                                let still_active = pane.ascii_ink.step(dt);
+                                if still_active {
+                                    active_motion = true;
+                                }
+                                needs_paint = true;
+                            }
                             if pane.closing {
                                 active_motion = true;
                                 pane.pane_expansion = (pane.pane_expansion - dt * 10.0).max(0.0);

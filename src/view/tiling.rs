@@ -1012,6 +1012,11 @@ impl AtlasView {
                 } else {
                     None
                 },
+                ascii_ink: if self.app_settings.ascii_ink {
+                    pane.ascii_ink.snapshot()
+                } else {
+                    crate::terminal::AsciiInkSnapshot::default()
+                },
             });
         }
 
