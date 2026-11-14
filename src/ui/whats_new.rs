@@ -32,10 +32,38 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.44",
-    codename: "OpenCode Binary Launcher & Self-Healing Shim Repair",
+    version: "0.2.45",
+    codename: "Kinetic Cursor Engine & Caret Dynamics",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "Cursor & Kinetics",
+            icon: icons::PEN,
+            title: "Elastic Mass Squish & Stretch Caret",
+            description: "Organic mass-spring kinetics dynamically elongate the caret along its motion vector during transit and settle with snappy 45ms Apple spring damping.",
+            badge: Some("New"),
+        },
+        FeatureHighlight {
+            category: "Cursor & Trails",
+            icon: icons::SPARKLE,
+            title: "Ghost Comet Trails & Glow Dynamics",
+            description: "Optional decaying 3-step ghost trails with quadratic alpha decay, zero-idle battery sleep state, and micro-rounded Apple corners.",
+            badge: Some("Kinetics"),
+        },
+        FeatureHighlight {
+            category: "Input & Modal TUI",
+            icon: icons::TERMINAL,
+            title: "Smooth Geometric Shape Morphing",
+            description: "Continuous 60ms Hermite interpolation between Block, Beam (Bar), and Underline cursor shapes during Vim, OpenCode, and shell mode changes.",
+            badge: Some("TUI"),
+        },
+        FeatureHighlight {
+            category: "Rendering Stability",
+            icon: icons::REFRESH,
+            title: "Line-Wrap Discontinuity Guards & Hybrid Inversion",
+            description: "Instant snap eliminates 80-column screen-wide streaks on line wraps, while hybrid inversion preserves underlying text without strobing or flickering.",
+            badge: Some("Core"),
+        },
         FeatureHighlight {
             category: "OpenCode & CLI",
             icon: icons::OPENCODE_MARK,
@@ -837,7 +865,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.44");
+        assert_eq!(release.version, "0.2.45");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);

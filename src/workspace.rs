@@ -1,15 +1,26 @@
 //! Workspace structures: tabs, split panes, path condensation, and process branding.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use alacritty_terminal::vte::ansi::CursorShape;
 use crate::icons;
 use crate::session::{Profile, Session};
 use crate::wsl;
 
 #[allow(unused_imports)]
 pub use crate::tiling::{Direction, SplitAxis, TileNode, TileTree};
+
+/// A timestamped sample point for kinetic cursor ghost trails.
+#[derive(Clone, Debug)]
+pub struct CursorTrailSample {
+    pub col: f32,
+    pub row: f32,
+    pub created_at: std::time::Instant,
+    pub alpha: f32,
+}
 
 /// One shell inside a tab (a tab is one or more panes side by side).
 pub struct Pane {
@@ -29,6 +40,14 @@ pub struct Pane {
     pub cursor_pos: Option<(f32, f32)>,
     /// Target cursor position reported by the terminal grid.
     pub cursor_target: (f32, f32),
+    /// Instantaneous velocity vector (cols/sec, rows/sec) for elastic kinetic deformation.
+    pub cursor_velocity: (f32, f32),
+    /// Ring buffer of recent cursor positions for comet trail rendering.
+    pub cursor_trail: VecDeque<CursorTrailSample>,
+    /// Currently interpolated cursor shape for smooth morphing transitions.
+    pub cursor_current_shape: Option<CursorShape>,
+    /// Progress of shape morphing (0.0 .. 1.0).
+    pub cursor_shape_progress: f32,
     /// Smooth split expansion progress (0.0 .. 1.0).
     pub pane_expansion: f32,
     /// Smooth focus transition progress (0.0 .. 1.0).
@@ -574,5 +593,43 @@ mod tests {
         let json = serde_json::to_string(&session).unwrap();
         let deserialized: SavedSession = serde_json::from_str(&json).unwrap();
         assert_eq!(session, deserialized);
+    }
+
+    #[test]
+    fn test_cursor_trail_buffer_capacity() {
+        let mut trail = VecDeque::new();
+        for i in 0..10 {
+            trail.push_back(CursorTrailSample {
+                col: i as f32,
+                row: 0.0,
+                created_at: std::time::Instant::now(),
+                alpha: 0.60,
+            });
+            if trail.len() > 3 {
+                trail.pop_front();
+            }
+        }
+        assert_eq!(trail.len(), 3);
+        assert_eq!(trail.back().unwrap().col, 9.0);
+        assert_eq!(trail.front().unwrap().col, 7.0);
+    }
+
+    #[test]
+    fn test_line_wrap_discontinuity_logic() {
+        let cur_col = 79.0;
+        let cur_row = 5.0;
+        let tgt_col = 0.0;
+        let tgt_row = 6.0;
+
+        let d_col = tgt_col - cur_col;
+        let d_row = tgt_row - cur_row;
+
+        let is_line_wrap = d_row == 1.0 && d_col < -20.0;
+        assert!(is_line_wrap, "Must detect line-wrap from col 79 to col 0");
+
+        let d_col_normal = 5.0;
+        let d_row_normal = 0.0;
+        let is_normal_wrap = d_row_normal == 1.0 && d_col_normal < -20.0;
+        assert!(!is_normal_wrap);
     }
 }
