@@ -244,28 +244,29 @@ impl AsciiInkState {
 
     /// Trigger a typing splash: core blob + expanding ripple + particle fish wakes.
     pub fn splash(&mut self, col: f32, row: f32, power: f32, hue: u8) {
-        self.blob(col, row, 3.2 * power, 0.95, hue);
+        // Tight, precise core strike right at the typed cell
+        self.blob(col, row, 1.6 * power, 0.95, hue);
 
         if self.ripples.len() < 32 {
             self.ripples.push(InkRipple {
                 col,
                 row,
                 elapsed: 0.0,
-                life: 0.38,
+                life: 0.28,
                 power,
                 hue,
             });
         }
 
-        let num_fish = (2.0 * power).round() as usize;
+        let num_fish = (1.5 * power).round() as usize;
         for _ in 0..num_fish {
             if self.fish.len() >= 64 {
                 break;
             }
             let a = self.rand_range(0.0, std::f32::consts::TAU);
-            let s = self.rand_range(14.0, 32.0) * power;
-            let turn = self.rand_range(-6.0, 6.0);
-            let life = self.rand_range(0.25, 0.45);
+            let s = self.rand_range(6.0, 14.0) * power;
+            let turn = self.rand_range(-5.0, 5.0);
+            let life = self.rand_range(0.18, 0.30);
             let fish_hue = if self.rand() < 0.65 { hue } else { (self.rand() * 4.0).floor() as u8 };
             self.fish.push(InkFish {
                 col,
@@ -282,17 +283,17 @@ impl AsciiInkState {
 
     /// Trigger backspace dissolve: character dissolves into dense Rose glyphs that melt downward.
     pub fn dissolve(&mut self, col: f32, row: f32) {
-        // Hue 2 is Rose / Coral
-        self.blob(col, row, 2.5, 1.0, 2);
+        // Tight Rose/Coral dissolution directly centered on deleted character
+        self.blob(col, row, 1.4, 1.0, 2);
 
         for _ in 0..2 {
             if self.fish.len() >= 64 {
                 break;
             }
-            let vx = self.rand_range(-12.0, 12.0);
-            let vy = self.rand_range(6.0, 18.0); // sink downwards
-            let turn = self.rand_range(-4.0, 4.0);
-            let life = self.rand_range(0.25, 0.4);
+            let vx = self.rand_range(-6.0, 6.0);
+            let vy = self.rand_range(3.0, 9.0); // subtle downward sink
+            let turn = self.rand_range(-3.0, 3.0);
+            let life = self.rand_range(0.18, 0.28);
             self.fish.push(InkFish {
                 col,
                 row,
@@ -323,9 +324,9 @@ impl AsciiInkState {
 
     /// Step simulation physics forward by `dt` seconds.
     pub fn step(&mut self, dt: f32) -> bool {
-        // 1. Exponential field fade (decay factor ~3.4/s)
+        // 1. Exponential field fade (snappy decay factor ~4.2/s for tight, clean dissipation)
         if let Some((c0, r0, c1, r1)) = self.active_bounds {
-            let k = (-dt * 3.4).exp();
+            let k = (-dt * 4.2).exp();
             let mut nx0 = self.cols;
             let mut ny0 = self.rows;
             let mut nx1 = 0;
@@ -360,7 +361,7 @@ impl AsciiInkState {
             }
         }
 
-        // 2. Step expanding ripples
+        // 2. Step expanding ripples (intimate, tight micro-ripple: max 5.0 cells)
         let mut i = 0;
         while i < self.ripples.len() {
             let r = &mut self.ripples[i];
@@ -370,10 +371,10 @@ impl AsciiInkState {
                 continue;
             }
             let progress = r.elapsed / r.life;
-            let radius = 1.0 + (1.0 - (1.0 - progress) * (1.0 - progress)) * 12.0 * r.power;
-            let power = 0.85 * (1.0 - progress);
+            let radius = 0.6 + (1.0 - (1.0 - progress) * (1.0 - progress)) * 5.0 * r.power;
+            let power = 0.82 * (1.0 - progress);
             let (col, row, hue) = (r.col, r.row, r.hue);
-            self.ring(col, row, radius, 1.8, power, hue);
+            self.ring(col, row, radius, 1.1, power, hue);
             i += 1;
         }
 
