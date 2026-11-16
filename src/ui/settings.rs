@@ -3562,6 +3562,8 @@ impl AtlasView {
             div()
                 .flex()
                 .flex_col()
+                .w(relative(1.0))
+                .min_w(px(0.0))
                 .child(match self.settings_tab {
                     SettingsTab::WhatsNew => self.render_whats_new_settings_page(theme, is_dark, cx),
                     SettingsTab::General => general_view.into_any_element(),

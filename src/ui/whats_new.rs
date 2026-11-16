@@ -6,8 +6,8 @@
 
 use gpui::prelude::*;
 use gpui::{
-    div, px, rgb, rgba, AnyElement, ClickEvent, Context, ElementId, FontWeight, IntoElement,
-    Rgba,
+    div, px, relative, rgb, rgba, AnyElement, ClickEvent, Context, ElementId, FontWeight,
+    IntoElement, Rgba,
 };
 
 use crate::icons;
@@ -32,10 +32,17 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.47",
-    codename: "Configurable ASCII Ink Scale & Letter Springing Dynamics",
+    version: "0.2.48",
+    codename: "Responsive Text Wrapping & Card Containment",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "UI & Layout",
+            icon: icons::SLIDERS,
+            title: "Responsive Text Wrapping & Card Containment",
+            description: "Constrained layout flex calculation across Settings and modal sheets: long descriptions now wrap smoothly within card boundaries without overflowing or displacing status badges (Issue #8).",
+            badge: Some("Issue #8 Fixed"),
+        },
         FeatureHighlight {
             category: "Typing Effects",
             icon: icons::SPARKLE,
@@ -333,6 +340,8 @@ impl AtlasView {
                         div()
                             .id(ElementId::named_usize("whats-new-feature-list", 0))
                             .flex_1()
+                            .w(relative(1.0))
+                            .min_w(px(0.0))
                             .overflow_y_scroll()
                             .p(px(18.0))
                             .py(px(14.0))
@@ -343,8 +352,11 @@ impl AtlasView {
                                 |(idx, feat)| {
                                     div()
                                         .id(ElementId::named_usize("whats-new-item", idx))
+                                        .w(relative(1.0))
+                                        .min_w(px(0.0))
                                         .flex()
                                         .flex_row()
+                                        .items_start()
                                         .gap(px(12.0))
                                         .p(px(10.0))
                                         .rounded(px(8.0))
@@ -376,17 +388,23 @@ impl AtlasView {
                                         .child(
                                             div()
                                                 .flex_1()
+                                                .min_w(px(0.0))
                                                 .flex()
                                                 .flex_col()
                                                 .gap(px(2.0))
                                                 .child(
                                                     div()
+                                                        .w(relative(1.0))
+                                                        .min_w(px(0.0))
                                                         .flex()
                                                         .flex_row()
                                                         .items_center()
                                                         .justify_between()
+                                                        .gap(px(8.0))
                                                         .child(
                                                             div()
+                                                                .flex_1()
+                                                                .min_w(px(0.0))
                                                                 .text_size(px(13.0))
                                                                 .font_weight(FontWeight::SEMIBOLD)
                                                                 .text_color(theme.chrome_fg_active)
@@ -394,6 +412,7 @@ impl AtlasView {
                                                         )
                                                         .children(feat.badge.map(|b| {
                                                             div()
+                                                                .flex_none()
                                                                 .px(px(5.0))
                                                                 .py(px(1.0))
                                                                 .rounded(px(3.0))
@@ -409,6 +428,8 @@ impl AtlasView {
                                                 )
                                                 .child(
                                                     div()
+                                                        .w(relative(1.0))
+                                                        .min_w(px(0.0))
                                                         .text_size(px(11.5))
                                                         .text_color(theme.chrome_fg)
                                                         .line_height(px(15.0))
@@ -572,6 +593,8 @@ impl AtlasView {
             // Hero Banner Card
             .child(
                 div()
+                    .w(relative(1.0))
+                    .min_w(px(0.0))
                     .rounded(px(10.0))
                     .bg(theme.elevated_bg)
                     .border_1()
@@ -582,12 +605,17 @@ impl AtlasView {
                     .gap(px(14.0))
                     .child(
                         div()
+                            .w(relative(1.0))
+                            .min_w(px(0.0))
                             .flex()
                             .flex_row()
                             .items_center()
                             .justify_between()
+                            .gap(px(12.0))
                             .child(
                                 div()
+                                    .flex_1()
+                                    .min_w(px(0.0))
                                     .flex()
                                     .flex_row()
                                     .items_center()
@@ -596,6 +624,7 @@ impl AtlasView {
                                         div()
                                             .w(px(44.0))
                                             .h(px(44.0))
+                                            .flex_none()
                                             .rounded(px(10.0))
                                             .bg(theme.soft_bg)
                                             .border_1()
@@ -611,6 +640,8 @@ impl AtlasView {
                                     )
                                     .child(
                                         div()
+                                            .flex_1()
+                                            .min_w(px(0.0))
                                             .flex()
                                             .flex_col()
                                             .gap(px(2.0))
@@ -629,6 +660,7 @@ impl AtlasView {
                                                     )
                                                     .child(
                                                         div()
+                                                            .flex_none()
                                                             .px(px(7.0))
                                                             .py(px(2.0))
                                                             .rounded(px(4.0))
@@ -655,6 +687,7 @@ impl AtlasView {
                             )
                             .child(
                                 div()
+                                    .flex_none()
                                     .flex()
                                     .flex_row()
                                     .items_center()
@@ -790,6 +823,8 @@ impl AtlasView {
             // Feature Highlights Grid
             .child(
                 div()
+                    .w(relative(1.0))
+                    .min_w(px(0.0))
                     .rounded(px(10.0))
                     .bg(theme.elevated_bg)
                     .border_1()
@@ -801,8 +836,11 @@ impl AtlasView {
                     .children(release.highlights.iter().enumerate().map(|(idx, feat)| {
                         div()
                             .id(ElementId::named_usize("whats-new-page-item", idx))
+                            .w(relative(1.0))
+                            .min_w(px(0.0))
                             .flex()
                             .flex_row()
+                            .items_start()
                             .gap(px(14.0))
                             .p(px(12.0))
                             .rounded(px(8.0))
@@ -834,17 +872,23 @@ impl AtlasView {
                             .child(
                                 div()
                                     .flex_1()
+                                    .min_w(px(0.0))
                                     .flex()
                                     .flex_col()
                                     .gap(px(3.0))
                                     .child(
                                         div()
+                                            .w(relative(1.0))
+                                            .min_w(px(0.0))
                                             .flex()
                                             .flex_row()
                                             .items_center()
                                             .justify_between()
+                                            .gap(px(8.0))
                                             .child(
                                                 div()
+                                                    .flex_1()
+                                                    .min_w(px(0.0))
                                                     .text_size(px(13.5))
                                                     .font_weight(FontWeight::SEMIBOLD)
                                                     .text_color(theme.chrome_fg_active)
@@ -852,6 +896,7 @@ impl AtlasView {
                                             )
                                             .children(feat.badge.map(|b| {
                                                 div()
+                                                    .flex_none()
                                                     .px(px(6.0))
                                                     .py(px(1.5))
                                                     .rounded(px(4.0))
@@ -867,6 +912,8 @@ impl AtlasView {
                                     )
                                     .child(
                                         div()
+                                            .w(relative(1.0))
+                                            .min_w(px(0.0))
                                             .text_size(px(12.0))
                                             .text_color(theme.chrome_fg)
                                             .line_height(px(16.0))
@@ -886,7 +933,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.47");
+        assert_eq!(release.version, "0.2.48");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);
@@ -897,5 +944,21 @@ mod tests {
             assert!(!h.category.is_empty());
             assert!(h.icon.starts_with("icons/"));
         }
+    }
+
+    #[test]
+    fn test_issue_8_highlight_entry_present_and_well_formed() {
+        let release = latest_release();
+        let issue_8 = release
+            .highlights
+            .iter()
+            .find(|h| h.title.contains("Card Containment") || h.badge == Some("Issue #8 Fixed"));
+        assert!(
+            issue_8.is_some(),
+            "Issue #8 highlight must be registered in CURRENT_RELEASE"
+        );
+        let feat = issue_8.unwrap();
+        assert!(!feat.description.is_empty());
+        assert_eq!(feat.badge, Some("Issue #8 Fixed"));
     }
 }
