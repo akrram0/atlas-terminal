@@ -32,15 +32,15 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.48",
-    codename: "Responsive Text Wrapping & Card Containment",
+    version: "0.2.49",
+    codename: "Multi-Line Text Flow & Layout Stabilization",
     date: "November 2026",
     highlights: &[
         FeatureHighlight {
             category: "UI & Layout",
             icon: icons::SLIDERS,
             title: "Responsive Text Wrapping & Card Containment",
-            description: "Constrained layout flex calculation across Settings and modal sheets: long descriptions now wrap smoothly within card boundaries without overflowing or displacing status badges (Issue #8).",
+            description: "Fixed layout flex calculation across Settings and modal sheets: descriptions now flow naturally onto multiple lines within card boundaries without vertical character stacking (Issue #8).",
             badge: Some("Issue #8 Fixed"),
         },
         FeatureHighlight {
@@ -354,6 +354,7 @@ impl AtlasView {
                                         .id(ElementId::named_usize("whats-new-item", idx))
                                         .w(relative(1.0))
                                         .min_w(px(0.0))
+                                        .overflow_hidden()
                                         .flex()
                                         .flex_row()
                                         .items_start()
@@ -394,8 +395,6 @@ impl AtlasView {
                                                 .gap(px(2.0))
                                                 .child(
                                                     div()
-                                                        .w(relative(1.0))
-                                                        .min_w(px(0.0))
                                                         .flex()
                                                         .flex_row()
                                                         .items_center()
@@ -403,8 +402,6 @@ impl AtlasView {
                                                         .gap(px(8.0))
                                                         .child(
                                                             div()
-                                                                .flex_1()
-                                                                .min_w(px(0.0))
                                                                 .text_size(px(13.0))
                                                                 .font_weight(FontWeight::SEMIBOLD)
                                                                 .text_color(theme.chrome_fg_active)
@@ -428,8 +425,6 @@ impl AtlasView {
                                                 )
                                                 .child(
                                                     div()
-                                                        .w(relative(1.0))
-                                                        .min_w(px(0.0))
                                                         .text_size(px(11.5))
                                                         .text_color(theme.chrome_fg)
                                                         .line_height(px(15.0))
@@ -838,6 +833,7 @@ impl AtlasView {
                             .id(ElementId::named_usize("whats-new-page-item", idx))
                             .w(relative(1.0))
                             .min_w(px(0.0))
+                            .overflow_hidden()
                             .flex()
                             .flex_row()
                             .items_start()
@@ -878,8 +874,6 @@ impl AtlasView {
                                     .gap(px(3.0))
                                     .child(
                                         div()
-                                            .w(relative(1.0))
-                                            .min_w(px(0.0))
                                             .flex()
                                             .flex_row()
                                             .items_center()
@@ -887,8 +881,6 @@ impl AtlasView {
                                             .gap(px(8.0))
                                             .child(
                                                 div()
-                                                    .flex_1()
-                                                    .min_w(px(0.0))
                                                     .text_size(px(13.5))
                                                     .font_weight(FontWeight::SEMIBOLD)
                                                     .text_color(theme.chrome_fg_active)
@@ -912,8 +904,6 @@ impl AtlasView {
                                     )
                                     .child(
                                         div()
-                                            .w(relative(1.0))
-                                            .min_w(px(0.0))
                                             .text_size(px(12.0))
                                             .text_color(theme.chrome_fg)
                                             .line_height(px(16.0))
@@ -933,7 +923,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.48");
+        assert_eq!(release.version, "0.2.49");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);
