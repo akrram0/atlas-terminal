@@ -129,6 +129,8 @@ static DARK_MODE: AtomicBool = AtomicBool::new(true);
 /// Last observed maximize state, so the backdrop is reasserted only on
 /// restore <-> maximize transitions rather than on every WM_SIZE.
 static LAST_ZOOMED: AtomicBool = AtomicBool::new(false);
+/// Last observed monitor handle to reassert backdrop across multi-monitor shifts.
+static LAST_MONITOR: AtomicIsize = AtomicIsize::new(0);
 
 /// Titlebar drag bands reported by the view on every paint, in logical
 /// client pixels: 4 slots of two f32 bit patterns (top-left, bottom-right).
@@ -179,6 +181,7 @@ unsafe extern "system" {
     fn IsZoomed(hwnd: Hwnd) -> i32;
     fn GetDpiForWindow(hwnd: Hwnd) -> u32;
     fn MonitorFromWindow(hwnd: Hwnd, flags: u32) -> Hwnd;
+    fn MonitorFromRect(rect: *const Rect, flags: u32) -> Hwnd;
     fn GetMonitorInfoW(hwnd: Hwnd, info: *mut MonitorInfo) -> i32;
     fn ShowWindowAsync(hwnd: Hwnd, cmd: i32) -> i32;
     fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: Wparam, lparam: Lparam) -> i32;
@@ -581,12 +584,6 @@ unsafe extern "system" fn window_proc(
 ) -> Lresult {
     match msg {
         WM_GETMINMAXINFO => {
-            // A frameless WS_THICKFRAME window is normally maximized to the
-            // work area *plus* the resize frame, outdented past the screen.
-            // Pinning the maximized rect to the work area lets the client
-            // cover the whole window (see WM_NCCALCSIZE), so the acrylic
-            // backdrop reaches the screen edges instead of leaving an
-            // unblurred frame ring around a maximized window.
             let prev = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
             let result = if prev == 0 {
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
@@ -605,32 +602,6 @@ unsafe extern "system" fn window_proc(
                     (*info).pt_min_track_size.x = (*info).pt_min_track_size.x.max(min_w);
                     (*info).pt_min_track_size.y = (*info).pt_min_track_size.y.max(min_h);
                 }
-
-                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
-                if !monitor.is_null() {
-                    let mut mi = MonitorInfo {
-                        cb_size: core::mem::size_of::<MonitorInfo>() as u32,
-                        rc_monitor: Rect::default(),
-                        rc_work: Rect::default(),
-                        dw_flags: 0,
-                    };
-                    if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
-                        unsafe {
-                            (*info).pt_max_position.x = mi.rc_work.left - mi.rc_monitor.left;
-                            (*info).pt_max_position.y = mi.rc_work.top - mi.rc_monitor.top;
-                            (*info).pt_max_size.x = mi.rc_work.right - mi.rc_work.left;
-                            (*info).pt_max_size.y = mi.rc_work.bottom - mi.rc_work.top;
-                            if (*info).pt_max_track_size.x <= 0 {
-                                (*info).pt_max_track_size.x =
-                                    mi.rc_monitor.right - mi.rc_monitor.left;
-                            }
-                            if (*info).pt_max_track_size.y <= 0 {
-                                (*info).pt_max_track_size.y =
-                                    mi.rc_monitor.bottom - mi.rc_monitor.top;
-                            }
-                        }
-                    }
-                }
             }
             result
         }
@@ -639,22 +610,30 @@ unsafe extern "system" fn window_proc(
             // DWM DirectComposition acrylic blur extends smoothly to every screen edge.
             // When maximized, pin client rect strictly to the monitor work area to eliminate
             // the 8px thickframe overhang that causes DWM sampling edge noise and clipped bands.
+            // We resolve the monitor from the proposed window rect rather than MonitorFromWindow(hwnd):
+            // during multi-monitor movement (Win+Shift+Left/Right), hwnd is still on the source display
+            // while the proposed rect holds the target monitor coordinates.
             if unsafe { IsZoomed(hwnd) } != 0 {
-                let monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
-                if !monitor.is_null() {
-                    let mut mi = MonitorInfo {
-                        cb_size: core::mem::size_of::<MonitorInfo>() as u32,
-                        rc_monitor: Rect::default(),
-                        rc_work: Rect::default(),
-                        dw_flags: 0,
-                    };
-                    if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
-                        if wparam != 0 {
-                            let params = unsafe { &mut *(lparam as *mut NcCalcSizeParams) };
-                            params.rgrc[0] = mi.rc_work;
-                        } else {
-                            let rect = unsafe { &mut *(lparam as *mut Rect) };
-                            *rect = mi.rc_work;
+                let rect_ptr = if wparam != 0 {
+                    let params = unsafe { &mut *(lparam as *mut NcCalcSizeParams) };
+                    &mut params.rgrc[0] as *mut Rect
+                } else {
+                    lparam as *mut Rect
+                };
+                if !rect_ptr.is_null() {
+                    let proposed = unsafe { *rect_ptr };
+                    let monitor = unsafe { MonitorFromRect(&proposed, MONITOR_DEFAULTTONEAREST) };
+                    if !monitor.is_null() {
+                        let mut mi = MonitorInfo {
+                            cb_size: core::mem::size_of::<MonitorInfo>() as u32,
+                            rc_monitor: Rect::default(),
+                            rc_work: Rect::default(),
+                            dw_flags: 0,
+                        };
+                        if unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
+                            unsafe {
+                                *rect_ptr = mi.rc_work;
+                            }
                         }
                     }
                 }
@@ -741,14 +720,19 @@ unsafe extern "system" fn window_proc(
             }
         }
         WM_SIZE => {
-            // A maximize/restore transition can leave DWM with a stale or
-            // dropped accent. Reassert it once per state change (never on
-            // every resize: re-applying a visible accent briefly flashes).
+            // A maximize/restore transition or multi-monitor hop can leave DWM with
+            // a stale or dropped accent. Reassert it once per state or display change.
             let zoomed = IsZoomed(hwnd) != 0;
-            if LAST_ZOOMED.swap(zoomed, Ordering::SeqCst) != zoomed {
+            let zoomed_changed = LAST_ZOOMED.swap(zoomed, Ordering::SeqCst) != zoomed;
+            let cur_monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) } as isize;
+            let monitor_changed = cur_monitor != 0 && LAST_MONITOR.swap(cur_monitor, Ordering::SeqCst) != cur_monitor;
+
+            if zoomed_changed || monitor_changed {
                 let opacity = f32::from_bits(INITIAL_OPACITY.load(Ordering::SeqCst));
                 if opacity < 0.999 {
-                    crate::log_line(&format!("backdrop: zoomed={zoomed}, reasserting acrylic"));
+                    crate::log_line(&format!(
+                        "backdrop: zoomed={zoomed} (changed={zoomed_changed}), monitor_changed={monitor_changed}, reasserting acrylic"
+                    ));
                     if zoomed {
                         let mut wr = Rect::default();
                         let mut cr = Rect::default();

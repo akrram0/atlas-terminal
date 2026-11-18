@@ -22,6 +22,7 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
 
     let bytes = match key {
         "enter" | "return" | "\r" | "\n" | "numpadenter" => vec![b'\r'],
+        "backspace" if modifiers.control => vec![0x08], // Ctrl+Backspace: ASCII BS for word deletion
         "backspace" => vec![0x7f],
         "escape" | "esc" => vec![0x1b],
         // gpui never fills `key_char` for the space bar (VK_SPACE lives in its
@@ -30,28 +31,28 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
         "space" if !modifiers.control => vec![b' '],
         "tab" if modifiers.shift => vec![0x1b, b'[', b'Z'], // CBT
         "tab" => vec![b'\t'],
-        "up" | "arrowup" => cursor_key(b'A', app_cursor),
-        "down" | "arrowdown" => cursor_key(b'B', app_cursor),
-        "right" | "arrowright" => cursor_key(b'C', app_cursor),
-        "left" | "arrowleft" => cursor_key(b'D', app_cursor),
-        "home" => cursor_key(b'H', app_cursor),
-        "end" => cursor_key(b'F', app_cursor),
-        "pageup" => vec![0x1b, b'[', b'5', b'~'],
-        "pagedown" => vec![0x1b, b'[', b'6', b'~'],
-        "insert" => vec![0x1b, b'[', b'2', b'~'],
-        "delete" => vec![0x1b, b'[', b'3', b'~'],
-        "f1" => vec![0x1b, b'O', b'P'],
-        "f2" => vec![0x1b, b'O', b'Q'],
-        "f3" => vec![0x1b, b'O', b'R'],
-        "f4" => vec![0x1b, b'O', b'S'],
-        "f5" => vec![0x1b, b'[', b'1', b'5', b'~'],
-        "f6" => vec![0x1b, b'[', b'1', b'7', b'~'],
-        "f7" => vec![0x1b, b'[', b'1', b'8', b'~'],
-        "f8" => vec![0x1b, b'[', b'1', b'9', b'~'],
-        "f9" => vec![0x1b, b'[', b'2', b'0', b'~'],
-        "f10" => vec![0x1b, b'[', b'2', b'1', b'~'],
-        "f11" => vec![0x1b, b'[', b'2', b'3', b'~'],
-        "f12" => vec![0x1b, b'[', b'2', b'4', b'~'],
+        "up" | "arrowup" => return Some(cursor_key(b'A', modifiers, app_cursor)),
+        "down" | "arrowdown" => return Some(cursor_key(b'B', modifiers, app_cursor)),
+        "right" | "arrowright" => return Some(cursor_key(b'C', modifiers, app_cursor)),
+        "left" | "arrowleft" => return Some(cursor_key(b'D', modifiers, app_cursor)),
+        "home" => return Some(cursor_key(b'H', modifiers, app_cursor)),
+        "end" => return Some(cursor_key(b'F', modifiers, app_cursor)),
+        "pageup" => return Some(tilde_key(b'5', modifiers)),
+        "pagedown" => return Some(tilde_key(b'6', modifiers)),
+        "insert" => return Some(tilde_key(b'2', modifiers)),
+        "delete" => return Some(tilde_key(b'3', modifiers)),
+        "f1" => return Some(fn_key(1, modifiers)),
+        "f2" => return Some(fn_key(2, modifiers)),
+        "f3" => return Some(fn_key(3, modifiers)),
+        "f4" => return Some(fn_key(4, modifiers)),
+        "f5" => return Some(fn_key(5, modifiers)),
+        "f6" => return Some(fn_key(6, modifiers)),
+        "f7" => return Some(fn_key(7, modifiers)),
+        "f8" => return Some(fn_key(8, modifiers)),
+        "f9" => return Some(fn_key(9, modifiers)),
+        "f10" => return Some(fn_key(10, modifiers)),
+        "f11" => return Some(fn_key(11, modifiers)),
+        "f12" => return Some(fn_key(12, modifiers)),
         _ => {
             // Control chords.
             if modifiers.control && !modifiers.shift {
@@ -108,11 +109,81 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-fn cursor_key(final_byte: u8, app_cursor: bool) -> Vec<u8> {
-    if app_cursor {
+/// xterm / ECMA-48 modifier code:
+/// 1 = none, 2 = Shift, 3 = Alt, 4 = Shift+Alt, 5 = Ctrl,
+/// 6 = Shift+Ctrl, 7 = Alt+Ctrl, 8 = Shift+Alt+Ctrl.
+pub fn modifier_param(modifiers: &gpui::Modifiers) -> u8 {
+    let mut code = 1u8;
+    if modifiers.shift {
+        code += 1;
+    }
+    if modifiers.alt {
+        code += 2;
+    }
+    if modifiers.control {
+        code += 4;
+    }
+    code
+}
+
+fn cursor_key(final_byte: u8, modifiers: &gpui::Modifiers, app_cursor: bool) -> Vec<u8> {
+    let m = modifier_param(modifiers);
+    if m > 1 {
+        // xterm / ANSI standard modified cursor key sequence: ESC [ 1 ; {m} {final_byte}
+        vec![0x1b, b'[', b'1', b';', b'0' + m, final_byte]
+    } else if app_cursor {
         vec![0x1b, b'O', final_byte] // SS3 (DECCKM)
     } else {
         vec![0x1b, b'[', final_byte] // CSI
+    }
+}
+
+fn tilde_key(number: u8, modifiers: &gpui::Modifiers) -> Vec<u8> {
+    let m = modifier_param(modifiers);
+    if m > 1 {
+        // xterm / ANSI standard modified tilde key: ESC [ {num} ; {m} ~
+        vec![0x1b, b'[', number, b';', b'0' + m, b'~']
+    } else {
+        vec![0x1b, b'[', number, b'~']
+    }
+}
+
+fn fn_key(num: u8, modifiers: &gpui::Modifiers) -> Vec<u8> {
+    let m = modifier_param(modifiers);
+    if (1..=4).contains(&num) {
+        let final_byte = b'P' + (num - 1);
+        if m > 1 {
+            vec![0x1b, b'[', b'1', b';', b'0' + m, final_byte]
+        } else {
+            vec![0x1b, b'O', final_byte]
+        }
+    } else {
+        let code: &[u8] = match num {
+            5 => b"15",
+            6 => b"17",
+            7 => b"18",
+            8 => b"19",
+            9 => b"20",
+            10 => b"21",
+            11 => b"23",
+            12 => b"24",
+            _ => return vec![],
+        };
+        if m > 1 {
+            let mut v = Vec::with_capacity(code.len() + 5);
+            v.extend_from_slice(b"\x1b[");
+            v.extend_from_slice(code);
+            v.push(b';');
+            v.push(b'0' + m);
+            v.push(b'~');
+            v
+        } else {
+            let mut v = Vec::with_capacity(code.len() + 3);
+            v.extend_from_slice(b"\x1b[");
+            v.extend_from_slice(code);
+            v.push(b'~');
+            v
+        }
     }
 }
 
@@ -200,6 +271,72 @@ mod tests {
             key_char: None,
         };
         assert_eq!(to_bytes(&ks_arrow, TermMode::empty()), Some(vec![0x1b, b'[', b'A']));
+    }
+
+    #[test]
+    fn test_modified_cursor_keys_and_word_nav() {
+        // Ctrl+Left (backward-word): \x1b[1;5D
+        let mut ctrl = Modifiers::default();
+        ctrl.control = true;
+        let ks_ctrl_left = Keystroke {
+            modifiers: ctrl,
+            key: "left".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_ctrl_left, TermMode::empty()), Some(b"\x1b[1;5D".to_vec()));
+
+        // Ctrl+Right (forward-word): \x1b[1;5C
+        let ks_ctrl_right = Keystroke {
+            modifiers: ctrl,
+            key: "arrowright".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_ctrl_right, TermMode::empty()), Some(b"\x1b[1;5C".to_vec()));
+
+        // Ctrl+Up / Down
+        let ks_ctrl_up = Keystroke {
+            modifiers: ctrl,
+            key: "up".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_ctrl_up, TermMode::empty()), Some(b"\x1b[1;5A".to_vec()));
+
+        // Shift+Left: \x1b[1;2D
+        let mut shift = Modifiers::default();
+        shift.shift = true;
+        let ks_shift_left = Keystroke {
+            modifiers: shift,
+            key: "left".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_shift_left, TermMode::empty()), Some(b"\x1b[1;2D".to_vec()));
+
+        // Ctrl+Shift+Left: \x1b[1;6D
+        let mut ctrl_shift = Modifiers::default();
+        ctrl_shift.control = true;
+        ctrl_shift.shift = true;
+        let ks_cs_left = Keystroke {
+            modifiers: ctrl_shift,
+            key: "left".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_cs_left, TermMode::empty()), Some(b"\x1b[1;6D".to_vec()));
+
+        // Ctrl+Backspace: 0x08 (ASCII BS)
+        let ks_bs = Keystroke {
+            modifiers: ctrl,
+            key: "backspace".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_bs, TermMode::empty()), Some(vec![0x08]));
+
+        // Ctrl+Delete: \x1b[3;5~
+        let ks_del = Keystroke {
+            modifiers: ctrl,
+            key: "delete".to_string(),
+            key_char: None,
+        };
+        assert_eq!(to_bytes(&ks_del, TermMode::empty()), Some(b"\x1b[3;5~".to_vec()));
     }
 
     #[test]

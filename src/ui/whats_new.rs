@@ -32,10 +32,24 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.50",
-    codename: "Native What's New Top-Bar Tab & Zero Modal Popups",
+    version: "0.2.51",
+    codename: "Multi-Monitor Snap Stability & PowerShell Word Navigation",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "Windows & Multi-Monitor",
+            icon: icons::TERMINAL,
+            title: "Multi-Monitor Maximized Snap & Move Stability",
+            description: "Fixed client rectangle and swapchain coordinate clipping when moving maximized windows across multi-monitor setups with Win+Shift+Left/Right shortcuts (Issue #10).",
+            badge: Some("Issue #10 Fixed"),
+        },
+        FeatureHighlight {
+            category: "Keyboard & Shell Input",
+            icon: icons::TERMINAL,
+            title: "PowerShell & Terminal Word Navigation",
+            description: "Standardized xterm modifier sequences for cursor keys: Ctrl+Left/Right now cleanly navigates words (BackwardWord / ForwardWord) in PowerShell 5.1/7 and readline shells (Issue #10).",
+            badge: Some("Shell Input"),
+        },
         FeatureHighlight {
             category: "UI & Top Bar",
             icon: icons::SPARKLE,
@@ -619,7 +633,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.50");
+        assert_eq!(release.version, "0.2.51");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);
