@@ -176,7 +176,7 @@ impl AtlasView {
         // carrying the running process's own mark; inactive tabs are quiet with folder icon.
         // Tab close is visible on active and hover.
         for ix in 0..self.tabs.len() {
-            let active = ix == self.active && !self.settings_open;
+            let active = ix == self.active && !self.settings_open && !self.whats_new_open;
             let tab = &self.tabs[ix];
             let pane = tab.panes.get(tab.active_pane);
             let label = match pane {
@@ -321,6 +321,7 @@ impl AtlasView {
                         if !view.tab_is_dragging {
                             view.active = ix;
                             view.settings_open = false;
+                            view.whats_new_open = false;
                             window.focus(&view.focus);
                             cx.notify();
                         }
@@ -467,6 +468,7 @@ impl AtlasView {
                     .active(move |style| style.opacity(0.82))
                     .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
                         view.settings_open = true;
+                        view.whats_new_open = false;
                         window.focus(&view.settings_focus);
                         cx.notify();
                     }));
@@ -543,6 +545,149 @@ impl AtlasView {
             }
 
             tabs_tray = tabs_tray.child(settings_pill.tab_pill_expand("settings-tab-pill-motion"));
+        }
+
+        // What's New tab pill: stays mounted on the tab bar until explicitly closed.
+        if self.whats_new_tab_open {
+            let active = self.whats_new_open;
+            let (max_w, min_w) = if active {
+                (180.0, 68.0)
+            } else {
+                (160.0, 40.0)
+            };
+            let (pill_bg, pill_border, pill_fg, pill_icon) = if active {
+                (
+                    tb.elevated_bg,
+                    tb.elevated_border,
+                    tb.chrome_fg_active,
+                    tb.accent,
+                )
+            } else {
+                let inactive_bg = if is_dark_theme {
+                    rgba(0xFFFFFF0D)
+                } else {
+                    rgba(0x00000000)
+                };
+                let inactive_border = if is_dark_theme {
+                    rgba(0xFFFFFF12)
+                } else {
+                    tb.hairline
+                };
+                (inactive_bg, inactive_border, chrome_ink, chrome_ink)
+            };
+            let pill_hover = if active {
+                crate::theme::lerp_color(tb.elevated_bg, tb.accent, 0.10)
+            } else {
+                tb.card_hover
+            };
+            let pill_hot = tb.chrome_fg_active;
+
+            let mut wn_pill = div()
+                .id(ElementId::named_usize("tab-pill-whats-new", 0))
+                .h(px(28.0))
+                .relative()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(8.0))
+                .max_w(px(max_w))
+                .min_w(px(min_w))
+                .overflow_hidden()
+                .flex_shrink()
+                .rounded(px(7.0))
+                .bg(pill_bg)
+                .border_1()
+                .border_color(pill_border)
+                .text_color(pill_fg);
+
+            if active {
+                wn_pill = wn_pill.shadow_sm();
+            }
+
+            if !active {
+                wn_pill = wn_pill
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(pill_hover).text_color(pill_hot))
+                    .active(move |style| style.opacity(0.82))
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.whats_new_open = true;
+                        view.settings_open = false;
+                        cx.notify();
+                    }));
+            } else {
+                wn_pill = wn_pill.cursor_pointer();
+            }
+
+            wn_pill = wn_pill
+                .on_mouse_down(
+                    MouseButton::Middle,
+                    cx.listener(|view, _: &MouseDownEvent, window, cx| {
+                        view.whats_new_tab_open = false;
+                        view.whats_new_open = false;
+                        window.focus(&view.focus);
+                        cx.notify();
+                    }),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .text_color(pill_icon)
+                        .child(icons::icon(icons::SPARKLE).size(px(15.0)).text_color(pill_icon)),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .text_size(px(12.5))
+                        .font_weight(if active {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
+                        .truncate()
+                        .child("What's New"),
+                )
+                .child(
+                    div()
+                        .id(ElementId::named_usize("tab-close-whats-new", 0))
+                        .w(px(18.0))
+                        .h(px(18.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(4.0))
+                        .hover(move |style| style.bg(tb.card_hover))
+                        .active(move |style| style.opacity(0.75))
+                        .child(
+                            icons::icon(icons::CLOSE)
+                                .size(px(11.0))
+                                .text_color(tb.faint_fg),
+                        )
+                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                            cx.stop_propagation();
+                            view.whats_new_tab_open = false;
+                            view.whats_new_open = false;
+                            window.focus(&view.focus);
+                            cx.notify();
+                        })),
+                );
+
+            if active {
+                wn_pill = wn_pill.child(
+                    div()
+                        .absolute()
+                        .bottom(px(0.0))
+                        .left(px(6.0))
+                        .right(px(6.0))
+                        .h(px(2.0))
+                        .rounded_full()
+                        .bg(tb.accent),
+                );
+            }
+
+            tabs_tray = tabs_tray.child(wn_pill.tab_pill_expand("whats-new-tab-pill-motion"));
         }
 
         tabs_tray = tabs_tray.child(caption_spacer(0));

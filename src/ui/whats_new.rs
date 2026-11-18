@@ -32,15 +32,22 @@ pub struct ReleaseHighlight {
 }
 
 pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
-    version: "0.2.49",
-    codename: "Multi-Line Text Flow & Layout Stabilization",
+    version: "0.2.50",
+    codename: "Native What's New Top-Bar Tab & Zero Modal Popups",
     date: "November 2026",
     highlights: &[
+        FeatureHighlight {
+            category: "UI & Top Bar",
+            icon: icons::SPARKLE,
+            title: "Native What's New Top-Bar Tab",
+            description: "Decommissioned the broken popup modal dialog in favor of a first-class top-bar tab pill with full-width responsive card layout and native scrolling.",
+            badge: Some("New Tab"),
+        },
         FeatureHighlight {
             category: "UI & Layout",
             icon: icons::SLIDERS,
             title: "Responsive Text Wrapping & Card Containment",
-            description: "Fixed layout flex calculation across Settings and modal sheets: descriptions now flow naturally onto multiple lines within card boundaries without vertical character stacking (Issue #8).",
+            description: "Fixed layout flex calculation across Settings and release sheets: descriptions now flow naturally onto multiple lines within card boundaries without vertical character stacking (Issue #8).",
             badge: Some("Issue #8 Fixed"),
         },
         FeatureHighlight {
@@ -201,371 +208,92 @@ pub fn latest_release() -> &'static ReleaseHighlight {
 }
 
 impl AtlasView {
-    /// Render the centered Apple glass "What's New" modal dialog.
-    pub fn render_whats_new_modal(
+    /// Render the full What's New tab sheet (when open as a native top-bar tab).
+    pub fn render_whats_new_tab_page(
         &self,
         theme: &Theme,
-        is_dark: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let release = latest_release();
-        let item_hover = theme.card_hover;
-        let checkbox_active = self.app_settings.show_whats_new_on_update;
+        let is_dark = !theme.is_light();
+        let sc_title = theme.chrome_fg_active;
+        let sc_desc = theme.chrome_fg;
 
-        // Centered flex layout overlay
-        div()
-            .id(ElementId::named_usize("whats-new-overlay-center", 0))
-            .absolute()
-            .inset_0()
+        let content_header = div()
             .flex()
-            .items_center()
-            .justify_center()
+            .flex_col()
+            .gap(px(4.0))
+            .mb(px(20.0))
             .child(
                 div()
-                    .id(ElementId::named_usize("whats-new-modal-sheet", 0))
-                    .w(px(540.0))
-                    .max_h(px(600.0))
                     .flex()
-                    .flex_col()
-                    .rounded(px(14.0))
-                    .bg(theme.elevated_bg)
-                    .border_1()
-                    .border_color(theme.elevated_border)
-                    .shadow_lg()
-                    .overflow_hidden()
-                    // Modal Header
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
                     .child(
                         div()
-                            .p(px(18.0))
-                            .pb(px(14.0))
-                            .flex()
-                            .flex_row()
-                            .items_start()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap(px(12.0))
-                                    .child(
-                                        div()
-                                            .w(px(38.0))
-                                            .h(px(38.0))
-                                            .rounded(px(10.0))
-                                            .bg(theme.soft_bg)
-                                            .border_1()
-                                            .border_color(theme.hairline)
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .child(
-                                                icons::icon(icons::ATLAS_MARK)
-                                                    .size(px(20.0))
-                                                    .text_color(theme.accent),
-                                            ),
-                                    )
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .flex_col()
-                                            .gap(px(2.0))
-                                            .child(
-                                                div()
-                                                    .flex()
-                                                    .flex_row()
-                                                    .items_center()
-                                                    .gap(px(8.0))
-                                                    .child(
-                                                        div()
-                                                            .text_size(px(15.5))
-                                                            .font_weight(FontWeight::BOLD)
-                                                            .text_color(theme.chrome_fg_active)
-                                                            .child("What's New in Atlas"),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .px(px(6.0))
-                                                            .py(px(1.5))
-                                                            .rounded(px(4.0))
-                                                            .bg(Rgba {
-                                                                a: 0.15,
-                                                                ..theme.accent
-                                                            })
-                                                            .text_size(px(11.0))
-                                                            .font_weight(FontWeight::BOLD)
-                                                            .text_color(theme.accent)
-                                                            .child(format!("v{}", release.version)),
-                                                    ),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(11.5))
-                                                    .text_color(theme.chrome_fg)
-                                                    .child(format!(
-                                                        "{} · {}",
-                                                        release.codename, release.date
-                                                    )),
-                                            ),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .id(ElementId::named_usize("whats-new-close-btn", 0))
-                                    .w(px(26.0))
-                                    .h(px(26.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded(px(6.0))
-                                    .cursor_pointer()
-                                    .text_color(theme.faint_fg)
-                                    .hover(move |s| {
-                                        s.bg(item_hover).text_color(theme.chrome_fg_active)
-                                    })
-                                    .child(
-                                        icons::icon(icons::CLOSE)
-                                            .size(px(12.5))
-                                            .text_color(theme.faint_fg),
-                                    )
-                                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                                        view.close_whats_new(window, cx);
-                                    })),
-                            ),
+                            .text_size(px(22.0))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(sc_title)
+                            .child("Release Highlights"),
                     )
-                    // Hairline divider
-                    .child(div().h(px(1.0)).bg(theme.hairline))
-                    // Scrollable Feature Cards
                     .child(
                         div()
-                            .id(ElementId::named_usize("whats-new-feature-list", 0))
-                            .flex_1()
-                            .w(relative(1.0))
-                            .min_w(px(0.0))
-                            .overflow_y_scroll()
-                            .p(px(18.0))
-                            .py(px(14.0))
-                            .flex()
-                            .flex_col()
-                            .gap(px(10.0))
-                            .children(release.highlights.iter().enumerate().map(
-                                |(idx, feat)| {
-                                    div()
-                                        .id(ElementId::named_usize("whats-new-item", idx))
-                                        .w(relative(1.0))
-                                        .min_w(px(0.0))
-                                        .overflow_hidden()
-                                        .flex()
-                                        .flex_row()
-                                        .items_start()
-                                        .gap(px(12.0))
-                                        .p(px(10.0))
-                                        .rounded(px(8.0))
-                                        .bg(if is_dark {
-                                            rgba(0x00000030)
-                                        } else {
-                                            rgba(0xFFFFFF70)
-                                        })
-                                        .border_1()
-                                        .border_color(theme.hairline)
-                                        .child(
-                                            div()
-                                                .w(px(32.0))
-                                                .h(px(32.0))
-                                                .flex_none()
-                                                .rounded(px(6.0))
-                                                .bg(theme.soft_bg)
-                                                .border_1()
-                                                .border_color(theme.hairline)
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .child(
-                                                    icons::icon(feat.icon)
-                                                        .size(px(15.0))
-                                                        .text_color(theme.accent),
-                                                ),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex_1()
-                                                .min_w(px(0.0))
-                                                .flex()
-                                                .flex_col()
-                                                .gap(px(2.0))
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .flex_row()
-                                                        .items_center()
-                                                        .justify_between()
-                                                        .gap(px(8.0))
-                                                        .child(
-                                                            div()
-                                                                .text_size(px(13.0))
-                                                                .font_weight(FontWeight::SEMIBOLD)
-                                                                .text_color(theme.chrome_fg_active)
-                                                                .child(feat.title),
-                                                        )
-                                                        .children(feat.badge.map(|b| {
-                                                            div()
-                                                                .flex_none()
-                                                                .px(px(5.0))
-                                                                .py(px(1.0))
-                                                                .rounded(px(3.0))
-                                                                .text_size(px(9.5))
-                                                                .font_weight(FontWeight::BOLD)
-                                                                .bg(Rgba {
-                                                                    a: 0.12,
-                                                                    ..theme.accent
-                                                                })
-                                                                .text_color(theme.accent)
-                                                                .child(b)
-                                                        })),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_size(px(11.5))
-                                                        .text_color(theme.chrome_fg)
-                                                        .line_height(px(15.0))
-                                                        .child(feat.description),
-                                                ),
-                                        )
-                                },
-                            )),
-                    )
-                    // Hairline divider
-                    .child(div().h(px(1.0)).bg(theme.hairline))
-                    // Modal Footer
-                    .child(
-                        div()
-                            .p(px(14.0))
-                            .px(px(18.0))
+                            .id(ElementId::named_usize("whats-new-tab-close-pill", 0))
+                            .px(px(10.0))
+                            .py(px(4.0))
+                            .rounded(px(6.0))
+                            .bg(theme.soft_bg)
+                            .border_1()
+                            .border_color(theme.hairline)
+                            .hover(move |s| s.bg(theme.card_hover))
+                            .cursor_pointer()
                             .flex()
                             .flex_row()
                             .items_center()
-                            .justify_between()
-                            // Left: Checkbox "Show after future updates"
+                            .gap(px(6.0))
                             .child(
-                                div()
-                                    .id(ElementId::named_usize("whats-new-auto-toggle", 0))
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap(px(8.0))
-                                    .cursor_pointer()
-                                    .child(
-                                        div()
-                                            .w(px(14.0))
-                                            .h(px(14.0))
-                                            .rounded(px(3.0))
-                                            .border_1()
-                                            .border_color(if checkbox_active {
-                                                theme.accent
-                                            } else {
-                                                theme.hairline
-                                            })
-                                            .bg(if checkbox_active {
-                                                theme.accent
-                                            } else {
-                                                rgba(0x00000000)
-                                            })
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .children(if checkbox_active {
-                                                Some(
-                                                    icons::icon(icons::CHECK)
-                                                        .size(px(10.0))
-                                                        .text_color(rgb(0xFFFFFF)),
-                                                )
-                                            } else {
-                                                None
-                                            }),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(11.5))
-                                            .text_color(theme.chrome_fg)
-                                            .child("Show after future updates"),
-                                    )
-                                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                                        view.app_settings.show_whats_new_on_update =
-                                            !view.app_settings.show_whats_new_on_update;
-                                        crate::config::save_app_settings(&view.app_settings);
-                                        cx.notify();
-                                    })),
+                                icons::icon(icons::CLOSE)
+                                    .size(px(12.0))
+                                    .text_color(theme.faint_fg),
                             )
-                            // Right: Action buttons (GitHub release link + Got it)
                             .child(
                                 div()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .gap(px(8.0))
-                                    .child(
-                                        div()
-                                            .id(ElementId::named_usize("whats-new-gh-link", 0))
-                                            .h(px(28.0))
-                                            .px(px(10.0))
-                                            .rounded(px(6.0))
-                                            .border_1()
-                                            .border_color(theme.hairline)
-                                            .bg(theme.soft_bg)
-                                            .hover(move |s| {
-                                                s.bg(item_hover).border_color(theme.accent)
-                                            })
-                                            .cursor_pointer()
-                                            .flex()
-                                            .flex_row()
-                                            .items_center()
-                                            .gap(px(4.0))
-                                            .child(
-                                                icons::icon(icons::LINK)
-                                                    .size(px(11.0))
-                                                    .text_color(theme.chrome_fg),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(11.5))
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .text_color(theme.chrome_fg)
-                                                    .child("Full Changelog ↗"),
-                                            )
-                                            .on_click(cx.listener(|_, _: &ClickEvent, _window, cx| {
-                                                crate::url::open_url(
-                                                    "https://github.com/akrram0/atlas-terminal/releases",
-                                                );
-                                                cx.notify();
-                                            })),
-                                    )
-                                    .child(
-                                        div()
-                                            .id(ElementId::named_usize("whats-new-got-it-btn", 0))
-                                            .h(px(28.0))
-                                            .px(px(14.0))
-                                            .rounded(px(6.0))
-                                            .bg(theme.accent)
-                                            .hover(|s| s.opacity(0.90))
-                                            .cursor_pointer()
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .child(
-                                                div()
-                                                    .text_size(px(12.0))
-                                                    .font_weight(FontWeight::SEMIBOLD)
-                                                    .text_color(rgb(0xFFFFFF))
-                                                    .child("Start Typing"),
-                                            )
-                                            .on_click(cx.listener(
-                                                |view, _: &ClickEvent, window, cx| {
-                                                    view.close_whats_new(window, cx);
-                                                },
-                                            )),
-                                    ),
-                            ),
+                                    .text_size(px(11.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.chrome_fg)
+                                    .child("Close (Esc)"),
+                            )
+                            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                                view.close_whats_new(window, cx);
+                            })),
                     ),
+            )
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .text_color(sc_desc)
+                    .child("Explore new capabilities, performance upgrades, and release highlights in Atlas Terminal."),
+            );
+
+        div()
+            .id(ElementId::named_usize("whats-new-tab-scroll", 0))
+            .w(relative(1.0))
+            .h(relative(1.0))
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .overflow_y_scroll()
+            .p(px(28.0))
+            .pb(px(88.0))
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(
+                div()
+                    .w(relative(1.0))
+                    .max_w(px(880.0))
+                    .min_w(px(0.0))
+                    .child(content_header)
+                    .child(self.render_whats_new_settings_page(theme, is_dark, cx)),
             )
             .into_any_element()
     }
@@ -578,7 +306,6 @@ impl AtlasView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let release = latest_release();
-        let item_hover = theme.card_hover;
         let checkbox_active = self.app_settings.show_whats_new_on_update;
 
         div()
@@ -687,37 +414,6 @@ impl AtlasView {
                                     .flex_row()
                                     .items_center()
                                     .gap(px(8.0))
-                                    .child(
-                                        div()
-                                            .id(ElementId::named_usize("whats-new-page-modal-btn", 0))
-                                            .h(px(28.0))
-                                            .px(px(12.0))
-                                            .rounded(px(6.0))
-                                            .border_1()
-                                            .border_color(theme.hairline)
-                                            .bg(theme.soft_bg)
-                                            .hover(move |s| s.bg(item_hover).border_color(theme.accent))
-                                            .cursor_pointer()
-                                            .flex()
-                                            .flex_row()
-                                            .items_center()
-                                            .gap(px(5.0))
-                                            .child(
-                                                icons::icon(icons::WINDOW_NEW)
-                                                    .size(px(12.0))
-                                                    .text_color(theme.chrome_fg),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(11.5))
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .text_color(theme.chrome_fg)
-                                                    .child("Open As Modal"),
-                                            )
-                                            .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
-                                                view.open_whats_new(cx);
-                                            })),
-                                    )
                                     .child(
                                         div()
                                             .id(ElementId::named_usize("whats-new-page-gh-link", 0))
@@ -923,7 +619,7 @@ mod tests {
     #[test]
     fn test_current_release_metadata_valid() {
         let release = latest_release();
-        assert_eq!(release.version, "0.2.49");
+        assert_eq!(release.version, "0.2.50");
         assert!(!release.codename.is_empty());
         assert!(!release.date.is_empty());
         assert!(release.highlights.len() >= 4);

@@ -543,9 +543,9 @@ impl AtlasView {
             return;
         }
 
-        // When What's New modal is open, route keystrokes to dismiss or block leaking into shell.
+        // When What's New tab is open, Esc or Ctrl+W closes it.
         if self.whats_new_open {
-            if key == "escape" || key == "esc" || key == "enter" || key == "return" || key == "space" {
+            if key == "escape" || key == "esc" || (modifiers.control && (key == "w" || key == "W")) {
                 self.close_whats_new(window, cx);
                 return;
             }

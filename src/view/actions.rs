@@ -745,6 +745,7 @@ impl AtlasView {
     pub(crate) fn toggle_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_open = !self.settings_open;
         if self.settings_open {
+            self.whats_new_open = false;
             self.settings_tab_open = true;
             self.settings_scrollbar_opacity = 1.0;
             self.settings_last_scroll_time = std::time::Instant::now();

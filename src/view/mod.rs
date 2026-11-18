@@ -106,10 +106,12 @@ pub struct AtlasView {
     pub(crate) registry: ThemeRegistry,
     /// Settings page visibility (replaces the terminal sheet).
     pub(crate) settings_open: bool,
-    /// What's New release highlights modal visibility.
+    /// What's New release highlights visibility (replaces the terminal sheet).
     pub(crate) whats_new_open: bool,
     /// Settings tab mounted on top bar (stays until closed).
     pub(crate) settings_tab_open: bool,
+    /// What's New tab mounted on top bar (stays until closed).
+    pub(crate) whats_new_tab_open: bool,
     /// Workspace (new-tab profile) menu visibility.
     pub(crate) profile_menu: bool,
     /// Command palette (Ctrl+K / top-bar search icon).
@@ -337,6 +339,7 @@ impl AtlasView {
             settings_open: false,
             whats_new_open,
             settings_tab_open: false,
+            whats_new_tab_open: whats_new_open,
             profile_menu: false,
             palette_open: false,
             palette_category: crate::ui::palette::PaletteCategory::All,
@@ -969,11 +972,13 @@ impl AtlasView {
 
     pub(crate) fn close_whats_new(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.whats_new_open = false;
+        self.whats_new_tab_open = false;
         window.focus(&self.focus);
         cx.notify();
     }
 
     pub(crate) fn open_whats_new(&mut self, cx: &mut Context<Self>) {
+        self.whats_new_tab_open = true;
         self.whats_new_open = true;
         self.settings_open = false;
         self.palette_open = false;
@@ -1098,7 +1103,7 @@ impl Render for AtlasView {
         // Window chrome and top tab bar use the cohesive application theme
         let tb = theme.clone();
 
-        let term_base = if self.settings_open { theme.elevated_bg } else { active_bg };
+        let term_base = if self.settings_open || self.whats_new_open { theme.elevated_bg } else { active_bg };
 
         // Inactive chrome ink (tab titles, bar icons). In translucent mode the
         // muted token sits on a semi-transparent bar, so over a bright blurred
@@ -1164,6 +1169,8 @@ impl Render for AtlasView {
         let index = self.active.min(self.tabs.len().saturating_sub(1));
         let body: AnyElement = if self.settings_open {
             self.settings_page(&theme, cx)
+        } else if self.whats_new_open {
+            self.render_whats_new_tab_page(&theme, cx)
         } else if self.tabs.is_empty() {
             div().flex_1().into_any_element()
         } else {
@@ -1266,7 +1273,7 @@ impl Render for AtlasView {
             .overflow_hidden()
             .child(tab_body)
             .with_animation(
-                ElementId::named_usize("body-anim", self.settings_open as usize),
+                ElementId::named_usize("body-anim", (self.settings_open as usize) + (self.whats_new_open as usize) * 2),
                 Animation::new(Duration::from_millis(BODY_IN_MS)).with_easing(ease_apple_snappy),
                 |el, delta| if delta < 0.999 { el.opacity(delta) } else { el },
             );
@@ -1504,7 +1511,7 @@ impl Render for AtlasView {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|view, _: &MouseDownEvent, window, _cx| {
-                    if !view.settings_open && !view.palette_open && !view.profile_menu && !view.search_open {
+                    if !view.settings_open && !view.whats_new_open && !view.palette_open && !view.profile_menu && !view.search_open {
                         window.focus(&view.focus);
                     }
                 }),
@@ -1640,19 +1647,7 @@ impl Render for AtlasView {
             ));
             root = root.child(self.rename_dialog(&theme, cx));
         }
-        if self.whats_new_open {
-            let is_dark_mode = !theme.is_light();
-            root = root.child(crate::ui::overlay::overlay_backdrop_with_scrim(
-                4,
-                false,
-                rgba(0x00000080),
-                |view, window, cx| {
-                    view.close_whats_new(window, cx);
-                },
-                cx,
-            ));
-            root = root.child(self.render_whats_new_modal(&theme, is_dark_mode, cx));
-        }
+
 
         // Close confirmation is topmost: it must win over every other overlay.
         if self.pending_close_tab.is_some() || self.pending_close_window {

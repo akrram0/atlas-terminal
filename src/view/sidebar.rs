@@ -135,7 +135,7 @@ impl AtlasView {
                 .overflow_hidden();
 
             for ix in 0..self.tabs.len() {
-                let active = ix == self.active && !self.settings_open;
+                let active = ix == self.active && !self.settings_open && !self.whats_new_open;
                 let tab = &self.tabs[ix];
                 let pane = tab.panes.get(tab.active_pane);
                 let icon = match pane {
@@ -188,6 +188,7 @@ impl AtlasView {
                         .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| {
                             view.active = ix;
                             view.settings_open = false;
+                            view.whats_new_open = false;
                             window.focus(&view.focus);
                             cx.notify();
                         }));
@@ -237,37 +238,70 @@ impl AtlasView {
 
             // Compact Footer
             let is_settings_active = self.settings_open;
-            let footer = div()
+            let mut footer = div()
                 .h(px(42.0))
                 .flex()
+                .flex_row()
                 .items_center()
                 .justify_center()
+                .gap(px(4.0))
                 .border_t_1()
-                .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 })
-                .child(
+                .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 });
+
+            if self.whats_new_tab_open {
+                let is_wn_active = self.whats_new_open;
+                footer = footer.child(
                     div()
-                        .id(ElementId::named_usize("sidebar-compact-settings", 0))
+                        .id(ElementId::named_usize("sidebar-compact-whats-new", 0))
                         .w(px(32.0))
                         .h(px(32.0))
                         .flex()
                         .items_center()
                         .justify_center()
                         .rounded(px(6.0))
-                        .bg(if is_settings_active { tb.elevated_bg } else { rgba(0x00000000) })
+                        .bg(if is_wn_active { tb.elevated_bg } else { rgba(0x00000000) })
                         .border_1()
-                        .border_color(if is_settings_active { tb.elevated_border } else { rgba(0x00000000) })
+                        .border_color(if is_wn_active { tb.elevated_border } else { rgba(0x00000000) })
                         .hover(move |s| s.bg(tb.card_hover))
                         .active(|s| s.opacity(0.8))
                         .cursor_pointer()
                         .child(
-                            icons::icon(icons::SETTINGS)
+                            icons::icon(icons::SPARKLE)
                                 .size(px(16.0))
-                                .text_color(if is_settings_active { tb.accent } else { chrome_ink }),
+                                .text_color(if is_wn_active { tb.accent } else { chrome_ink }),
                         )
-                        .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                            view.toggle_settings(window, cx);
+                        .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                            view.whats_new_open = true;
+                            view.settings_open = false;
+                            cx.notify();
                         })),
                 );
+            }
+
+            footer = footer.child(
+                div()
+                    .id(ElementId::named_usize("sidebar-compact-settings", 0))
+                    .w(px(32.0))
+                    .h(px(32.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(6.0))
+                    .bg(if is_settings_active { tb.elevated_bg } else { rgba(0x00000000) })
+                    .border_1()
+                    .border_color(if is_settings_active { tb.elevated_border } else { rgba(0x00000000) })
+                    .hover(move |s| s.bg(tb.card_hover))
+                    .active(|s| s.opacity(0.8))
+                    .cursor_pointer()
+                    .child(
+                        icons::icon(icons::SETTINGS)
+                            .size(px(16.0))
+                            .text_color(if is_settings_active { tb.accent } else { chrome_ink }),
+                    )
+                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                        view.toggle_settings(window, cx);
+                    })),
+            );
 
             return div()
                 .id(ElementId::named_usize("vertical-sidebar-panel", 0))
@@ -427,7 +461,7 @@ impl AtlasView {
             .overflow_hidden();
 
         for ix in 0..self.tabs.len() {
-            let active = ix == self.active && !self.settings_open;
+            let active = ix == self.active && !self.settings_open && !self.whats_new_open;
             let tab = &self.tabs[ix];
             let pane = tab.panes.get(tab.active_pane);
             let label = match pane {
@@ -534,6 +568,7 @@ impl AtlasView {
                         if !view.tab_is_dragging {
                             view.active = ix;
                             view.settings_open = false;
+                            view.whats_new_open = false;
                             window.focus(&view.focus);
                             cx.notify();
                         }
@@ -601,50 +636,126 @@ impl AtlasView {
             tab_list = tab_list.child(row_element);
         }
 
-        // Footer with Settings item
+        // Footer with Settings and What's New items
         let is_settings_active = self.settings_open;
         let footer_pill_bg = if is_settings_active { tb.elevated_bg } else { rgba(0x00000000) };
         let footer_pill_border = if is_settings_active { tb.elevated_border } else { rgba(0x00000000) };
         let footer_icon_color = if is_settings_active { tb.accent } else { chrome_ink };
 
-        let footer = div()
-            .h(px(42.0))
+        let mut footer = div()
+            .flex()
+            .flex_col()
+            .gap(px(4.0))
             .p(px(6.0))
             .border_t_1()
-            .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 })
-            .child(
+            .border_color(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.03 });
+
+        if self.whats_new_tab_open {
+            let is_wn_active = self.whats_new_open;
+            let wn_pill_bg = if is_wn_active { tb.elevated_bg } else { rgba(0x00000000) };
+            let wn_pill_border = if is_wn_active { tb.elevated_border } else { rgba(0x00000000) };
+            let wn_icon_color = if is_wn_active { tb.accent } else { chrome_ink };
+
+            footer = footer.child(
                 div()
-                    .id(ElementId::named_usize("sidebar-settings-btn", 0))
+                    .id(ElementId::named_usize("sidebar-whats-new-btn", 0))
                     .h(px(30.0))
                     .w(relative(1.0))
                     .px(px(8.0))
                     .flex()
                     .flex_row()
                     .items_center()
-                    .gap(px(8.0))
+                    .justify_between()
                     .rounded(px(6.0))
-                    .bg(footer_pill_bg)
+                    .bg(wn_pill_bg)
                     .border_1()
-                    .border_color(footer_pill_border)
-                    .text_color(if is_settings_active { tb.chrome_fg_active } else { chrome_ink })
+                    .border_color(wn_pill_border)
+                    .text_color(if is_wn_active { tb.chrome_fg_active } else { chrome_ink })
                     .hover(move |s| s.bg(tb.card_hover).text_color(tb.chrome_fg_active))
                     .active(|s| s.opacity(0.8))
                     .cursor_pointer()
                     .child(
-                        icons::icon(icons::SETTINGS)
-                            .size(px(15.0))
-                            .text_color(footer_icon_color),
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(8.0))
+                            .child(
+                                icons::icon(icons::SPARKLE)
+                                    .size(px(15.0))
+                                    .text_color(wn_icon_color),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.5))
+                                    .font_weight(if is_wn_active { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                                    .child("What's New"),
+                            ),
                     )
                     .child(
                         div()
-                            .text_size(px(12.5))
-                            .font_weight(if is_settings_active { FontWeight::MEDIUM } else { FontWeight::NORMAL })
-                            .child("Settings"),
+                            .id(ElementId::named_usize("sidebar-close-whats-new", 0))
+                            .w(px(16.0))
+                            .h(px(16.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(3.0))
+                            .hover(move |s| s.bg(tb.card_hover))
+                            .child(
+                                icons::icon(icons::CLOSE)
+                                    .size(px(10.0))
+                                    .text_color(tb.faint_fg),
+                            )
+                            .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                                cx.stop_propagation();
+                                view.whats_new_tab_open = false;
+                                view.whats_new_open = false;
+                                window.focus(&view.focus);
+                                cx.notify();
+                            })),
                     )
-                    .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
-                        view.toggle_settings(window, cx);
+                    .on_click(cx.listener(|view, _: &ClickEvent, _window, cx| {
+                        view.whats_new_open = true;
+                        view.settings_open = false;
+                        cx.notify();
                     })),
             );
+        }
+
+        footer = footer.child(
+            div()
+                .id(ElementId::named_usize("sidebar-settings-btn", 0))
+                .h(px(30.0))
+                .w(relative(1.0))
+                .px(px(8.0))
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(8.0))
+                .rounded(px(6.0))
+                .bg(footer_pill_bg)
+                .border_1()
+                .border_color(footer_pill_border)
+                .text_color(if is_settings_active { tb.chrome_fg_active } else { chrome_ink })
+                .hover(move |s| s.bg(tb.card_hover).text_color(tb.chrome_fg_active))
+                .active(|s| s.opacity(0.8))
+                .cursor_pointer()
+                .child(
+                    icons::icon(icons::SETTINGS)
+                        .size(px(15.0))
+                        .text_color(footer_icon_color),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.5))
+                        .font_weight(if is_settings_active { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                        .child("Settings"),
+                )
+                .on_click(cx.listener(|view, _: &ClickEvent, window, cx| {
+                    view.toggle_settings(window, cx);
+                })),
+        );
 
         // Interactive right-edge resize handle
         let resize_handle = div()
