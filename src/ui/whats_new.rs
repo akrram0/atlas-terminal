@@ -51,6 +51,13 @@ pub const CURRENT_RELEASE: ReleaseHighlight = ReleaseHighlight {
             badge: Some("Shell Input"),
         },
         FeatureHighlight {
+            category: "Keyboard & Shell Input",
+            icon: icons::TERMINAL,
+            title: "PowerShell Line-Editing Shortcut Passthrough",
+            description: "PSReadLine selection chords now reach the shell: Ctrl+Shift+Left/Right select words, Shift+Home/End select to the line edges, and Ctrl+A stays reserved for SelectAll. Scroll-to-top/bottom moved to Ctrl+Home/End (Issue #11).",
+            badge: Some("Issue #11 Fixed"),
+        },
+        FeatureHighlight {
             category: "UI & Top Bar",
             icon: icons::SPARKLE,
             title: "Native What's New Top-Bar Tab",
