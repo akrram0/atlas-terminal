@@ -646,8 +646,14 @@ impl AtlasView {
             }
         }
 
-        // Dynamic shortcuts matching
-        if let Some(chord) = format_keystroke_chord(ks) {
+        let chord = format_keystroke_chord(ks);
+        let shell_editing = chord
+            .as_deref()
+            .is_some_and(crate::keymap::is_shell_editing_chord);
+
+        // Dynamic shortcuts matching. Shell editing chords are excluded so that
+        // PSReadLine/readline selection keybindings reach the PTY untouched.
+        if let Some(chord) = chord.filter(|_| !shell_editing) {
             if chord == self.get_shortcut(ACTION_OPEN_SETTINGS) {
                 self.settings_open = !self.settings_open;
                 if self.settings_open {
@@ -1139,7 +1145,8 @@ impl AtlasView {
         }
 
         // App-level chords (swallowed so they never leak into the shell).
-        if modifiers.control && modifiers.shift {
+        // Shell editing chords are excluded above and forwarded to the PTY.
+        if !shell_editing && modifiers.control && modifiers.shift {
             match key {
                 "t" => self.next_theme(cx),
                 "l" => self.toggle_theme(cx),
@@ -1175,7 +1182,7 @@ impl AtlasView {
             return;
         }
 
-        if modifiers.shift && !modifiers.control && !modifiers.alt {
+        if !shell_editing && modifiers.shift && !modifiers.control && !modifiers.alt {
             match key {
                 "pageup" => {
                     self.scroll(15);
@@ -1184,16 +1191,6 @@ impl AtlasView {
                 }
                 "pagedown" => {
                     self.scroll(-15);
-                    cx.notify();
-                    return;
-                }
-                "home" => {
-                    self.scroll(100_000);
-                    cx.notify();
-                    return;
-                }
-                "end" => {
-                    self.scroll(-100_000);
                     cx.notify();
                     return;
                 }
@@ -1212,7 +1209,11 @@ impl AtlasView {
 
 
         // Ghost text acceptance: Right Arrow, Tab, or End accepts the active inline suggestion
-        if !modifiers.control && !modifiers.alt && (key == "arrowright" || key == "right" || key == "tab" || key == "end") {
+        if !shell_editing
+            && !modifiers.control
+            && !modifiers.alt
+            && (key == "arrowright" || key == "right" || key == "tab" || key == "end")
+        {
             let ghost_opt = self.active_ghost_suggestion.borrow_mut().take();
             if let Some(ghost) = ghost_opt {
                 let bytes = ghost.into_bytes();

@@ -109,6 +109,16 @@ pub fn to_bytes(ks: &Keystroke, mode: TermMode) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
+/// Chords that line-editing shells (PSReadLine in Windows PowerShell 5.1,
+/// GNU readline, etc.) bind to text-selection commands. The UI layer must let
+/// these reach the PTY instead of consuming them as application shortcuts.
+pub(crate) fn is_shell_editing_chord(chord: &str) -> bool {
+    matches!(
+        chord,
+        "ctrl+a" | "ctrl+shift+left" | "ctrl+shift+right" | "shift+home" | "shift+end"
+    )
+}
+
 /// xterm / ECMA-48 modifier code:
 /// 1 = none, 2 = Shift, 3 = Alt, 4 = Shift+Alt, 5 = Ctrl,
 /// 6 = Shift+Ctrl, 7 = Alt+Ctrl, 8 = Shift+Alt+Ctrl.
@@ -356,5 +366,87 @@ mod tests {
             key_char: None,
         };
         assert_eq!(to_bytes(&ks_upper_c, TermMode::empty()), Some(vec![3]));
+    }
+
+    #[test]
+    fn test_ctrl_a_forwarded_as_select_all() {
+        let mut ctrl = Modifiers::default();
+        ctrl.control = true;
+        let ks = Keystroke {
+            modifiers: ctrl,
+            key: "a".to_string(),
+            key_char: Some("a".to_string()),
+        };
+        assert_eq!(to_bytes(&ks, TermMode::empty()), Some(vec![0x01]));
+    }
+
+    #[test]
+    fn test_ctrl_shift_right_forwarded_as_select_next_word() {
+        let mut ctrl_shift = Modifiers::default();
+        ctrl_shift.control = true;
+        ctrl_shift.shift = true;
+        let ks = Keystroke {
+            modifiers: ctrl_shift,
+            key: "right".to_string(),
+            key_char: None,
+        };
+        assert_eq!(
+            to_bytes(&ks, TermMode::empty()),
+            Some(b"\x1b[1;6C".to_vec())
+        );
+    }
+
+    #[test]
+    fn test_shift_home_end_forwarded() {
+        let mut shift = Modifiers::default();
+        shift.shift = true;
+        let home = Keystroke {
+            modifiers: shift,
+            key: "home".to_string(),
+            key_char: None,
+        };
+        let end = Keystroke {
+            modifiers: shift,
+            key: "end".to_string(),
+            key_char: None,
+        };
+        assert_eq!(
+            to_bytes(&home, TermMode::empty()),
+            Some(b"\x1b[1;2H".to_vec())
+        );
+        assert_eq!(
+            to_bytes(&end, TermMode::empty()),
+            Some(b"\x1b[1;2F".to_vec())
+        );
+    }
+
+    #[test]
+    fn test_shell_editing_chords_classification() {
+        // These chords bind to PSReadLine line-selection functions and must reach the shell.
+        for chord in [
+            "ctrl+a",
+            "ctrl+shift+left",
+            "ctrl+shift+right",
+            "shift+home",
+            "shift+end",
+        ] {
+            assert!(
+                is_shell_editing_chord(chord),
+                "{chord} must not be consumed by the UI"
+            );
+        }
+        // Application shortcuts and shell chords that already pass through.
+        for chord in [
+            "ctrl+shift+up",
+            "ctrl+shift+down",
+            "ctrl+home",
+            "ctrl+end",
+            "shift+pageup",
+        ] {
+            assert!(
+                !is_shell_editing_chord(chord),
+                "{chord} is not a shell editing chord"
+            );
+        }
     }
 }
