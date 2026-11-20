@@ -131,8 +131,8 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_SCROLL_LINE_DOWN.to_string(), "ctrl+shift+down".to_string());
     m.insert(ACTION_SCROLL_PAGE_UP.to_string(), "shift+pageup".to_string());
     m.insert(ACTION_SCROLL_PAGE_DOWN.to_string(), "shift+pagedown".to_string());
-    m.insert(ACTION_SCROLL_TO_TOP.to_string(), "shift+home".to_string());
-    m.insert(ACTION_SCROLL_TO_BOTTOM.to_string(), "shift+end".to_string());
+    m.insert(ACTION_SCROLL_TO_TOP.to_string(), "ctrl+home".to_string());
+    m.insert(ACTION_SCROLL_TO_BOTTOM.to_string(), "ctrl+end".to_string());
     m.insert(ACTION_OPEN_URL_PICKER.to_string(), "ctrl+shift+u".to_string());
     m.insert(ACTION_PALETTE.to_string(), "ctrl+k".to_string());
     m.insert(ACTION_FULLSCREEN.to_string(), "f11".to_string());
@@ -154,6 +154,41 @@ pub fn default_shortcuts() -> HashMap<String, String> {
     m.insert(ACTION_NEW_TAB_OPENCODE.to_string(), "ctrl+shift+5".to_string());
     m.insert(ACTION_NEW_TAB_ANTIGRAVITY.to_string(), "ctrl+shift+6".to_string());
     m
+}
+
+/// Releases Shift+Home/End for line-editing shells on upgraded settings files.
+/// Previous scroll bindings are moved to Ctrl+Home/End.
+fn remap_shell_editing_shortcuts(shortcuts: &mut HashMap<String, String>) -> bool {
+    let mut changed = false;
+    for (action, old, new) in [
+        (ACTION_SCROLL_TO_TOP, "shift+home", "ctrl+home"),
+        (ACTION_SCROLL_TO_BOTTOM, "shift+end", "ctrl+end"),
+    ] {
+        if shortcuts.get(action).map(String::as_str) == Some(old) {
+            shortcuts.insert(action.to_string(), new.to_string());
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Brings shortcut settings up to the current schema and reports whether the
+/// settings file needs to be persisted.
+fn migrate_shortcuts(s: &mut AppSettingsFile) -> bool {
+    let needs_save = s.shortcut_schema < 3;
+    let defaults = default_shortcuts();
+    if s.shortcut_schema < 2 {
+        s.shortcuts = defaults.clone();
+        s.shortcut_schema = 2;
+    }
+    if s.shortcut_schema < 3 {
+        remap_shell_editing_shortcuts(&mut s.shortcuts);
+        s.shortcut_schema = 3;
+    }
+    for (action, chord) in defaults {
+        s.shortcuts.entry(action).or_insert(chord);
+    }
+    needs_save
 }
 
 pub fn format_keystroke_chord(ks: &Keystroke) -> Option<String> {
@@ -507,7 +542,7 @@ impl Default for AppSettingsFile {
             letter_animations: default_true(),
             tab_bar_position: default_tab_bar_position(),
             tiling_gap: default_tiling_gap(),
-            shortcut_schema: 2,
+            shortcut_schema: 3,
             shortcuts: default_shortcuts(),
             default_shell: default_shell(),
             start_directory: default_start_dir(),
@@ -554,15 +589,8 @@ pub fn load_app_settings() -> AppSettingsFile {
             if s.theme_light.is_empty() {
                 s.theme_light = default_theme_light();
             }
-            if s.shortcut_schema < 2 {
-                s.shortcuts = default_shortcuts();
-                s.shortcut_schema = 2;
+            if migrate_shortcuts(&mut s) {
                 save_app_settings(&s);
-            } else {
-                let defaults = default_shortcuts();
-                for (action, chord) in defaults {
-                    s.shortcuts.entry(action).or_insert(chord);
-                }
             }
             return s;
         }
@@ -616,6 +644,127 @@ mod tests {
         assert!(!action_display_name(ACTION_NEXT_THEME).is_empty());
         assert!(!action_display_name(ACTION_PREV_THEME).is_empty());
         assert!(!action_display_name(ACTION_TOGGLE_DARK_LIGHT).is_empty());
+    }
+
+    #[test]
+    fn test_scroll_defaults_avoid_shell_editing_chords() {
+        let defaults = default_shortcuts();
+        assert_eq!(
+            defaults.get(ACTION_SCROLL_TO_TOP).map(String::as_str),
+            Some("ctrl+home")
+        );
+        assert_eq!(
+            defaults.get(ACTION_SCROLL_TO_BOTTOM).map(String::as_str),
+            Some("ctrl+end")
+        );
+
+        let mut legacy = HashMap::new();
+        legacy.insert(ACTION_SCROLL_TO_TOP.to_string(), "shift+home".to_string());
+        legacy.insert(ACTION_SCROLL_TO_BOTTOM.to_string(), "shift+end".to_string());
+        assert!(remap_shell_editing_shortcuts(&mut legacy));
+        assert_eq!(
+            legacy.get(ACTION_SCROLL_TO_TOP).map(String::as_str),
+            Some("ctrl+home")
+        );
+        assert_eq!(
+            legacy.get(ACTION_SCROLL_TO_BOTTOM).map(String::as_str),
+            Some("ctrl+end")
+        );
+        assert!(!remap_shell_editing_shortcuts(&mut legacy));
+    }
+
+    #[test]
+    fn test_shortcut_migration_preserves_custom_bindings() {
+        let mut settings = AppSettingsFile::default();
+        settings.shortcut_schema = 2;
+        settings
+            .shortcuts
+            .insert(ACTION_SCROLL_TO_TOP.to_string(), "shift+home".to_string());
+        settings
+            .shortcuts
+            .insert(ACTION_SCROLL_TO_BOTTOM.to_string(), "shift+end".to_string());
+        settings
+            .shortcuts
+            .insert(ACTION_FIND.to_string(), "alt+/".to_string());
+
+        assert!(migrate_shortcuts(&mut settings));
+        assert_eq!(settings.shortcut_schema, 3);
+        assert_eq!(
+            settings
+                .shortcuts
+                .get(ACTION_SCROLL_TO_TOP)
+                .map(String::as_str),
+            Some("ctrl+home")
+        );
+        assert_eq!(
+            settings
+                .shortcuts
+                .get(ACTION_SCROLL_TO_BOTTOM)
+                .map(String::as_str),
+            Some("ctrl+end")
+        );
+        assert_eq!(
+            settings.shortcuts.get(ACTION_FIND).map(String::as_str),
+            Some("alt+/")
+        );
+        assert!(!migrate_shortcuts(&mut settings));
+
+        let mut legacy = AppSettingsFile::default();
+        legacy.shortcut_schema = 0;
+        legacy
+            .shortcuts
+            .insert(ACTION_FIND.to_string(), "alt+/".to_string());
+        assert!(migrate_shortcuts(&mut legacy));
+        assert_eq!(legacy.shortcut_schema, 3);
+        assert_eq!(
+            legacy.shortcuts.get(ACTION_FIND).map(String::as_str),
+            Some("ctrl+f")
+        );
+    }
+
+    #[test]
+    fn test_shell_editing_chords_from_keystroke_aliases() {
+        let mut ctrl_shift = gpui::Modifiers::default();
+        ctrl_shift.control = true;
+        ctrl_shift.shift = true;
+        for key in ["arrowleft", "arrowright", "left", "right"] {
+            let ks = Keystroke {
+                modifiers: ctrl_shift,
+                key: key.to_string(),
+                key_char: None,
+            };
+            let chord = format_keystroke_chord(&ks).expect("chord");
+            assert!(
+                crate::keymap::is_shell_editing_chord(&chord),
+                "{chord} from {key} must reach the shell"
+            );
+        }
+
+        let mut shift = gpui::Modifiers::default();
+        shift.shift = true;
+        for key in ["home", "end"] {
+            let ks = Keystroke {
+                modifiers: shift,
+                key: key.to_string(),
+                key_char: None,
+            };
+            let chord = format_keystroke_chord(&ks).expect("chord");
+            assert!(
+                crate::keymap::is_shell_editing_chord(&chord),
+                "{chord} from {key} must reach the shell"
+            );
+        }
+
+        let mut ctrl = gpui::Modifiers::default();
+        ctrl.control = true;
+        let ks = Keystroke {
+            modifiers: ctrl,
+            key: "A".to_string(),
+            key_char: Some("A".to_string()),
+        };
+        let chord = format_keystroke_chord(&ks).expect("chord");
+        assert_eq!(chord, "ctrl+a");
+        assert!(crate::keymap::is_shell_editing_chord(&chord));
     }
 
     #[test]
